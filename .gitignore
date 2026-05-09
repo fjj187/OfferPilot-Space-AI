@@ -31,3 +31,6 @@ yarn-error.log*
 !.env.template
 
 vite.config.ts.timestamp*
+
+# local docs
+/docs

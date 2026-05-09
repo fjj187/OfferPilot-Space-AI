@@ -13,8 +13,11 @@
         :class="[
           'select-none',
           'bg-no-repeat bg-cover bg-right',
-          'bg-bgcolor'
+          'bg-transparent'
         ]"
+        :style="{
+          background: 'radial-gradient(circle at top left, rgba(113, 135, 255, 0.1), transparent 34%), linear-gradient(180deg, #fbfcff 0%, #f4f7fb 100%)'
+        }"
       >
         <div
           v-if="$slots['sidebar-header']"
@@ -24,14 +27,19 @@
         </div>
         <div
           flex="1"
-          p="20px"
+          pl="16px"
+          pr="8px"
+          pt="20px"
+          pb="48px"
           overflow-y-auto
         >
           <slot name="sidebar"></slot>
         </div>
         <div
           py="14px"
-          px="20px"
+          pl="16px"
+          pr="8px"
+          pb="24px"
         >
           <slot name="sidebar-action"></slot>
         </div>

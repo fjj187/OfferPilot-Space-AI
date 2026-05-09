@@ -5,7 +5,7 @@ const routes: Array<RouteRecordRaw> = [
     path: '/',
     name: 'Root',
     redirect: {
-      name: 'ChatRoot'
+      name: 'WorkbenchRoot'
     }
   },
   ...childRoutes,

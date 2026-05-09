@@ -1,20 +1,50 @@
-const LayoutDefault = () => import('@/components/Layout/default.vue')
+const WorkbenchLayout = () => import('@/views/workbench/layout.vue')
 
 const childrenRoutes: Array<RouteRecordRaw> = [
   {
-    path: '/chat',
-    component: LayoutDefault,
-    name: 'ChatRoot',
+    path: '/workspace',
+    component: WorkbenchLayout,
+    name: 'WorkbenchRoot',
     redirect: {
-      name: 'ChatIndex'
+      name: 'WorkbenchOverview'
     },
     children: [
       {
-        path: '',
-        name: 'ChatIndex',
-        component: () => import('@/views/chat.vue')
+        path: 'overview',
+        name: 'WorkbenchOverview',
+        component: () => import('@/views/workbench/overview.vue')
+      },
+      {
+        path: 'library',
+        name: 'WorkbenchLibrary',
+        component: () => import('@/views/workbench/library.vue')
+      },
+      {
+        path: 'mock-interview',
+        name: 'WorkbenchMockInterview',
+        component: () => import('@/views/workbench/mock-interview.vue')
+      },
+      {
+        path: 'practice',
+        name: 'WorkbenchPractice',
+        component: () => import('@/views/workbench/practice.vue')
+      },
+      {
+        path: 'report',
+        name: 'WorkbenchReport',
+        component: () => import('@/views/workbench/report.vue')
+      },
+      {
+        path: 'history',
+        name: 'WorkbenchHistory',
+        component: () => import('@/views/workbench/history.vue')
       }
     ]
+  },
+  {
+    path: '/chat',
+    name: 'ChatRoot',
+    redirect: '/workspace/overview'
   }
 ]
 
