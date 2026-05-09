@@ -23,6 +23,8 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 .eslintcache
+vite-stdout.log
+vite-stderr.log
 
 # IDE
 .idea
