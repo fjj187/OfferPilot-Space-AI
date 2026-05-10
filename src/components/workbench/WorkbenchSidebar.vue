@@ -43,32 +43,34 @@ const isActive = (path: string) => props.activePath === path
       开始训练
     </n-button>
 
-    <div class="sidebar-menu">
-      <button
-        v-for="item in items"
-        :key="item.key"
-        type="button"
-        class="sidebar-item"
-        :class="{ 'is-active': isActive(item.path) }"
-        @click="handleNavigate(item.path)"
-      >
-        <span
-          class="sidebar-item-icon"
-          :class="item.icon"
-        ></span>
-        <span class="sidebar-item-label">{{ item.label }}</span>
-        <span
-          v-if="item.badge"
-          class="sidebar-item-badge"
-        >{{ item.badge }}</span>
-      </button>
-    </div>
+    <div class="sidebar-scroll">
+      <div class="sidebar-menu">
+        <button
+          v-for="item in items"
+          :key="item.key"
+          type="button"
+          class="sidebar-item"
+          :class="{ 'is-active': isActive(item.path) }"
+          @click="handleNavigate(item.path)"
+        >
+          <span
+            class="sidebar-item-icon"
+            :class="item.icon"
+          ></span>
+          <span class="sidebar-item-label">{{ item.label }}</span>
+          <span
+            v-if="item.badge"
+            class="sidebar-item-badge"
+          >{{ item.badge }}</span>
+        </button>
+      </div>
 
-    <div class="sidebar-footer">
-      <div class="sidebar-footer-card">
-        <div class="sidebar-footer-title">当前训练主题</div>
-        <div class="sidebar-footer-value">前端开发 / 社招一面</div>
-        <div class="sidebar-footer-meta">偏重项目表达 + 框架原理</div>
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-card">
+          <div class="sidebar-footer-title">当前训练主题</div>
+          <div class="sidebar-footer-value">前端开发 / 社招一面</div>
+          <div class="sidebar-footer-meta">偏重项目表达 + 框架原理</div>
+        </div>
       </div>
     </div>
   </div>
@@ -77,12 +79,12 @@ const isActive = (path: string) => props.activePath === path
 <style lang="scss" scoped>
 .sidebar-shell {
   height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 26px 18px 18px;
-  background:
-    radial-gradient(circle at top left, rgb(124 138 255 / 14%), transparent 36%),
-    linear-gradient(180deg, #f8faff 0%, #f5f7fc 100%);
+  padding: 26px 18px 5px;
+  background: rgb(255 255 255 / 88%);
+  overflow: hidden;
 }
 
 .sidebar-brand {
@@ -125,9 +127,18 @@ const isActive = (path: string) => props.activePath === path
   --n-box-shadow-focus: 0 0 0 2px rgb(95 121 255 / 18%) !important;
 }
 
+.sidebar-scroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding-right: 2px;
+  padding-bottom: 12px;
+}
+
 .sidebar-menu {
   display: flex;
-  flex: 1;
   flex-direction: column;
   gap: 8px;
 }
@@ -177,7 +188,9 @@ const isActive = (path: string) => props.activePath === path
 }
 
 .sidebar-footer {
+  margin-top: auto;
   padding-top: 18px;
+  flex-shrink: 0;
 }
 
 .sidebar-footer-card {

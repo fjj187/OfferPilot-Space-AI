@@ -30,12 +30,13 @@
           pl="16px"
           pr="8px"
           pt="20px"
-          pb="48px"
-          overflow-y-auto
+          pb="0"
+          overflow-hidden
         >
           <slot name="sidebar"></slot>
         </div>
         <div
+          v-if="$slots['sidebar-action']"
           py="14px"
           pl="16px"
           pr="8px"

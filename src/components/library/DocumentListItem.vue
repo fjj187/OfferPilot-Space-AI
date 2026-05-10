@@ -7,11 +7,15 @@ interface Props {
   importedAt: string
   tags: string[]
   status: 'pending' | 'parsed' | 'error'
+  recommendedReason?: string
+  sourceLabel?: string
   active?: boolean
 }
 
 withDefaults(defineProps<Props>(), {
-  active: false
+  active: false,
+  recommendedReason: '',
+  sourceLabel: ''
 })
 
 const emit = defineEmits<{
@@ -27,6 +31,7 @@ const statusMap = {
 
 <template>
   <button
+    :id="`doc-item-${id}`"
     type="button"
     class="doc-item"
     :class="{ 'is-active': active }"
@@ -50,6 +55,13 @@ const statusMap = {
       <span>{{ importedAt }}</span>
     </div>
 
+    <div
+      v-if="sourceLabel"
+      class="doc-source"
+    >
+      来源：{{ sourceLabel }}
+    </div>
+
     <div class="doc-tags">
       <span
         v-for="tag in tags"
@@ -58,6 +70,13 @@ const statusMap = {
       >
         {{ tag }}
       </span>
+    </div>
+
+    <div
+      v-if="recommendedReason"
+      class="doc-reason"
+    >
+      {{ recommendedReason }}
     </div>
   </button>
 </template>
@@ -139,6 +158,12 @@ const statusMap = {
   color: #8793aa;
 }
 
+.doc-source {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #7f8aa1;
+}
+
 .doc-tags {
   display: flex;
   flex-wrap: wrap;
@@ -152,5 +177,12 @@ const statusMap = {
   background: #f5f7fc;
   color: #68758d;
   font-size: 12px;
+}
+
+.doc-reason {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #66758f;
 }
 </style>

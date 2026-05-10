@@ -1,4 +1,16 @@
 <script lang="ts" setup>
+interface Props {
+  emphasizeImport?: boolean
+  helperText?: string
+  feedbackText?: string
+}
+
+withDefaults(defineProps<Props>(), {
+  emphasizeImport: false,
+  helperText: '',
+  feedbackText: ''
+})
+
 const emit = defineEmits<{
   pickFiles: []
   pickFolder: []
@@ -13,7 +25,10 @@ const emit = defineEmits<{
       <p>第一版先支持 `md` 和 `docx`，可以选择多个文件，也可以直接导入一个资料文件夹。</p>
     </div>
 
-    <div class="import-actions">
+    <div
+      class="import-actions"
+      :class="{ 'is-emphasis': emphasizeImport }"
+    >
       <n-button
         type="primary"
         round
@@ -33,9 +48,23 @@ const emit = defineEmits<{
       </n-button>
     </div>
 
+    <div
+      v-if="helperText"
+      class="import-helper"
+    >
+      {{ helperText }}
+    </div>
+
+    <div
+      v-if="feedbackText"
+      class="import-feedback"
+    >
+      {{ feedbackText }}
+    </div>
+
     <div class="import-meta">
       <span>支持格式：Markdown / Word</span>
-      <span>建议优先导入结构清晰的面试沉淀文档</span>
+      <span>建议优先导入结构清晰的面试沉淀文档。</span>
     </div>
   </section>
 </template>
@@ -77,6 +106,29 @@ p {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.import-actions.is-emphasis {
+  padding: 12px;
+  border-radius: 18px;
+  background: #eef2ff;
+}
+
+.import-helper {
+  margin-top: -4px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #66758f;
+}
+
+.import-feedback {
+  padding: 12px 14px;
+  border: 1px solid #dff0e8;
+  border-radius: 14px;
+  background: #f4fbf7;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #2f8f67;
 }
 
 .import-meta {

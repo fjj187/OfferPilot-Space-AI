@@ -6,10 +6,18 @@ interface Props {
   summary: string
   tags: string[]
   status: 'pending' | 'parsed' | 'error'
+  topicLabels?: string[]
+  sourceLabel?: string
+  recommendedReason?: string
   rawText?: string
 }
 
-defineProps<Props>()
+withDefaults(defineProps<Props>(), {
+  topicLabels: () => [],
+  sourceLabel: '',
+  recommendedReason: '',
+  rawText: ''
+})
 
 const statusMap = {
   pending: '待处理',
@@ -38,6 +46,22 @@ const statusMap = {
       <p>{{ summary }}</p>
     </div>
 
+    <div
+      v-if="topicLabels.length"
+      class="preview-section"
+    >
+      <div class="section-label">主题归属</div>
+      <div class="preview-tags">
+        <span
+          v-for="topic in topicLabels"
+          :key="topic"
+          class="preview-tag"
+        >
+          {{ topic }}
+        </span>
+      </div>
+    </div>
+
     <div class="preview-section">
       <div class="section-label">标签</div>
       <div class="preview-tags">
@@ -48,6 +72,17 @@ const statusMap = {
         >
           {{ tag }}
         </span>
+      </div>
+    </div>
+
+    <div
+      v-if="sourceLabel || recommendedReason"
+      class="preview-section"
+    >
+      <div class="section-label">推荐上下文</div>
+      <div class="preview-context">
+        <div v-if="sourceLabel">来源：{{ sourceLabel }}</div>
+        <div v-if="recommendedReason">原因：{{ recommendedReason }}</div>
       </div>
     </div>
 
@@ -133,6 +168,15 @@ p {
   background: #f5f7fc;
   color: #68758d;
   font-size: 12px;
+}
+
+.preview-context {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #6d7a92;
 }
 
 .preview-text {

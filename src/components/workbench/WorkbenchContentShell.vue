@@ -35,14 +35,16 @@ withDefaults(defineProps<Props>(), {
 .content-page {
   flex: 1;
   min-height: 0;
-  padding: 0 30px 8px;
+  padding: 0 3px 8px;
 }
 
 .content-shell {
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
-  padding: 28px;
+  padding: 28px 28px 5px;
   border: 1px solid #e8edf6;
   border-radius: 28px;
   background: rgb(255 255 255 / 90%);
@@ -57,6 +59,7 @@ withDefaults(defineProps<Props>(), {
 
 .content-main,
 .content-aside {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding-bottom: 12px;
