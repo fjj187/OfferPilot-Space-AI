@@ -1,4 +1,6 @@
 <script lang="ts" setup>
+import { computed, ref } from 'vue'
+
 interface Props {
   name: string
   type: 'md' | 'docx'
@@ -10,13 +12,17 @@ interface Props {
   sourceLabel?: string
   recommendedReason?: string
   rawText?: string
+  previewLineCount?: number
+  dark?: boolean
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   topicLabels: () => [],
   sourceLabel: '',
   recommendedReason: '',
-  rawText: ''
+  rawText: '',
+  previewLineCount: 14,
+  dark: false
 })
 
 const statusMap = {
@@ -24,16 +30,55 @@ const statusMap = {
   parsed: '已解析',
   error: '异常'
 }
+
+const showFullPreview = ref(false)
+
+const topicAndTags = computed(() => {
+  return Array.from(new Set([
+    ...props.topicLabels,
+    ...props.tags
+  ].filter(Boolean)))
+})
+
+const previewSourceText = computed(() => {
+  return props.rawText || '当前文档尚未生成可展示的文本预览。'
+})
+
+const previewLines = computed(() => previewSourceText.value.split(/\r?\n/))
+
+const previewExcerpt = computed(() => {
+  return previewLines.value.slice(0, props.previewLineCount).join('\n')
+})
+
+const hasMorePreview = computed(() => previewLines.value.length > props.previewLineCount)
 </script>
 
 <template>
-  <section class="preview-card">
+  <section
+    class="preview-card"
+    :class="{ 'is-dark': dark }"
+  >
     <div class="preview-head">
-      <div>
+      <div class="preview-head-top">
         <div class="eyebrow">文档预览</div>
-        <h3>{{ name }}</h3>
+        <span class="preview-type">{{ type.toUpperCase() }}</span>
       </div>
-      <span class="preview-type">{{ type.toUpperCase() }}</span>
+
+      <div class="preview-title-row">
+        <h3>{{ name }}</h3>
+        <div
+          v-if="topicAndTags.length"
+          class="preview-tags preview-tags--title"
+        >
+          <span
+            v-for="item in topicAndTags"
+            :key="item"
+            class="preview-tag"
+          >
+            {{ item }}
+          </span>
+        </div>
+      </div>
     </div>
 
     <div class="preview-meta">
@@ -43,95 +88,130 @@ const statusMap = {
 
     <div class="preview-section">
       <div class="section-label">摘要</div>
-      <p>{{ summary }}</p>
-    </div>
-
-    <div
-      v-if="topicLabels.length"
-      class="preview-section"
-    >
-      <div class="section-label">主题归属</div>
-      <div class="preview-tags">
-        <span
-          v-for="topic in topicLabels"
-          :key="topic"
-          class="preview-tag"
-        >
-          {{ topic }}
-        </span>
-      </div>
+      <p class="preview-summary">{{ summary }}</p>
     </div>
 
     <div class="preview-section">
-      <div class="section-label">标签</div>
-      <div class="preview-tags">
-        <span
-          v-for="tag in tags"
-          :key="tag"
-          class="preview-tag"
+      <div class="preview-section-head">
+        <div class="section-label">文本预览</div>
+        <button
+          type="button"
+          class="preview-expand"
+          @click="showFullPreview = true"
         >
-          {{ tag }}
-        </span>
+          全屏查看
+        </button>
       </div>
-    </div>
-
-    <div
-      v-if="sourceLabel || recommendedReason"
-      class="preview-section"
-    >
-      <div class="section-label">推荐上下文</div>
-      <div class="preview-context">
-        <div v-if="sourceLabel">来源：{{ sourceLabel }}</div>
-        <div v-if="recommendedReason">原因：{{ recommendedReason }}</div>
-      </div>
-    </div>
-
-    <div class="preview-section">
-      <div class="section-label">文本预览</div>
       <div class="preview-text">
-        {{ rawText || '当前文档尚未生成可展示的文本预览。' }}
+        {{ previewExcerpt }}
+      </div>
+      <div
+        v-if="hasMorePreview"
+        class="preview-more"
+      >
+        当前只展示前 {{ previewLineCount }} 行，点击右上角可查看全文。
       </div>
     </div>
   </section>
+
+  <n-modal
+    v-model:show="showFullPreview"
+    preset="card"
+    class="preview-modal"
+    title="全文预览"
+    :bordered="false"
+    size="huge"
+  >
+    <div class="preview-modal-head">
+      <strong>{{ name }}</strong>
+      <span>{{ type.toUpperCase() }}</span>
+    </div>
+    <div class="preview-modal-text">
+      {{ previewSourceText }}
+    </div>
+  </n-modal>
 </template>
 
 <style lang="scss" scoped>
 .preview-card {
+  --preview-card-bg: rgb(255 255 255 / 90%);
+  --preview-card-border: #e8edf6;
+  --preview-card-shadow: 0 16px 40px rgb(36 53 87 / 7%);
+  --preview-title: #1f2746;
+  --preview-body: #6d7a92;
+  --preview-muted: #7f8aa1;
+  --preview-chip-bg: #f5f7fc;
+  --preview-chip-text: #68758d;
+  --preview-text-bg: #f8faff;
+  --preview-text-color: #647188;
+  --preview-type-bg: #eef2ff;
+  --preview-type-text: #5f79ff;
+  --preview-accent: #7182f8;
   padding: 20px;
-  border: 1px solid #e8edf6;
+  border: 1px solid var(--preview-card-border);
   border-radius: 24px;
-  background: rgb(255 255 255 / 90%);
-  box-shadow: 0 16px 40px rgb(36 53 87 / 7%);
+  background: var(--preview-card-bg);
+  box-shadow: var(--preview-card-shadow);
+}
+
+.preview-card.is-dark {
+  --preview-card-bg: linear-gradient(180deg, rgb(15 20 44 / 0.92) 0%, rgb(17 13 37 / 0.86) 100%);
+  --preview-card-border: rgb(255 255 255 / 0.12);
+  --preview-card-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 18px 34px rgb(2 4 10 / 0.22);
+  --preview-title: #fff;
+  --preview-body: rgb(228 238 255 / 0.74);
+  --preview-muted: rgb(193 205 234 / 0.74);
+  --preview-chip-bg: rgb(255 255 255 / 0.08);
+  --preview-chip-text: rgb(241 246 255 / 0.84);
+  --preview-text-bg: rgb(8 12 30 / 0.92);
+  --preview-text-color: rgb(240 245 255 / 0.92);
+  --preview-type-bg: rgb(198 206 255 / 0.14);
+  --preview-type-text: #dfe5ff;
+  --preview-accent: #c6ceff;
 }
 
 .preview-head {
+  display: grid;
+  gap: 12px;
+}
+
+.preview-head-top {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.preview-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 16px;
 }
 
 .eyebrow,
 .section-label {
   font-size: 12px;
   font-weight: 700;
-  color: #7182f8;
+  color: var(--preview-accent);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 h3 {
-  margin: 10px 0 0;
+  margin: 0;
   font-size: 20px;
   line-height: 1.4;
-  color: #1f2746;
+  color: var(--preview-title);
 }
 
 .preview-type {
   padding: 7px 10px;
   border-radius: 999px;
-  background: #eef2ff;
-  color: #5f79ff;
+  background: var(--preview-type-bg);
+  color: var(--preview-type-text);
   font-size: 12px;
   font-weight: 700;
 }
@@ -141,33 +221,79 @@ h3 {
   display: grid;
   gap: 8px;
   font-size: 13px;
-  color: #7f8aa1;
+  color: var(--preview-muted);
 }
 
 .preview-section {
   margin-top: 18px;
 }
 
+.preview-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.preview-expand {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--preview-card-border);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.04);
+  color: var(--preview-accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.preview-expand:hover {
+  transform: translateY(-1px);
+}
+
+.preview-card.is-dark .preview-expand {
+  border-color: rgb(255 255 255 / 0.14);
+  background: rgb(255 255 255 / 0.05);
+}
+
 p {
   margin: 10px 0 0;
   font-size: 14px;
   line-height: 1.8;
-  color: #6d7a92;
+  color: var(--preview-body);
+}
+
+.preview-summary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .preview-tags {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 8px;
-  margin-top: 10px;
+}
+
+.preview-tags--title {
+  grid-template-columns: repeat(4, max-content);
+  justify-content: end;
+  align-content: start;
+  max-width: 320px;
 }
 
 .preview-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 6px 10px;
   border-radius: 999px;
-  background: #f5f7fc;
-  color: #68758d;
+  background: var(--preview-chip-bg);
+  color: var(--preview-chip-text);
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .preview-context {
@@ -176,17 +302,75 @@ p {
   gap: 8px;
   font-size: 13px;
   line-height: 1.7;
-  color: #6d7a92;
+  color: var(--preview-body);
 }
 
 .preview-text {
   margin-top: 10px;
   padding: 14px;
   border-radius: 16px;
-  background: #f8faff;
+  background: var(--preview-text-bg);
   font-size: 13px;
   line-height: 1.8;
-  color: #647188;
+  color: var(--preview-text-color);
   white-space: pre-wrap;
+  overflow: hidden;
+}
+
+.preview-more {
+  margin-top: 10px;
+  color: var(--preview-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.preview-modal :deep(.n-card) {
+  max-width: min(1100px, 92vw);
+  margin: 32px auto;
+}
+
+.preview-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  color: #1f2746;
+}
+
+.preview-modal-head strong {
+  font-size: 18px;
+}
+
+.preview-modal-head span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #5f79ff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.preview-modal-text {
+  max-height: 72vh;
+  overflow: auto;
+  padding: 18px;
+  border-radius: 18px;
+  background: #f6f8fc;
+  color: #3f4b63;
+  font-size: 14px;
+  line-height: 1.85;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 780px) {
+  .preview-title-row {
+    grid-template-columns: 1fr;
+  }
+
+  .preview-tags--title {
+    justify-content: start;
+    max-width: none;
+  }
 }
 </style>

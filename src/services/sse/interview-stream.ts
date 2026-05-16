@@ -2,7 +2,21 @@ import { consumeStreamText } from './sse-client'
 import type { InterviewStreamHandlers, InterviewStreamRequest } from './sse-types'
 import { splitStream } from '@/components/MarkdownPreview/transform'
 
-const createId = () => `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+const createId = () => `msg-${ Date.now() }-${ Math.random().toString(36).slice(2, 8) }`
+
+const normalizeInterviewStreamRequest = (request: InterviewStreamRequest): InterviewStreamRequest => {
+  const compactPrompt = [request.questionTitle, request.sourceContext, request.answer]
+    .map(item => item?.trim())
+    .filter(Boolean)
+    .join('\n')
+
+  return {
+    ...request,
+    // Avoid sending the question body twice. The full text is already kept in
+    // `questionPrompt`, so `prompt` only needs the minimum context.
+    prompt: compactPrompt || request.prompt.trim()
+  }
+}
 
 const splitTextToReader = (
   text: string,
@@ -31,19 +45,24 @@ const splitTextToReader = (
 const buildMockInterviewReply = (request: InterviewStreamRequest) => {
   const answerLengthLabel =
     request.answer.trim().length >= 90 ? '回答展开度不错' : '回答还可以再展开一点'
+  const sourceContextText = request.sourceDocumentName
+    ? `我会继续参考你当前选中的资料 **${ request.sourceDocumentName }** 来追问。`
+    : '我会继续围绕当前训练上下文来追问。'
 
   return [
-    `### 当前追问：${request.questionTitle}`,
+    `### 当前追问：${ request.questionTitle }`,
     '',
-    `你刚才围绕 **${request.topicLabel}** 给出了一轮回答，整体上已经覆盖了主要方向，不过我会继续按真实面试官的方式往下追问。`,
+    `你刚才围绕 **${ request.topicLabel }** 给出了一轮回答，整体上已经覆盖了主要方向，不过我会继续按真实面试官的方式往下追问。`,
+    '',
+    sourceContextText,
     '',
     '#### 面试官反馈',
-    `- ${answerLengthLabel}`,
+    `- ${ answerLengthLabel }`,
     '- 先说结论，再补拆分过程，会更像成熟的项目表达',
     '- 这轮回答里最好补一个你亲自处理过的场景或取舍',
     '',
     '#### 下一步建议',
-    `1. 先用两句话概括：你会如何处理“${request.questionPrompt}”`,
+    `1. 先用两句话概括：你会如何处理“${ request.questionPrompt }”`,
     '2. 再拆成状态、边界、异常情况三个部分',
     '3. 最后补上线后的验证方式或复盘指标',
     '',
@@ -57,9 +76,10 @@ const createFetchReader = async (
   signal?: AbortSignal
 ): Promise<ReadableStreamDefaultReader<string>> => {
   const endpoint = import.meta.env.VITE_INTERVIEW_SSE_URL
+  const normalizedRequest = normalizeInterviewStreamRequest(request)
 
   if (!endpoint) {
-    return splitTextToReader(buildMockInterviewReply(request))
+    return splitTextToReader(buildMockInterviewReply(normalizedRequest))
   }
 
   const response = await fetch(endpoint, {
@@ -67,12 +87,12 @@ const createFetchReader = async (
     headers: {
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify(request),
+    body: JSON.stringify(normalizedRequest),
     signal
   })
 
   if (!response.ok || !response.body) {
-    throw new Error(`Interview stream request failed: ${response.status}`)
+    throw new Error(`Interview stream request failed: ${ response.status }`)
   }
 
   return response.body
@@ -90,7 +110,10 @@ export const startInterviewStream = (
 
   consumeStreamText({
     signal: controller.signal,
-    createReader: signal => createFetchReader({ ...payload, messageId }, signal),
+    createReader: signal => createFetchReader({
+      ...payload,
+      messageId
+    }, signal),
     onStart: () => {
       handlers.onEvent({
         type: 'start',

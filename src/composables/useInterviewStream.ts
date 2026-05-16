@@ -9,10 +9,12 @@ interface StartInterviewStreamParams {
   questionTitle: string
   questionPrompt: string
   answer: string
+  sourceContext?: string
+  sourceDocumentName?: string
   format?: InterviewMessageFormat
 }
 
-const createMessageId = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+const createMessageId = () => `local-${ Date.now() }-${ Math.random().toString(36).slice(2, 8) }`
 
 const createMessage = (
   role: InterviewMessageRole,
@@ -38,7 +40,7 @@ export const useInterviewStream = () => {
   let activeAbort: null | (() => void) = null
   let activeMessageId = ''
 
-  const scrollVersion = computed(() => messages.value.map(item => `${item.id}:${item.displayContent.length}:${item.status}`).join('|'))
+  const scrollVersion = computed(() => messages.value.map(item => `${ item.id }:${ item.displayContent.length }:${ item.status }`).join('|'))
 
   const appendMessage = (message: InterviewMessage) => {
     messages.value = [...messages.value, message]
@@ -104,8 +106,8 @@ export const useInterviewStream = () => {
           messageQueue.register(event.messageId, (delta) => {
             patchMessage(event.messageId, item => ({
               ...item,
-              content: `${item.content}${delta}`,
-              displayContent: `${item.displayContent}${delta}`
+              content: `${ item.content }${ delta }`,
+              displayContent: `${ item.displayContent }${ delta }`
             }))
           })
           return

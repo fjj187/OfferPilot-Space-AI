@@ -1,3 +1,4 @@
+import { ref } from 'vue'
 import type {
   PersistedInterviewMode,
   PersistedInterviewSession,
@@ -19,9 +20,15 @@ import {
 } from '@/utils/storage/workbench-storage'
 
 const nowISO = () => new Date().toISOString()
+const workbenchStorageVersion = ref(0)
+
+const touchWorkbenchStorage = () => {
+  workbenchStorageVersion.value += 1
+}
 
 export const useWorkbenchPersistence = () => {
   const loadLibraryDocuments = <T extends PersistedLibraryDocument>(seedDocuments: T[]) => {
+    workbenchStorageVersion.value
     const storedDocuments = getPersistedLibraryDocuments() as T[]
     const seedMap = new Map(seedDocuments.map(item => [item.id, item]))
     const merged = [...storedDocuments.filter(item => !seedMap.has(item.id)), ...seedDocuments]
@@ -30,9 +37,11 @@ export const useWorkbenchPersistence = () => {
 
   const saveImportedLibraryDocuments = (documents: PersistedLibraryDocument[]) => {
     setPersistedLibraryDocuments(documents)
+    touchWorkbenchStorage()
   }
 
   const loadWorkbenchContext = () => {
+    workbenchStorageVersion.value
     return getPersistedWorkbenchContext()
   }
 
@@ -42,14 +51,17 @@ export const useWorkbenchPersistence = () => {
       updatedAt: nowISO()
     }
     setPersistedWorkbenchContext(nextContext)
+    touchWorkbenchStorage()
     return nextContext
   }
 
   const loadInterviewSessions = () => {
+    workbenchStorageVersion.value
     return getPersistedInterviewSessions()
   }
 
   const getInterviewSessionById = (sessionId: string) => {
+    workbenchStorageVersion.value
     return getPersistedInterviewSessions().find(item => item.id === sessionId) || null
   }
 
@@ -59,6 +71,7 @@ export const useWorkbenchPersistence = () => {
     source: string
     status?: PersistedInterviewStatus
   }) => {
+    workbenchStorageVersion.value
     return getPersistedInterviewSessions().find(item => (
       item.topic === matcher.topic
       && item.mode === matcher.mode
@@ -74,6 +87,7 @@ export const useWorkbenchPersistence = () => {
       startedAt: nowISO()
     }
     setPersistedInterviewSessions([nextSession, ...sessions.filter(item => item.id !== nextSession.id)])
+    touchWorkbenchStorage()
     return nextSession
   }
 
@@ -87,6 +101,7 @@ export const useWorkbenchPersistence = () => {
       }
     })
     setPersistedInterviewSessions(nextSessions)
+    touchWorkbenchStorage()
     return nextSessions.find(item => item.id === sessionId) || null
   }
 
@@ -106,10 +121,12 @@ export const useWorkbenchPersistence = () => {
   }
 
   const loadReportSummaries = () => {
+    workbenchStorageVersion.value
     return getPersistedReportSummaries()
   }
 
   const getReportSummaryBySessionId = (sessionId: string) => {
+    workbenchStorageVersion.value
     return getPersistedReportSummaries().find(item => item.sessionId === sessionId) || null
   }
 
@@ -117,6 +134,7 @@ export const useWorkbenchPersistence = () => {
     const summaries = getPersistedReportSummaries()
     const nextSummaries = [payload, ...summaries.filter(item => item.id !== payload.id)]
     setPersistedReportSummaries(nextSummaries)
+    touchWorkbenchStorage()
     return payload
   }
 

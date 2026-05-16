@@ -14,6 +14,8 @@ export interface InterviewStreamRequest {
   questionTitle: string
   questionPrompt: string
   answer: string
+  sourceContext?: string
+  sourceDocumentName?: string
   format?: InterviewMessageFormat
 }
 

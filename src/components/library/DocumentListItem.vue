@@ -10,12 +10,14 @@ interface Props {
   recommendedReason?: string
   sourceLabel?: string
   active?: boolean
+  activeLabel?: string
 }
 
 withDefaults(defineProps<Props>(), {
   active: false,
   recommendedReason: '',
-  sourceLabel: ''
+  sourceLabel: '',
+  activeLabel: ''
 })
 
 const emit = defineEmits<{
@@ -46,7 +48,7 @@ const statusMap = {
         class="doc-status"
         :class="`is-${status}`"
       >
-        {{ statusMap[status] }}
+        {{ active && activeLabel ? activeLabel : statusMap[status] }}
       </div>
     </div>
 

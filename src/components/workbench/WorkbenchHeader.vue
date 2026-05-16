@@ -1,3 +1,15 @@
+<script lang="ts" setup>
+const router = useRouter()
+
+const handleOpenShowcase = () => {
+  router.push({ name: 'SpaceOdysseyShowcase' })
+}
+
+const handleOpenInterviewMock = () => {
+  router.push({ name: 'MockInterviewSpaceShowcase' })
+}
+</script>
+
 <template>
   <header class="workspace-header">
     <div class="header-search">
@@ -9,6 +21,24 @@
     </div>
 
     <div class="header-actions">
+      <button
+        type="button"
+        class="showcase-entry"
+        @click="handleOpenShowcase"
+      >
+        <span class="i-lucide-orbit showcase-entry-icon"></span>
+        <span>Space Demo</span>
+      </button>
+
+      <button
+        type="button"
+        class="showcase-entry showcase-entry-secondary"
+        @click="handleOpenInterviewMock"
+      >
+        <span class="i-lucide-messages-square showcase-entry-icon"></span>
+        <span>Interview Mock</span>
+      </button>
+
       <button
         type="button"
         class="header-action-btn"
@@ -77,6 +107,35 @@
   gap: 14px;
 }
 
+.showcase-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 18px;
+  border: 1px solid rgb(79 95 174 / 12%);
+  border-radius: 16px;
+  background: linear-gradient(135deg, #0d1531 0%, #202a52 100%);
+  color: #f5f7ff;
+  box-shadow: 0 16px 26px rgb(16 28 76 / 18%);
+  cursor: pointer;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.showcase-entry:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 32px rgb(16 28 76 / 24%);
+}
+
+.showcase-entry-secondary {
+  background: linear-gradient(135deg, #101e39 0%, #173554 100%);
+}
+
+.showcase-entry-icon {
+  font-size: 18px;
+  color: #73f5eb;
+}
+
 .header-action-btn {
   width: 48px;
   height: 48px;
@@ -124,6 +183,11 @@
 
   .header-actions {
     justify-content: space-between;
+  }
+
+  .showcase-entry {
+    flex: 1;
+    justify-content: center;
   }
 }
 </style>

@@ -19,9 +19,18 @@ const currentDifficulty = computed(() => String(route.query.difficulty || 'mediu
 const currentQuestionCount = computed(() => `${ String(route.query.questionCount || '6') } 题`)
 
 const summaryItems = computed(() => [
-  { label: '刷题主题', value: currentTopic.value },
-  { label: '难度', value: currentDifficulty.value },
-  { label: '题量', value: currentQuestionCount.value }
+  {
+    label: '刷题主题',
+    value: currentTopic.value
+  },
+  {
+    label: '难度',
+    value: currentDifficulty.value
+  },
+  {
+    label: '题量',
+    value: currentQuestionCount.value
+  }
 ])
 </script>
 
@@ -33,6 +42,9 @@ const summaryItems = computed(() => [
       description="这里将承接按主题练题、题单生成、即时反馈与进度跟踪。"
     />
 
-    <WorkbenchContextSummary :items="summaryItems" :columns="3" />
+    <WorkbenchContextSummary
+      :items="summaryItems"
+      :columns="3"
+    />
   </WorkbenchContentShell>
 </template>

@@ -92,6 +92,8 @@ pnpm dev
 
 本地运行后，可以通过访问 `http://localhost:2048` 来查看应用。
 
+新增的宇宙风演示页可通过 `#/showcase/space-odyssey`（Hash 模式）或 `/showcase/space-odyssey`（History 模式）访问，也可以从工作台右上角的 `Space Demo` 入口进入。
+
 
 ## 🔑 配置 API 密钥
 
@@ -156,6 +158,8 @@ server: {
 1. **环境限制**: 该代理配置仅在开发环境（`development`）中生效。若生产环境部署时请根据实际情况调整服务器配置
 
 2. **路径匹配**: 请求路径需要与配置的代理路径前缀匹配，例如本地访问 `/spark/v1/chat/completions` 会被直接代理到 `https://spark-api-open.xf-yun.com/v1/chat/completions`
+
+3. **请求体瘦身**: 模拟面试流式请求会避免在 `prompt` 中重复拼接题干，完整题干仍通过独立字段保留，便于接自定义流式后端时降低 `413 Payload Too Large` 风险
 
 ### 生产环境部署
 

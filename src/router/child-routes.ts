@@ -42,6 +42,16 @@ const childrenRoutes: Array<RouteRecordRaw> = [
     ]
   },
   {
+    path: '/showcase/space-odyssey',
+    name: 'SpaceOdysseyShowcase',
+    component: () => import('@/views/showcase/space-odyssey.vue')
+  },
+  {
+    path: '/showcase/mock-interview-space',
+    name: 'MockInterviewSpaceShowcase',
+    component: () => import('@/views/showcase/mock-interview-space.vue')
+  },
+  {
     path: '/chat',
     name: 'ChatRoot',
     redirect: '/workspace/overview'

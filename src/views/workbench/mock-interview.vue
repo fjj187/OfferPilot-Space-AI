@@ -10,14 +10,14 @@ import WorkbenchContentShell from '@/components/workbench/WorkbenchContentShell.
 import { useInterviewStream } from '@/composables/useInterviewStream'
 import { useWorkbenchPersistence } from '@/composables/useWorkbenchPersistence'
 import {
+  type InterviewMode,
+  type InterviewQuestion,
+  type InterviewTopicKey,
   difficultyLabelMap,
   interviewGuides,
   interviewTopics,
   modeLabelMap,
-  questionBank,
-  type InterviewMode,
-  type InterviewQuestion,
-  type InterviewTopicKey
+  questionBank
 } from './mock-interview.data'
 
 const route = useRoute()
@@ -26,6 +26,7 @@ const router = useRouter()
 const {
   loadWorkbenchContext,
   saveWorkbenchContext,
+  getInterviewSessionById,
   findInterviewSession,
   createInterviewSession,
   updateInterviewSession,
@@ -157,13 +158,13 @@ const addWeaknessTag = (tag: string) => {
 const buildOpeningContent = (question: InterviewQuestion) => {
   return [
     '### 当前题目',
-    `**${question.title}**`,
+    `**${ question.title }**`,
     '',
     question.prompt,
     '',
-    `- 难度：${difficultyLabelMap[question.difficulty]}`,
+    `- 难度：${ difficultyLabelMap[question.difficulty] }`,
     `- 推荐结构：先结论，再拆实现，再补验证`,
-    `- 资料命中：${question.reference}`
+    `- 资料命中：${ question.reference }`
   ].join('\n')
 }
 
@@ -174,7 +175,7 @@ const initializeConversation = () => {
   if (!question) return
 
   appendSystemMessage(
-    `已进入第 ${currentQuestionIndex.value + 1} 题，共 ${totalCount.value} 题。当前模式：${modeLabelMap[interviewMode.value]}。`
+    `已进入第 ${ currentQuestionIndex.value + 1 } 题，共 ${ totalCount.value } 题。当前模式：${ modeLabelMap[interviewMode.value] }。`
   )
   appendAssistantMessage(buildOpeningContent(question), 'markdown')
 
@@ -185,17 +186,21 @@ const initializeConversation = () => {
 
 const syncFromRoute = () => {
   const persistedContext = loadWorkbenchContext()
-  const nextTopic = normalizeTopic(route.query.topic)
-  const nextMode = normalizeMode(route.query.mode)
-  const nextSource = String(route.query.source || persistedContext?.activeDocumentId || 'library')
+  const routeSessionId = String(route.query.sessionId || '')
+  const routeSession = routeSessionId ? getInterviewSessionById(routeSessionId) : null
+  const nextTopic = normalizeTopic(routeSession?.topic || route.query.topic)
+  const nextMode = normalizeMode(routeSession?.mode || route.query.mode)
+  const nextSource = String(routeSession?.source || route.query.source || persistedContext?.activeDocumentId || 'library')
   const questionCount = Math.max(3, Math.min(6, Number(route.query.questionCount || 4)))
   const nextQuestionList = buildQuestionList(nextTopic, questionCount)
-  const matchedSession = findInterviewSession({
-    topic: nextTopic,
-    mode: nextMode,
-    source: nextSource,
-    status: 'in_progress'
-  })
+  const matchedSession = routeSession?.status === 'in_progress'
+    ? routeSession
+    : findInterviewSession({
+      topic: nextTopic,
+      mode: nextMode,
+      source: nextSource,
+      status: 'in_progress'
+    })
 
   activeTopic.value = nextTopic
   interviewMode.value = nextMode
@@ -212,7 +217,7 @@ const syncFromRoute = () => {
     weaknessTags.value = [...matchedSession.weaknessTags]
     answerDraft.value = ''
   } else {
-    currentSessionId.value = `session-${Date.now()}`
+    currentSessionId.value = `session-${ Date.now() }`
     currentQuestionIndex.value = 0
     followUpIndex.value = 0
     hintVisible.value = nextMode === 'guided'
@@ -275,7 +280,7 @@ const submitAnswer = () => {
   appendUserMessage(answer)
 
   startStream({
-    prompt: `${question.title}\n${question.prompt}\n${answer}`,
+    prompt: `${ question.title }\n${ answer }`,
     topicLabel: topicLabelMap[activeTopic.value] || 'Vue 3',
     questionTitle: question.title,
     questionPrompt: question.prompt,
@@ -296,7 +301,7 @@ const showHint = () => {
   if (!question) return
 
   hintVisible.value = true
-  appendSystemMessage(`回答提示：${question.hint}`)
+  appendSystemMessage(`回答提示：${ question.hint }`)
 }
 
 const requestFollowUp = () => {
@@ -304,7 +309,7 @@ const requestFollowUp = () => {
   if (!question?.followUps.length) return
 
   followUpIndex.value = (followUpIndex.value + 1) % question.followUps.length
-  appendSystemMessage(`推荐追问：${currentFollowUp.value}`)
+  appendSystemMessage(`推荐追问：${ currentFollowUp.value }`)
 }
 
 const goNextQuestion = () => {
@@ -335,7 +340,7 @@ const finishInterview = () => {
     })
 
     saveReportSummary({
-      id: `report-${currentSessionId.value}`,
+      id: `report-${ currentSessionId.value }`,
       sessionId: currentSessionId.value,
       topic: activeTopic.value,
       source: currentSource.value,
@@ -362,17 +367,24 @@ const finishInterview = () => {
 
 const canMoveNext = computed(() => isCurrentSubmitted.value)
 
-watch(() => route.fullPath, syncFromRoute, { immediate: true })
+watch(() => route.fullPath, syncFromRoute, {
+  immediate: true
+})
 
 watch(
   [currentQuestionIndex, followUpIndex, hintVisible, submittedQuestionIds, weaknessTags],
   persistCurrentSession,
-  { deep: true }
+  {
+    deep: true
+  }
 )
 </script>
 
 <template>
-  <WorkbenchContentShell has-aside aside-width="minmax(300px, 360px)">
+  <WorkbenchContentShell
+    has-aside
+    aside-width="minmax(300px, 360px)"
+  >
     <InterviewContextBar :items="contextItems" />
 
     <section class="summary-strip">
@@ -393,7 +405,10 @@ watch(
       </div>
     </section>
 
-    <section v-if="currentQuestion" class="round-card">
+    <section
+      v-if="currentQuestion"
+      class="round-card"
+    >
       <div class="section-kicker">当前轮次</div>
       <div class="round-head">
         <div>
@@ -404,12 +419,19 @@ watch(
       </div>
 
       <div class="tag-list">
-        <span v-for="tag in currentQuestion.tags" :key="tag" class="tag-chip">
+        <span
+          v-for="tag in currentQuestion.tags"
+          :key="tag"
+          class="tag-chip"
+        >
           {{ tag }}
         </span>
       </div>
 
-      <div v-if="currentFollowUp" class="followup-preview">
+      <div
+        v-if="currentFollowUp"
+        class="followup-preview"
+      >
         <div class="followup-label">当前推荐追问</div>
         <div class="followup-text">{{ currentFollowUp }}</div>
       </div>
@@ -421,14 +443,23 @@ watch(
           <div class="section-kicker">主对话舞台</div>
           <h3>AI 面试官流式追问区</h3>
         </div>
-        <span class="stream-pill" :class="{ 'is-streaming': isStreaming }">
+        <span
+          class="stream-pill"
+          :class="{ 'is-streaming': isStreaming }"
+        >
           {{ isStreaming ? '生成中' : '空闲中' }}
         </span>
       </div>
 
-      <MessageList :messages="messages" :scroll-version="scrollVersion" />
+      <MessageList
+        :messages="messages"
+        :scroll-version="scrollVersion"
+      />
 
-      <div v-if="streamError" class="stream-error">
+      <div
+        v-if="streamError"
+        class="stream-error"
+      >
         {{ streamError }}
       </div>
     </section>

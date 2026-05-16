@@ -1,198 +1,109 @@
 <script lang="ts" setup>
-import FlowStepCard from '@/components/workbench/FlowStepCard.vue'
-import GuidanceCard from '@/components/workbench/GuidanceCard.vue'
-import LibraryCard from '@/components/workbench/LibraryCard.vue'
-import OverviewHero from '@/components/workbench/OverviewHero.vue'
-import PracticeQueueCard from '@/components/workbench/PracticeQueueCard.vue'
-import ReviewSnapshotCard from '@/components/workbench/ReviewSnapshotCard.vue'
 import TopicChips from '@/components/workbench/TopicChips.vue'
 import WorkbenchContentShell from '@/components/workbench/WorkbenchContentShell.vue'
-import type {
-  GuidanceAction,
-  GuidanceCardItem,
-  LibraryCardItem,
-  OverviewTopicKey,
-  PracticeQueueItem
-} from './overview.data'
-import {
-  guidanceCards,
-  interviewFlow,
-  libraryCards,
-  practiceQueue,
-  quickTopics,
-  reviewSnapshot
-} from './overview.data'
+import { useOverviewLaunchState } from '@/composables/useOverviewLaunchState'
+import { type OverviewTopicKey, quickTopics } from './overview.data'
 
 const router = useRouter()
 
-const activeTopic = ref<OverviewTopicKey>(quickTopics[0].key)
-const selectedLibraryId = ref(libraryCards[0]?.id || '')
-const selectedGuidanceId = ref(guidanceCards[0]?.id || '')
-const selectedQueueId = ref(practiceQueue[0]?.id || '')
+const {
+  activeTopic,
+  activeDocument,
+  currentModeLabel,
+  currentSourceLabel,
+  currentTopicLabel,
+  inProgressSession,
+  latestCompletedSession,
+  latestReportSummary,
+  progressPercent,
+  progressText,
+  latestWeaknessTags,
+  latestSummaryText,
+  primaryActionLabel,
+  railSteps,
+  mockInterviewQuery,
+  libraryQuery,
+  reportQuery,
+  setActiveTopic
+} = useOverviewLaunchState()
 
-const topicLabelMap = quickTopics.reduce<Record<string, string>>((map, topic) => {
-  map[topic.key] = topic.label
-  return map
-}, {})
-
-const filteredLibraryCards = computed(() => {
-  return libraryCards.filter(card => card.topics.includes(activeTopic.value))
-})
-
-const filteredGuidanceCards = computed(() => {
-  return guidanceCards.filter(card => !card.topicKey || card.topicKey === activeTopic.value)
-})
-
-const rankedPracticeQueue = computed(() => {
-  return [...practiceQueue].sort((prev, next) => {
-    const prevScore = prev.topicKey === activeTopic.value ? 1 : 0
-    const nextScore = next.topicKey === activeTopic.value ? 1 : 0
-    return nextScore - prevScore
-  })
-})
-
-const visiblePracticeQueue = computed(() => rankedPracticeQueue.value.slice(0, 3))
-
-watch(filteredLibraryCards, list => {
-  if (!list.length) return
-  const exists = list.some(item => item.id === selectedLibraryId.value)
-  if (!exists) {
-    selectedLibraryId.value = list[0].id
+const summaryStats = computed(() => [
+  {
+    label: '当前进度',
+    value: `${ progressPercent.value }%`,
+    note: progressText.value
+  },
+  {
+    label: '最近完成',
+    value: latestReportSummary.value ? `${ latestReportSummary.value.answeredCount } 题` : '暂无记录',
+    note: latestCompletedSession.value?.finishedAt || latestReportSummary.value?.createdAt || '完成后会出现在这里'
+  },
+  {
+    label: '薄弱信号',
+    value: latestWeaknessTags.value[0] || '尚未形成稳定弱项',
+    note: latestWeaknessTags.value.slice(1, 3).join(' / ') || '继续训练后会逐步收敛'
   }
-}, { immediate: true })
-
-watch(filteredGuidanceCards, list => {
-  if (!list.length) return
-  const exists = list.some(item => item.id === selectedGuidanceId.value)
-  if (!exists) {
-    selectedGuidanceId.value = list[0].id
-  }
-}, { immediate: true })
-
-watch(visiblePracticeQueue, list => {
-  if (!list.length) return
-  const exists = list.some(item => item.id === selectedQueueId.value)
-  if (!exists) {
-    selectedQueueId.value = list[0].id
-  }
-}, { immediate: true })
-
-const buildLibraryQuery = (card?: LibraryCardItem) => {
-  return {
-    topic: activeTopic.value,
-    ...(card ? { docType: card.docType, source: card.id } : {})
-  }
-}
-
-const navigateByGuidance = (action: GuidanceAction, card?: GuidanceCardItem) => {
-  const topic = card?.topicKey || activeTopic.value
-
-  if (action === 'go-mock-interview') {
-    router.push({
-      name: 'WorkbenchMockInterview',
-      query: {
-        mode: 'guided',
-        topic
-      }
-    })
-    return
-  }
-
-  if (action === 'go-practice') {
-    router.push({
-      name: 'WorkbenchPractice',
-      query: {
-        topic,
-        source: card?.id || 'overview'
-      }
-    })
-    return
-  }
-
-  router.push({
-    name: 'WorkbenchReport',
-    query: {
-      from: 'overview',
-      topic
-    }
-  })
-}
-
-const handleHeroPrimaryAction = () => {
-  router.push({
-    name: 'WorkbenchLibrary',
-    query: {
-      topic: activeTopic.value,
-      source: 'hero-import'
-    }
-  })
-}
-
-const handleHeroSecondaryAction = () => {
-  router.push({
-    name: 'WorkbenchReport',
-    query: {
-      from: 'hero',
-      topic: activeTopic.value,
-      sample: 'weekly'
-    }
-  })
-}
-
-const handleLibrarySelect = (id: string) => {
-  selectedLibraryId.value = id
-  const card = libraryCards.find(item => item.id === id)
-  router.push({
-    name: 'WorkbenchLibrary',
-    query: buildLibraryQuery(card)
-  })
-}
-
-const handleViewAll = () => {
-  router.push({
-    name: 'WorkbenchLibrary',
-    query: {
-      topic: activeTopic.value
-    }
-  })
-}
-
-const handleGuidanceSelect = (id: string) => {
-  selectedGuidanceId.value = id
-  const card = guidanceCards.find(item => item.id === id)
-  if (!card) return
-  navigateByGuidance(card.action, card)
-}
-
-const handleQueueSelect = (id: string) => {
-  selectedQueueId.value = id
-  const queueItem = practiceQueue.find(item => item.id === id)
-  if (!queueItem) return
-
-  router.push({
-    name: 'WorkbenchPractice',
-    query: {
-      topic: queueItem.topicKey,
-      difficulty: queueItem.difficulty,
-      questionCount: String(queueItem.questionCount),
-      source: queueItem.id
-    }
-  })
-}
-
-const activeTopicLabel = computed(() => topicLabelMap[activeTopic.value] || '当前主题')
+])
 
 const handleTopicChange = (topic: string) => {
-  activeTopic.value = topic as OverviewTopicKey
+  setActiveTopic(topic as OverviewTopicKey)
+}
+
+const handlePrimaryAction = () => {
+  router.push({
+    name: 'WorkbenchMockInterview',
+    query: mockInterviewQuery.value
+  })
+}
+
+const handleOpenLibrary = () => {
+  router.push({
+    name: 'WorkbenchLibrary',
+    query: libraryQuery.value
+  })
+}
+
+const handleOpenReport = () => {
+  router.push({
+    name: 'WorkbenchReport',
+    query: reportQuery.value
+  })
 }
 </script>
 
 <template>
-  <WorkbenchContentShell has-aside aside-width="minmax(240px, 315px)">
-    <OverviewHero
-      @primary-action="handleHeroPrimaryAction"
-      @secondary-action="handleHeroSecondaryAction"
-    />
+  <WorkbenchContentShell>
+    <section class="launch-hero">
+      <div class="hero-copy">
+        <div class="hero-kicker">训练任务启动页</div>
+        <h1>{{ currentTopicLabel }}</h1>
+        <p class="hero-note">{{ latestSummaryText }}</p>
+      </div>
+
+      <div class="hero-actions">
+        <n-button
+          type="primary"
+          size="large"
+          @click="handlePrimaryAction"
+        >
+          {{ primaryActionLabel }}
+        </n-button>
+        <n-button
+          tertiary
+          size="large"
+          @click="handleOpenLibrary"
+        >
+          查看资料
+        </n-button>
+        <n-button
+          tertiary
+          size="large"
+          @click="handleOpenReport"
+        >
+          查看报告
+        </n-button>
+      </div>
+    </section>
 
     <TopicChips
       :topics="quickTopics"
@@ -200,215 +111,426 @@ const handleTopicChange = (topic: string) => {
       @change="handleTopicChange"
     />
 
-    <div class="section-head">
-      <div>
-        <div class="section-kicker">资料库概览</div>
-        <h2>最近导入的核心资料</h2>
-        <p class="section-note">当前主题：{{ activeTopicLabel }}</p>
-      </div>
-      <n-button
-        text
-        type="primary"
-        @click="handleViewAll"
-      >
-        查看全部
-      </n-button>
-    </div>
-
-    <div class="library-grid">
-      <LibraryCard
-        v-for="card in filteredLibraryCards"
-        :key="card.id"
-        :id="card.id"
-        :title="card.title"
-        :meta="card.meta"
-        :desc="card.desc"
-        :accent="card.accent"
-        :active="card.id === selectedLibraryId"
-        @select="handleLibrarySelect"
-      />
-    </div>
-
-    <div class="section-head compact">
-      <div>
-        <div class="section-kicker">训练闭环</div>
-        <h2>一轮完整面试会怎么走</h2>
-      </div>
-    </div>
-
-    <div class="flow-grid">
-      <FlowStepCard
-        v-for="step in interviewFlow"
-        :key="step.id"
-        :label="step.label"
-        :detail="step.detail"
-        :icon="step.icon"
-      />
-    </div>
-
-    <template #aside>
-      <section class="rail-card">
-        <div class="rail-card-head">
-          <div>
-            <div class="section-kicker">AI 引导</div>
-            <h3>建议你先做这些</h3>
-            <p class="rail-note">会跟随当前主题切换入口建议</p>
+    <section class="mission-panel">
+      <div class="mission-main">
+        <div class="meta-row">
+          <div class="meta-pill">
+            <span class="meta-label">当前模式</span>
+            <strong>{{ currentModeLabel }}</strong>
+          </div>
+          <div class="meta-pill">
+            <span class="meta-label">资料来源</span>
+            <strong>{{ activeDocument?.name || currentSourceLabel }}</strong>
+          </div>
+          <div class="meta-pill">
+            <span class="meta-label">当前状态</span>
+            <strong>{{ inProgressSession ? '存在未完成 session' : '可开始新一轮训练' }}</strong>
           </div>
         </div>
 
-        <div class="guidance-list">
-          <GuidanceCard
-            v-for="card in filteredGuidanceCards"
-            :key="card.id"
-            :id="card.id"
-            :title="card.title"
-            :desc="card.desc"
-            :tone="card.tone"
-            :active="card.id === selectedGuidanceId"
-            @select="handleGuidanceSelect"
-          />
-        </div>
-      </section>
-
-      <section class="rail-card">
-        <div class="rail-card-head">
-          <div>
-            <div class="section-kicker">专项训练队列</div>
-            <h3>你的薄弱点分布</h3>
-            <p class="rail-note">点击卡片会带着主题进入刷题页</p>
+        <div class="progress-block">
+          <div class="progress-head">
+            <div>
+              <div class="section-kicker">主任务区</div>
+              <h2>继续当前训练链路</h2>
+            </div>
+            <strong class="progress-value">{{ progressPercent }}%</strong>
           </div>
-          <span class="i-lucide-sliders-horizontal rail-icon"></span>
+          <div class="progress-track">
+            <div
+              class="progress-fill"
+              :style="{ width: `${progressPercent}%` }"
+            ></div>
+          </div>
+          <p class="progress-text">{{ progressText }}</p>
         </div>
+      </div>
 
-        <div class="queue-list">
-          <PracticeQueueCard
-            v-for="item in visiblePracticeQueue"
-            :key="item.id"
-            :id="item.id"
-            :title="item.title"
-            :progress="item.progress"
-            :note="item.note"
-            :question-count="item.questionCount"
-            :difficulty="item.difficulty"
-            :active="item.id === selectedQueueId"
-            @select="handleQueueSelect"
-          />
+      <div class="mission-side">
+        <div class="side-card">
+          <div class="section-kicker">训练摘要</div>
+          <h3>最近结果承接</h3>
+          <ul class="summary-list">
+            <li
+              v-for="item in summaryStats"
+              :key="item.label"
+            >
+              <span>{{ item.label }}</span>
+              <strong>{{ item.value }}</strong>
+              <small>{{ item.note }}</small>
+            </li>
+          </ul>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <ReviewSnapshotCard
-        :title="reviewSnapshot.title"
-        :status-text="reviewSnapshot.statusText"
-        :score="reviewSnapshot.score"
-        :delta="reviewSnapshot.delta"
-        :highlights="reviewSnapshot.highlights"
-        @open-report="navigateByGuidance('go-report')"
-      />
-    </template>
+    <section class="rail-section">
+      <div class="section-kicker">轨道概览</div>
+      <div class="rail-line">
+        <div
+          v-for="step in railSteps"
+          :key="step.key"
+          class="rail-step"
+          :class="{ 'is-active': step.active, 'is-done': step.done }"
+        >
+          <span class="rail-dot"></span>
+          <span class="rail-name">{{ step.label }}</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="secondary-grid">
+      <div class="secondary-card">
+        <div class="section-kicker">训练摘要区</div>
+        <h3>当前最需要关注的薄弱点</h3>
+        <div
+          v-if="latestWeaknessTags.length"
+          class="tag-row"
+        >
+          <span
+            v-for="tag in latestWeaknessTags.slice(0, 4)"
+            :key="tag"
+            class="weakness-tag"
+          >{{ tag }}</span>
+        </div>
+        <p
+          v-else
+          class="empty-note"
+        >
+          还没有稳定的薄弱项标签，先完成一轮训练。
+        </p>
+      </div>
+
+      <div class="secondary-card">
+        <div class="section-kicker">次级入口</div>
+        <h3>辅助动作</h3>
+        <div class="action-list">
+          <button
+            type="button"
+            class="action-item"
+            @click="handleOpenLibrary"
+          >
+            打开资料页
+          </button>
+          <button
+            type="button"
+            class="action-item"
+            @click="handleOpenReport"
+          >
+            打开报告页
+          </button>
+          <button
+            type="button"
+            class="action-item"
+            @click="handlePrimaryAction"
+          >
+            {{ primaryActionLabel }}
+          </button>
+        </div>
+      </div>
+    </section>
   </WorkbenchContentShell>
 </template>
 
 <style lang="scss" scoped>
+.launch-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.hero-kicker,
 .section-kicker {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   font-size: 12px;
   font-weight: 700;
-  color: #7182f8;
-  letter-spacing: 0.04em;
+  line-height: 1;
+  color: #6f7dfa;
   text-transform: uppercase;
 }
 
-.section-head {
+.hero-copy h1 {
+  margin: 10px 0 0;
+  font-size: clamp(34px, 4vw, 52px);
+  line-height: 1.02;
+  color: #18233d;
+}
+
+.hero-note {
+  max-width: 700px;
+  margin: 14px 0 0;
+  color: #71809a;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.mission-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.9fr);
+  gap: 18px;
+  margin-bottom: 22px;
+}
+
+.mission-main,
+.mission-side,
+.rail-section,
+.secondary-card {
+  padding: 22px;
+  border: 1px solid #e8edf6;
+  border-radius: 24px;
+  background: rgb(255 255 255 / 86%);
+  box-shadow: 0 16px 40px rgb(36 53 87 / 6%);
+}
+
+.meta-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.meta-pill {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #f6f8fc;
+}
+
+.meta-label {
+  display: block;
+  margin-bottom: 6px;
+  color: #8592a8;
+  font-size: 12px;
+}
+
+.meta-pill strong {
+  color: #1f2746;
+  font-size: 14px;
+}
+
+.progress-block {
+  margin-top: 18px;
+}
+
+.progress-head {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 14px;
 }
 
-.section-head h2,
-.rail-card-head h3 {
-  margin: 6px 0 0;
-  font-size: 22px;
-  color: #1f2746;
-}
-
-.section-note,
-.rail-note {
+.progress-head h2,
+.side-card h3,
+.secondary-card h3 {
   margin: 8px 0 0;
-  font-size: 13px;
-  line-height: 1.6;
-  color: #7b88a0;
+  color: #1f2746;
+  font-size: 24px;
 }
 
-.section-head.compact {
-  margin-top: 20px;
+.progress-value {
+  color: #5c72ef;
+  font-size: 28px;
 }
 
-.library-grid {
+.progress-track {
+  height: 12px;
+  margin-top: 18px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf1f7;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6d82ff 0%, #8bb9ff 100%);
+}
+
+.progress-text {
+  margin: 10px 0 0;
+  color: #75839b;
+  font-size: 14px;
+}
+
+.summary-list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.flow-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-  margin-bottom: 10px;
-}
-
-.rail-card {
-  padding: 20px;
-  border: 1px solid #e8edf6;
-  border-radius: 24px;
-  background: rgb(255 255 255 / 90%);
-  box-shadow: 0 16px 40px rgb(36 53 87 / 7%);
-}
-
-.rail-card-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
   gap: 12px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
 }
 
-.rail-icon {
-  color: #93a0b6;
+.summary-list li {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #f6f8fc;
+}
+
+.summary-list span,
+.summary-list small {
+  color: #7a879d;
+}
+
+.summary-list strong {
+  color: #1f2746;
   font-size: 18px;
 }
 
-.guidance-list,
-.queue-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.rail-section {
+  margin-bottom: 22px;
+}
+
+.rail-line {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
   margin-top: 16px;
 }
 
-@media (max-width: 1440px) {
-  .library-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.rail-step {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+}
 
-  .flow-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.rail-step::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: calc(50% + 18px);
+  width: calc(100% - 36px);
+  height: 2px;
+  background: #e2e8f3;
+}
+
+.rail-step:last-child::after {
+  display: none;
+}
+
+.rail-dot {
+  width: 18px;
+  height: 18px;
+  border: 3px solid #cfd8ea;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.rail-name {
+  color: #6f7b91;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.rail-step.is-done .rail-dot,
+.rail-step.is-active .rail-dot {
+  border-color: #6f7dfa;
+  background: #6f7dfa;
+}
+
+.rail-step.is-done::after {
+  background: #6f7dfa;
+}
+
+.rail-step.is-active .rail-name {
+  color: #23304b;
+}
+
+.secondary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.weakness-tag {
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #596fe8;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.empty-note {
+  margin: 14px 0 0;
+  color: #7c889e;
+  font-size: 14px;
+}
+
+.action-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.action-item {
+  height: 44px;
+  padding: 0 16px;
+  border: 1px solid #e4e9f4;
+  border-radius: 14px;
+  background: #fff;
+  color: #30405c;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.action-item:hover {
+  border-color: #cfd7ee;
+  background: #f8faff;
 }
 
 @media (max-width: 1200px) {
-  .section-head {
-    align-items: flex-start;
+  .launch-hero,
+  .mission-panel,
+  .secondary-grid {
+    grid-template-columns: 1fr;
     flex-direction: column;
+  }
+
+  .hero-actions {
+    justify-content: flex-start;
+  }
+
+  .meta-row,
+  .rail-line {
+    grid-template-columns: 1fr;
+  }
+
+  .rail-step::after {
+    display: none;
   }
 }
 
-@media (max-width: 900px) {
-  .library-grid,
-  .flow-grid {
-    grid-template-columns: 1fr;
+@media (max-width: 780px) {
+  .mission-main,
+  .mission-side,
+  .rail-section,
+  .secondary-card {
+    padding: 18px;
+    border-radius: 20px;
+  }
+
+  .hero-copy h1 {
+    font-size: 32px;
   }
 }
 </style>
