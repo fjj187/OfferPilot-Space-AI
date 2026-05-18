@@ -10,10 +10,13 @@ defineProps<{
   importFeedbackText: string
   isLibraryListVisible: boolean
   libraryActiveFilter: string
+  libraryCurrentPage: number
+  libraryFilteredCount: number
   libraryDerivedStats: any[]
   libraryFilterTabs: any[]
   libraryNextStepDesc: string
   libraryNextStepTitle: string
+  libraryPageCount: number
   librarySourceLabelMap: Record<string, string>
   libraryTopicLabelMap: Record<string, string>
   libraryWorkspaceDesc: string
@@ -30,12 +33,15 @@ defineProps<{
 defineEmits<{
   backOverview: []
   openLibrary: []
+  openMock: []
+  openPractice: []
+  primaryAction: []
   openReport: []
   pickFiles: []
   pickFolder: []
-  primaryAction: []
   selectDocument: [value: string]
   updateActiveFilter: [value: string]
+  updateLibraryPage: [value: number]
 }>()
 </script>
 
@@ -69,6 +75,9 @@ defineEmits<{
         :derived-stats="libraryDerivedStats"
         :filter-tabs="libraryFilterTabs"
         :active-filter="libraryActiveFilter"
+        :current-page="libraryCurrentPage"
+        :filtered-count="libraryFilteredCount"
+        :page-count="libraryPageCount"
         :selected-document="selectedDocument"
         :selected-document-id="selectedDocumentId"
         :topic-label-map="libraryTopicLabelMap"
@@ -81,8 +90,10 @@ defineEmits<{
         @pick-files="$emit('pickFiles')"
         @pick-folder="$emit('pickFolder')"
         @update:active-filter="$emit('updateActiveFilter', $event)"
+        @update:page="$emit('updateLibraryPage', $event)"
         @select-document="$emit('selectDocument', $event)"
-        @primary-action="$emit('primaryAction')"
+        @open-mock="$emit('openMock')"
+        @open-practice="$emit('openPractice')"
         @back-overview="$emit('backOverview')"
         @open-report="$emit('openReport')"
       />

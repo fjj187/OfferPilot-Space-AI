@@ -1,6 +1,10 @@
 import { computed } from 'vue'
 import type { ComputedRef } from 'vue'
-import type { PersistedInterviewSession, PersistedReportSummary } from '@/types/workbench'
+import type {
+  PersistedInterviewSession,
+  PersistedPracticeFocusArea,
+  PersistedReportSummary
+} from '@/types/workbench'
 
 interface ReportSourceDocument {
   id?: string
@@ -20,6 +24,13 @@ interface UseMockInterviewSpaceReportSceneOptions {
 }
 
 export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceReportSceneOptions) {
+  const focusAreaLabelMap: Record<PersistedPracticeFocusArea, string> = {
+    structure: '结构表达',
+    case_detail: '案例细节',
+    result_metric: '结果指标',
+    principle_depth: '原理追问'
+  }
+
   const reportSceneSession = computed<PersistedInterviewSession | null>(() => {
     return options.latestCompletedSession.value || options.inProgressSession.value || null
   })
@@ -57,9 +68,22 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
     return reportSceneSummary.value?.weaknessTags || reportSceneSession.value?.weaknessTags || []
   })
 
-  const reportPrimaryWeakness = computed(() => reportWeaknessTags.value[0] || '当前还没有稳定弱项')
+  const reportPrimaryWeakness = computed(() => {
+    return reportSceneSummary.value?.primaryWeakness || reportWeaknessTags.value[0] || '当前还没有稳定弱项'
+  })
+
+  const reportFocusAreas = computed(() => {
+    return (reportSceneSummary.value?.weaknessFocusAreas || []).map(item => focusAreaLabelMap[item] || item)
+  })
 
   const reportSourceDocument = computed(() => {
+    if (reportSceneSummary.value?.sourceDocumentName) {
+      return {
+        id: reportSceneSummary.value.sourceDocumentId,
+        name: reportSceneSummary.value.sourceDocumentName
+      }
+    }
+
     if (
       reportSceneSession.value?.sourceDocumentId &&
       options.activeDocument.value?.id === reportSceneSession.value.sourceDocumentId
@@ -78,6 +102,18 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
     `来源: ${ reportSourceDocument.value?.name || options.currentSourceLabel.value }`
   ])
 
+  const reportSummaryHeadline = computed(() => {
+    return reportSceneSummary.value?.summaryHeadline || '当前先按最近训练结果生成阶段性复盘'
+  })
+
+  const reportSummaryBody = computed(() => {
+    return reportSceneSummary.value?.summaryBody || '当前还没有独立摘要文案，先使用最近一轮训练 session 结果组织复盘。'
+  })
+
+  const reportAnswerSnapshot = computed(() => {
+    return reportSceneSummary.value?.answerSnapshot || []
+  })
+
   const reportOverviewStats = computed(() => [
     {
       label: '已答题数',
@@ -92,7 +128,7 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
     {
       label: '弱项标签',
       value: `${ reportWeaknessTags.value.length } 个`,
-      note: reportPrimaryWeakness.value
+      note: reportFocusAreas.value[0] ? `${ reportFocusAreas.value[0] } · ${ reportPrimaryWeakness.value }` : reportPrimaryWeakness.value
     },
     {
       label: '报告状态',
@@ -121,7 +157,7 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
   ])
 
   const reportSuggestionList = computed(() => {
-    const list: string[] = []
+    const list: string[] = [...(reportSceneSummary.value?.suggestedFocus || [])]
     const session = reportSceneSession.value
     const summary = reportSceneSummary.value
 
@@ -131,6 +167,22 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
 
     if (reportWeaknessTags.value.length >= 3) {
       list.push(`当前弱项集中在“${ reportPrimaryWeakness.value }”等标签，建议优先去专项刷题收敛这组问题。`)
+    }
+
+    if (reportFocusAreas.value.includes('结构表达')) {
+      list.push('下一轮优先按“结论 -> 拆分 -> 结果”三段作答，先把答案结构立起来。')
+    }
+
+    if (reportFocusAreas.value.includes('案例细节')) {
+      list.push('补练时要强制带上真实项目场景、约束条件、取舍过程，不要只讲抽象方案。')
+    }
+
+    if (reportFocusAreas.value.includes('结果指标')) {
+      list.push('回答里要补上线结果、收益指标或验证方式，让答案从“做了什么”升级到“做成了什么”。')
+    }
+
+    if (reportFocusAreas.value.includes('原理追问')) {
+      list.push('专项补练时优先准备“为什么这么设计”的解释，防止一追问就掉到实现细节之外。')
     }
 
     if ((summary?.source || session?.source) === 'library' || reportSourceDocument.value) {
@@ -145,7 +197,7 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
       list.push('当前已有基础结果，可以继续下一轮模拟面试，让复盘信号更稳定。')
     }
 
-    return list
+    return [...new Set(list)].slice(0, 4)
   })
 
   const reportRecentSummaries = computed(() => {
@@ -157,13 +209,17 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
   const reportLatestHistory = computed(() => reportRecentSummaries.value[0] || null)
 
   return {
+    reportAnswerSnapshot,
     reportHeaderMeta,
     reportLatestHistory,
     reportOverviewStats,
+    reportFocusAreas,
     reportPrimaryWeakness,
     reportSceneSession,
     reportSceneSummary,
     reportSnapshotItems,
+    reportSummaryBody,
+    reportSummaryHeadline,
     reportSuggestionList,
     reportWeaknessTags
   }

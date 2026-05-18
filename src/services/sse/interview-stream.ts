@@ -1,8 +1,14 @@
 import { consumeStreamText } from './sse-client'
-import type { InterviewStreamHandlers, InterviewStreamRequest } from './sse-types'
+import type { InterviewStreamHandlers, InterviewStreamMode, InterviewStreamRequest } from './sse-types'
 import { splitStream } from '@/components/MarkdownPreview/transform'
 
 const createId = () => `msg-${ Date.now() }-${ Math.random().toString(36).slice(2, 8) }`
+
+const resolveInterviewStreamEndpoint = () => import.meta.env.VITE_INTERVIEW_SSE_URL?.trim() || ''
+
+const resolveInterviewStreamMode = (): InterviewStreamMode => (
+  resolveInterviewStreamEndpoint() ? 'remote' : 'mock'
+)
 
 const normalizeInterviewStreamRequest = (request: InterviewStreamRequest): InterviewStreamRequest => {
   const compactPrompt = [request.questionTitle, request.sourceContext, request.answer]
@@ -50,7 +56,7 @@ const buildMockInterviewReply = (request: InterviewStreamRequest) => {
     : '我会继续围绕当前训练上下文来追问。'
 
   return [
-    `### 当前追问：${ request.questionTitle }`,
+    `### ${ request.questionTitle }`,
     '',
     `你刚才围绕 **${ request.topicLabel }** 给出了一轮回答，整体上已经覆盖了主要方向，不过我会继续按真实面试官的方式往下追问。`,
     '',
@@ -75,7 +81,7 @@ const createFetchReader = async (
   request: InterviewStreamRequest,
   signal?: AbortSignal
 ): Promise<ReadableStreamDefaultReader<string>> => {
-  const endpoint = import.meta.env.VITE_INTERVIEW_SSE_URL
+  const endpoint = resolveInterviewStreamEndpoint()
   const normalizedRequest = normalizeInterviewStreamRequest(request)
 
   if (!endpoint) {
@@ -107,6 +113,7 @@ export const startInterviewStream = (
 ) => {
   const controller = new AbortController()
   const messageId = createId()
+  const mode = resolveInterviewStreamMode()
 
   consumeStreamText({
     signal: controller.signal,
@@ -117,7 +124,8 @@ export const startInterviewStream = (
     onStart: () => {
       handlers.onEvent({
         type: 'start',
-        messageId
+        messageId,
+        mode
       })
     },
     onChunk: chunk => {

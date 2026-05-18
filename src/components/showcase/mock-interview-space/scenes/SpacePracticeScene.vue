@@ -1,5 +1,10 @@
 <script setup lang="ts">
 import SpaceSceneHeader from '@/components/showcase/mock-interview-space/SpaceSceneHeader.vue'
+import type {
+  PersistedPracticeFocusArea,
+  PersistedPracticePlan,
+  PersistedReportSummary
+} from '@/types/workbench'
 
 interface PracticeDrill {
   id: string
@@ -18,11 +23,12 @@ const props = defineProps<{
   sectionTitle: string
   sectionBody: string
   primaryWeakness: string
+  reportSummary: PersistedReportSummary | null
   weaknessTags: string[]
 }>()
 
 const emit = defineEmits<{
-  continueMock: []
+  startPractice: [plan: PersistedPracticePlan]
   openReport: []
 }>()
 
@@ -121,6 +127,64 @@ const selectedQuestionTypeLabel = computed(() => {
 const selectedDifficultyLabel = computed(() => {
   return difficultyOptions.find(item => item.value === selectedDifficulty.value)?.label || '进阶'
 })
+
+const practiceFocusAreaLabelMap: Record<PersistedPracticeFocusArea, string> = {
+  structure: '结构表达',
+  case_detail: '案例细节',
+  result_metric: '结果指标',
+  principle_depth: '原理追问'
+}
+
+const practicePlan = computed(() => props.reportSummary?.practicePlan || null)
+const practiceReason = computed(() => {
+  return practicePlan.value?.reason || '当前先按最近一轮复盘里的主要弱项生成默认专项训练配置。'
+})
+const practiceFocusAreaText = computed(() => {
+  const focusArea = practicePlan.value?.focusArea
+  return focusArea ? practiceFocusAreaLabelMap[focusArea] : ''
+})
+
+const currentPracticePlan = computed<PersistedPracticePlan>(() => ({
+  weaknessTag: activeWeakness.value,
+  focusArea: practicePlan.value?.focusArea,
+  zone: selectedZone.value as PersistedPracticePlan['zone'],
+  questionType: selectedQuestionType.value as PersistedPracticePlan['questionType'],
+  questionCount: Number(selectedQuestionCount.value),
+  difficulty: selectedDifficulty.value as PersistedPracticePlan['difficulty'],
+  reason: practiceReason.value
+}))
+
+const resolvePracticePlanSignature = (plan: PersistedPracticePlan | null) => {
+  if (!plan) return ''
+  return [
+    plan.weaknessTag,
+    plan.focusArea || '',
+    plan.zone,
+    plan.questionType,
+    String(plan.questionCount),
+    plan.difficulty,
+    plan.reason
+  ].join('|')
+}
+
+const lastHydratedPracticePlanSignature = ref('')
+
+watch(practicePlan, (plan) => {
+  if (!plan) return
+  const nextSignature = resolvePracticePlanSignature(plan)
+  if (nextSignature === lastHydratedPracticePlanSignature.value) {
+    return
+  }
+
+  selectedWeakness.value = plan.weaknessTag
+  selectedZone.value = plan.zone
+  selectedQuestionType.value = plan.questionType
+  selectedQuestionCount.value = String(plan.questionCount)
+  selectedDifficulty.value = plan.difficulty
+  lastHydratedPracticePlanSignature.value = nextSignature
+}, {
+  immediate: true
+})
 </script>
 
 <template>
@@ -151,6 +215,13 @@ const selectedDifficultyLabel = computed(() => {
 
         <div class="selector-panel">
           <div class="panel-label">第二步 · 选择专项专区</div>
+          <p class="practice-inline-note">{{ practiceReason }}</p>
+          <div
+            v-if="practiceFocusAreaText"
+            class="practice-focus-pill"
+          >
+            本轮补练重点：{{ practiceFocusAreaText }}
+          </div>
           <div class="option-grid">
             <button
               v-for="zone in zoneOptions"
@@ -221,11 +292,17 @@ const selectedDifficultyLabel = computed(() => {
             将围绕“{{ activeWeakness }}”生成 {{ selectedQuestionCount }} 道{{ selectedDifficultyLabel }}题，
             进入模拟面试后用追问验证是否真的掌握。
           </p>
+          <div
+            v-if="practicePlan"
+            class="plan-source"
+          >
+            当前方案来自最近一轮复盘摘要。
+          </div>
           <div class="action-row">
             <button
               type="button"
               class="scene-action primary"
-              @click="emit('continueMock')"
+              @click="emit('startPractice', currentPracticePlan)"
             >
               开始模拟面试
             </button>
@@ -259,6 +336,7 @@ const selectedDifficultyLabel = computed(() => {
 }
 
 .weakness-panel p,
+.practice-inline-note,
 .drill-card p,
 .action-card p {
   margin: 14px 0 0;
@@ -344,6 +422,23 @@ const selectedDifficultyLabel = computed(() => {
   margin-top: 18px;
 }
 
+.practice-inline-note {
+  margin-top: 12px;
+}
+
+.practice-focus-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  margin-top: 14px;
+  padding: 0 14px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 8%);
+  color: rgb(244 250 255 / 88%);
+  font-size: 14px;
+}
+
 .drill-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -384,6 +479,13 @@ const selectedDifficultyLabel = computed(() => {
   display: grid;
   gap: 10px;
   margin-top: 18px;
+}
+
+.plan-source {
+  margin-top: 14px;
+  color: rgb(232 244 255 / 72%);
+  font-size: 14px;
+  line-height: 1.7;
 }
 
 .scene-action {

@@ -46,7 +46,9 @@ export const useWorkbenchPersistence = () => {
   }
 
   const saveWorkbenchContext = (payload: Omit<PersistedWorkbenchContext, 'updatedAt'>) => {
+    const previousContext = getPersistedWorkbenchContext()
     const nextContext: PersistedWorkbenchContext = {
+      ...(previousContext || {}),
       ...payload,
       updatedAt: nowISO()
     }
@@ -69,15 +71,17 @@ export const useWorkbenchPersistence = () => {
     topic: PersistedTopicKey
     mode: PersistedInterviewMode
     source: string
+    sessionConfigKey?: string
     status?: PersistedInterviewStatus
   }) => {
     workbenchStorageVersion.value
-    return getPersistedInterviewSessions().find(item => (
-      item.topic === matcher.topic
-      && item.mode === matcher.mode
-      && item.source === matcher.source
-      && (!matcher.status || item.status === matcher.status)
-    ))
+      return getPersistedInterviewSessions().find(item => (
+        item.topic === matcher.topic
+        && item.mode === matcher.mode
+        && item.source === matcher.source
+        && (!matcher.sessionConfigKey || item.sessionConfigKey === matcher.sessionConfigKey)
+        && (!matcher.status || item.status === matcher.status)
+      ))
   }
 
   const createInterviewSession = (payload: Omit<PersistedInterviewSession, 'startedAt'>) => {
@@ -120,6 +124,14 @@ export const useWorkbenchPersistence = () => {
     })
   }
 
+  const removeInterviewSession = (sessionId: string) => {
+    const sessions = getPersistedInterviewSessions()
+    const nextSessions = sessions.filter(item => item.id !== sessionId)
+    setPersistedInterviewSessions(nextSessions)
+    touchWorkbenchStorage()
+    return nextSessions
+  }
+
   const loadReportSummaries = () => {
     workbenchStorageVersion.value
     return getPersistedReportSummaries()
@@ -138,6 +150,14 @@ export const useWorkbenchPersistence = () => {
     return payload
   }
 
+  const removeReportSummariesBySessionId = (sessionId: string) => {
+    const summaries = getPersistedReportSummaries()
+    const nextSummaries = summaries.filter(item => item.sessionId !== sessionId)
+    setPersistedReportSummaries(nextSummaries)
+    touchWorkbenchStorage()
+    return nextSummaries
+  }
+
   return {
     loadLibraryDocuments,
     saveImportedLibraryDocuments,
@@ -150,8 +170,10 @@ export const useWorkbenchPersistence = () => {
     updateInterviewSession,
     completeInterviewSession,
     abortInterviewSession,
+    removeInterviewSession,
     loadReportSummaries,
     getReportSummaryBySessionId,
-    saveReportSummary
+    saveReportSummary,
+    removeReportSummariesBySessionId
   }
 }

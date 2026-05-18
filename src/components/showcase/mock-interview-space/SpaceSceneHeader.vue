@@ -33,6 +33,8 @@ const hasAside = computed(() => Boolean(slots.aside))
 
 <style scoped lang="scss">
 .space-scene-header {
+  position: relative;
+  z-index: 6;
   display: grid;
   gap: 34px;
   align-items: start;
@@ -64,7 +66,10 @@ const hasAside = computed(() => Boolean(slots.aside))
 }
 
 .space-scene-header-aside {
+  position: relative;
+  z-index: 8;
   min-width: 0;
+  overflow: visible;
 }
 
 @media (max-width: 1100px) {

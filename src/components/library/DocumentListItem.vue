@@ -86,13 +86,17 @@ const statusMap = {
 <style lang="scss" scoped>
 .doc-item {
   width: 100%;
+  height: 100%;
   padding: 16px;
   border: 1px solid #e8edf6;
   border-radius: 20px;
   background: rgb(255 255 255 / 90%);
+  display: flex;
+  flex-direction: column;
   text-align: left;
   transition: 0.2s ease;
   cursor: pointer;
+  overflow: hidden;
 }
 
 .doc-item:hover,
@@ -110,6 +114,7 @@ const statusMap = {
 
 .doc-title-wrap {
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .doc-type {
@@ -126,6 +131,10 @@ const statusMap = {
   font-weight: 700;
   line-height: 1.4;
   color: #1f2746;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .doc-status {
@@ -164,21 +173,26 @@ const statusMap = {
   margin-top: 12px;
   font-size: 12px;
   color: #7f8aa1;
+  min-height: 18px;
 }
 
 .doc-tags {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   margin-top: 14px;
+  min-height: 36px;
+  overflow: hidden;
 }
 
 .doc-tag {
+  flex: 0 0 auto;
   padding: 6px 10px;
   border-radius: 999px;
   background: #f5f7fc;
   color: #68758d;
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .doc-reason {
@@ -186,5 +200,9 @@ const statusMap = {
   font-size: 13px;
   line-height: 1.7;
   color: #66758f;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 </style>

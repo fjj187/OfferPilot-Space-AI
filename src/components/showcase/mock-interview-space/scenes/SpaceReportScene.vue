@@ -1,4 +1,4 @@
-<script setup lang="tsx">
+<script setup lang="ts">
 import SpaceSceneHeader from '@/components/showcase/mock-interview-space/SpaceSceneHeader.vue'
 
 interface ReportOverviewStatItem {
@@ -24,6 +24,10 @@ defineProps<{
   sectionTitle: string
   sectionBody: string
   headerMeta: string[]
+  summaryHeadline: string
+  summaryBody: string
+  answerSnapshot: string[]
+  focusAreas: string[]
   overviewStats: ReportOverviewStatItem[]
   primaryWeakness: string
   weaknessTags: string[]
@@ -37,6 +41,7 @@ defineProps<{
 
 const emit = defineEmits<{
   continueMock: []
+  continuePractice: []
   backLibrary: []
   openHistory: []
   openWorkbenchReport: []
@@ -52,16 +57,17 @@ const emit = defineEmits<{
 
     <div class="report-scene-shell">
       <div class="report-scene-container">
-        <div class="report-scene-hero">
-          <div>
-            <div class="report-scene-kicker">Recent mission report</div>
-            <h3>{{ hasSummary ? '真实复盘摘要已接入当前宇宙场景' : '当前先按最新训练结果生成规则型复盘' }}</h3>
-            <p>
-              {{ hasSummary
-                ? `当前承接的是 ${currentTopicLabel} 这轮训练的最近复盘结果。`
-                : '当前还没有独立 summary，先使用最近一轮训练 session 生成可读摘要。' }}
-            </p>
+        <section class="report-scene-hero">
+          <div class="report-scene-kicker">Round complete</div>
+          <h3>{{ hasSummary ? '这轮训练已经生成复盘报告' : '这轮训练已经结束' }}</h3>
+          <p>{{ summaryBody }}</p>
+          <div
+            v-if="!hasSummary"
+            class="report-scene-fallback-note"
+          >
+            当前还没有独立报告摘要，先按最近一轮训练记录生成阶段性复盘，方便你继续补练或回到模拟面试。
           </div>
+
           <div class="report-scene-hero-meta">
             <span
               v-for="item in headerMeta"
@@ -71,81 +77,59 @@ const emit = defineEmits<{
               {{ item }}
             </span>
           </div>
-        </div>
+
+          <div class="report-scene-primary-actions">
+            <button
+              type="button"
+              class="report-scene-action primary"
+              @click="emit('openWorkbenchReport')"
+            >
+              {{ hasSummary ? '查看完整报告' : '查看阶段性报告' }}
+            </button>
+            <button
+              type="button"
+              class="report-scene-action"
+              @click="emit('continuePractice')"
+            >
+              按弱项继续补练
+            </button>
+            <button
+              type="button"
+              class="report-scene-action"
+              @click="emit('continueMock')"
+            >
+              再来一轮模拟
+            </button>
+          </div>
+        </section>
 
         <section class="report-scene-section">
-          <div class="report-scene-card-label">本轮概览</div>
-          <div class="report-scene-inline-stats">
-            <article
-              v-for="item in overviewStats"
-              :key="item.label"
-              class="report-scene-inline-stat"
-            >
-              <span>{{ item.label }}</span>
-              <strong>{{ item.value }}</strong>
-              <small>{{ item.note }}</small>
+          <div class="report-scene-card-label">接下来怎么做</div>
+          <div class="report-scene-guidance-grid">
+            <article class="report-scene-guide-card">
+              <span>1</span>
+              <strong>先看完整报告</strong>
+              <p>把这轮的整体表现、问题分布和建议看完整，再决定下一步训练方式。</p>
+            </article>
+            <article class="report-scene-guide-card">
+              <span>2</span>
+              <strong>按弱项继续补练</strong>
+              <p>如果你想马上收敛问题，直接进入专项补练会更高效。</p>
+            </article>
+            <article class="report-scene-guide-card">
+              <span>3</span>
+              <strong>回到模拟面试验证</strong>
+              <p>补练之后再做一轮模拟，最容易看出问题有没有真的收住。</p>
             </article>
           </div>
         </section>
 
         <section class="report-scene-section">
-          <div class="report-scene-card-label">核心洞察</div>
-          <div class="report-scene-weakness-head">
-            <strong>{{ primaryWeakness }}</strong>
-            <span>{{ weaknessTags.length }} 个标签</span>
-          </div>
-          <div
-            v-if="weaknessTags.length"
-            class="report-scene-tags"
-          >
-            <span
-              v-for="tag in weaknessTags.slice(0, 4)"
-              :key="tag"
-              class="report-scene-tag"
-            >
-              {{ tag }}
-            </span>
-          </div>
-          <div class="report-scene-snapshot compact">
-            <div
-              v-for="item in snapshotItems.slice(0, 2)"
-              :key="item.label"
-              class="report-scene-snapshot-row"
-            >
-              <span>{{ item.label }}</span>
-              <strong>{{ item.value }}</strong>
-            </div>
-          </div>
-          <ul class="report-scene-suggestions">
-            <li
-              v-for="item in suggestionList.slice(0, 2)"
-              :key="item"
-            >
-              {{ item }}
-            </li>
-          </ul>
-        </section>
-
-        <section class="report-scene-section">
-          <div class="report-scene-card-label">下一步动作</div>
+          <div class="report-scene-card-label">快捷入口</div>
           <div class="report-scene-actions">
             <button
               type="button"
-              class="report-scene-action primary"
-              @click="emit('continueMock')"
-            >
-              继续模拟面试
-            </button>
-            <button
-              type="button"
-              class="report-scene-action"
-              @click="emit('backLibrary')"
-            >
-              返回资料库
-            </button>
-            <button
-              type="button"
-              class="report-scene-action"
+              class="report-scene-action ghost"
               @click="emit('openHistory')"
             >
               查看训练历史
@@ -153,31 +137,25 @@ const emit = defineEmits<{
             <button
               type="button"
               class="report-scene-action ghost"
-              @click="emit('openWorkbenchReport')"
+              @click="emit('backLibrary')"
             >
-              打开旧版报告页
+              返回资料库
             </button>
           </div>
         </section>
 
-        <section class="report-scene-section">
-          <div class="report-scene-card-label">最近历史摘要</div>
-          <article
-            v-if="latestHistory"
-            class="report-scene-history-item"
-          >
+        <section
+          v-if="latestHistory"
+          class="report-scene-section compact"
+        >
+          <div class="report-scene-card-label">最近一轮记录</div>
+          <article class="report-scene-history-item">
             <div>
               <strong>{{ topicLabelMap[latestHistory.topic] || latestHistory.topic }}</strong>
               <span>{{ latestHistory.answeredCount }} / {{ latestHistory.totalCount }} 题</span>
             </div>
-            <p>{{ latestHistory.weaknessTags[0] || '暂无稳定弱项' }}</p>
+            <p>{{ latestHistory.weaknessTags[0] || '已生成训练记录，可进入完整报告查看详情。' }}</p>
           </article>
-          <p
-            v-else
-            class="report-scene-empty"
-          >
-            当前还没有历史摘要，完成一轮训练后这里会开始沉淀记录。
-          </p>
         </section>
       </div>
     </div>
@@ -212,22 +190,20 @@ const emit = defineEmits<{
 .report-scene-section {
   padding: 22px;
   border: 1px solid rgb(255 255 255 / 0.14);
-  border-radius: 24px;
+  border-radius: 20px;
   background: linear-gradient(180deg, rgb(46 14 19 / 0.88) 0%, rgb(78 24 23 / 0.82) 100%);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 .report-scene-hero h3 {
-  margin-top: 14px;
+  margin-top: 12px;
   color: rgb(248 250 255 / 0.98);
-  font-size: clamp(24px, 2.4vw, 34px);
+  font-size: clamp(24px, 2.2vw, 32px);
   line-height: 1.2;
 }
 
 .report-scene-hero p,
-.report-scene-empty,
+.report-scene-guide-card p,
 .report-scene-history-item p {
   margin-top: 12px;
   color: rgb(233 241 255 / 0.78);
@@ -236,19 +212,33 @@ const emit = defineEmits<{
 }
 
 .report-scene-hero-meta,
-.report-scene-tags,
-.report-scene-actions {
+.report-scene-actions,
+.report-scene-primary-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.report-scene-fallback-note {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgb(178 206 255 / 0.18);
+  border-radius: 14px;
+  background: rgb(82 116 185 / 0.14);
+  color: rgb(230 240 255 / 0.92);
+  font-size: 14px;
+  line-height: 1.7;
 }
 
 .report-scene-hero-meta {
   margin-top: 18px;
 }
 
-.report-scene-meta-pill,
-.report-scene-tag {
+.report-scene-primary-actions {
+  margin-top: 20px;
+}
+
+.report-scene-meta-pill {
   display: inline-flex;
   align-items: center;
   min-height: 34px;
@@ -258,100 +248,45 @@ const emit = defineEmits<{
   background: rgb(49 15 20 / 0.46);
   color: rgb(249 251 255 / 0.94);
   font-size: 15px;
-  font-weight: 400;
 }
 
-.report-scene-snapshot {
+.report-scene-guidance-grid {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
   margin-top: 14px;
 }
 
-.report-scene-snapshot.compact {
-  margin-top: 18px;
-}
-
-.report-scene-inline-stats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 14px;
-}
-
-.report-scene-inline-stat {
-  padding: 16px 18px;
+.report-scene-guide-card {
+  padding: 18px;
   border: 1px solid rgb(255 255 255 / 0.08);
-  border-radius: 18px;
+  border-radius: 16px;
   background: rgb(255 255 255 / 0.03);
 }
 
-.report-scene-inline-stat span {
-  color: rgb(226 236 255 / 0.68);
-  font-size: 15px;
-}
-
-.report-scene-inline-stat strong {
-  display: block;
-  margin-top: 10px;
-  color: #fff;
-  font-size: 28px;
-  font-weight: 600;
-  line-height: 1.1;
-}
-
-.report-scene-inline-stat small {
-  display: block;
-  margin-top: 10px;
-  color: rgb(233 241 255 / 0.72);
-  font-size: 15px;
-  font-weight: 400;
-  line-height: 1.6;
-}
-
-.report-scene-snapshot-row,
-.report-scene-history-item div,
-.report-scene-weakness-head {
-  display: flex;
+.report-scene-guide-card span {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.08);
+  color: rgb(244 248 255 / 0.88);
+  font-size: 14px;
+  font-weight: 700;
 }
 
-.report-scene-snapshot-row span,
-.report-scene-weakness-head span,
-.report-scene-history-item span {
-  color: rgb(226 236 255 / 0.68);
-  font-size: 15px;
-  font-weight: 400;
-}
-
-.report-scene-snapshot-row strong,
-.report-scene-weakness-head strong,
+.report-scene-guide-card strong,
 .report-scene-history-item strong {
+  display: block;
+  margin-top: 14px;
   color: rgb(248 250 255 / 0.98);
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 600;
-}
-
-.report-scene-weakness-head {
-  margin-top: 14px;
-}
-
-.report-scene-suggestions {
-  display: grid;
-  gap: 12px;
-  margin-top: 14px;
-  padding-left: 18px;
-  color: rgb(239 245 255 / 0.86);
-  font-size: 16px;
-  font-weight: 400;
-  line-height: 1.75;
 }
 
 .report-scene-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
   margin-top: 14px;
 }
 
@@ -386,12 +321,29 @@ const emit = defineEmits<{
   color: rgb(232 239 255 / 0.82);
 }
 
+.report-scene-section.compact {
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+
 .report-scene-history-item {
   margin-top: 14px;
   padding: 14px 16px;
   border: 1px solid rgb(255 255 255 / 0.1);
-  border-radius: 18px;
+  border-radius: 16px;
   background: linear-gradient(180deg, rgb(60 19 20 / 0.92) 0%, rgb(92 30 24 / 0.86) 100%);
+}
+
+.report-scene-history-item div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.report-scene-history-item span {
+  color: rgb(226 236 255 / 0.68);
+  font-size: 15px;
 }
 
 .report-scene-history-item p {
@@ -399,16 +351,16 @@ const emit = defineEmits<{
 }
 
 @media (max-width: 1100px) {
-  .report-scene-inline-stats {
+  .report-scene-guidance-grid {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 780px) {
-  .report-scene-snapshot-row,
   .report-scene-history-item div,
-  .report-scene-weakness-head {
-    align-items: flex-start;
+  .report-scene-primary-actions,
+  .report-scene-actions {
+    align-items: stretch;
     flex-direction: column;
   }
 }

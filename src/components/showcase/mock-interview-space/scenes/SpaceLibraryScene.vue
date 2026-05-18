@@ -1,10 +1,11 @@
 <script setup lang="tsx">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import DocumentListItem from '@/components/library/DocumentListItem.vue'
 import DocumentPreviewPanel from '@/components/library/DocumentPreviewPanel.vue'
 import ImportActionCard from '@/components/library/ImportActionCard.vue'
 import LibraryFilterTabs from '@/components/library/LibraryFilterTabs.vue'
 import LibraryStatCard from '@/components/library/LibraryStatCard.vue'
+import Pagination from '@/components/Pagination/index.vue'
 import SpaceSceneHeader from '@/components/showcase/mock-interview-space/SpaceSceneHeader.vue'
 
 interface LibraryStatItem {
@@ -56,6 +57,9 @@ const props = defineProps<{
   derivedStats: LibraryStatItem[]
   filterTabs: LibraryFilterTab[]
   activeFilter: string
+  currentPage: number
+  pageCount: number
+  filteredCount: number
   selectedDocument: SelectedLibraryDocument | null
   selectedDocumentId: string
   topicLabelMap: Record<string, string>
@@ -71,8 +75,10 @@ const emit = defineEmits<{
   pickFiles: []
   pickFolder: []
   'update:activeFilter': [value: string]
+  'update:page': [value: number]
   'select-document': [value: string]
-  primaryAction: []
+  openMock: []
+  openPractice: []
   backOverview: []
   openReport: []
 }>()
@@ -80,6 +86,11 @@ const emit = defineEmits<{
 const sourceLabelText = (sourceKey?: string) => {
   return sourceKey ? (props.sourceLabelMap[sourceKey] || sourceKey) : ''
 }
+
+const placeholderItems = computed(() => {
+  const placeholderCount = Math.max(0, 5 - props.displayedDocuments.length)
+  return Array.from({ length: placeholderCount }, (_, index) => `placeholder-${index}`)
+})
 
 const sceneShellRef = ref<HTMLElement | null>(null)
 const stickyMotion = ref('translate3d(0, 0, 0)')
@@ -211,13 +222,20 @@ onBeforeUnmount(() => {
             <span>{{ nextStepDesc }}</span>
           </div>
 
-          <LibraryFilterTabs
-            :tabs="filterTabs"
-            :active-key="activeFilter"
-            @change="emit('update:activeFilter', $event)"
-          />
+          <div class="library-filter-row">
+            <LibraryFilterTabs
+              :tabs="filterTabs"
+              :active-key="activeFilter"
+              @change="emit('update:activeFilter', $event)"
+            />
+            <div class="library-filter-count">
+              共 {{ filteredCount }} 份资料
+            </div>
+          </div>
         </section>
 
+        <div class="library-document-panel">
+        <div class="library-document-list-shell">
         <div
           class="library-document-list"
           :class="{ 'is-hidden': !isListVisible }"
@@ -238,15 +256,43 @@ onBeforeUnmount(() => {
             active-label="当前训练资料"
             @select="emit('select-document', doc.id)"
           />
+          <div
+            v-for="placeholder in placeholderItems"
+            :key="placeholder"
+            class="library-document-placeholder"
+            aria-hidden="true"
+          ></div>
+        </div>
+
+        </div>
+
+        <div
+          v-if="pageCount > 1"
+          class="library-pagination-row"
+        >
+          <Pagination
+            :page="currentPage"
+            :page-count="pageCount"
+            @update:page="emit('update:page', $event)"
+            @change="emit('update:page', $event)"
+          />
+        </div>
         </div>
 
         <div class="overview-action-row">
           <button
             type="button"
             class="overview-action primary"
-            @click="emit('primaryAction')"
+            @click="emit('openMock')"
           >
-            去模拟面试
+            直接模拟面试
+          </button>
+          <button
+            type="button"
+            class="overview-action"
+            @click="emit('openPractice')"
+          >
+            去专项刷题页面选题
           </button>
           <button
             type="button"
@@ -254,13 +300,6 @@ onBeforeUnmount(() => {
             @click="emit('backOverview')"
           >
             返回总览
-          </button>
-          <button
-            type="button"
-            class="overview-action"
-            @click="emit('openReport')"
-          >
-            查看报告
           </button>
         </div>
       </main>
@@ -270,7 +309,10 @@ onBeforeUnmount(() => {
           class="library-sticky-card-stack"
           :style="{ transform: stickyMotion }"
         >
-          <Transition name="library-preview">
+          <Transition
+            name="library-preview"
+            mode="out-in"
+          >
             <article
               v-if="selectedDocument"
               :key="`current-${selectedDocument.id}`"
@@ -282,7 +324,10 @@ onBeforeUnmount(() => {
             </article>
           </Transition>
 
-          <Transition name="library-preview">
+          <Transition
+            name="library-preview"
+            mode="out-in"
+          >
             <div
               v-if="selectedDocument"
               :key="`preview-${selectedDocument.id}`"
@@ -422,9 +467,6 @@ onBeforeUnmount(() => {
 }
 
 .library-preview-leave-active {
-  position: absolute;
-  right: 0;
-  left: 0;
   pointer-events: none;
 }
 
@@ -499,11 +541,43 @@ onBeforeUnmount(() => {
   gap: 14px;
 }
 
+.library-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.library-filter-count {
+  flex: 0 0 auto;
+  color: rgb(228 238 255 / 0.72);
+  font-size: 15px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .library-filter-head {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 18px;
+}
+
+.library-document-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.library-document-list-shell {
+  --library-doc-card-height: 204px;
+  box-sizing: border-box;
+  height: calc(var(--library-doc-card-height) * 5 + 12px * 4 + 36px);
+  padding: 18px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 28px;
+  background: rgb(255 255 255 / 0.028);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  overflow: hidden;
 }
 
 .library-document-list {
@@ -515,6 +589,12 @@ onBeforeUnmount(() => {
     opacity 0.22s ease,
     transform 0.22s ease,
     filter 0.22s ease;
+}
+
+.library-pagination-row {
+  display: flex;
+  justify-content: center;
+  min-height: 42px;
 }
 
 .library-document-list.is-hidden {
@@ -529,6 +609,17 @@ onBeforeUnmount(() => {
   border-color: rgb(255 255 255 / 0.18);
   background: rgb(255 255 255 / 0.035);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+}
+
+.library-document-list :deep(.doc-item) {
+  height: var(--library-doc-card-height);
+}
+
+.library-document-placeholder {
+  height: var(--library-doc-card-height);
+  border-radius: 20px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .library-scene-shell :deep(.stat-card) {
@@ -609,7 +700,7 @@ onBeforeUnmount(() => {
 }
 
 .library-document-list :deep(.doc-type) {
-  background: rgb(198 206 255 / 0.14);
+  background: transparent;
   color: #dfe5ff;
   font-size: 15px;
 }
@@ -631,6 +722,76 @@ onBeforeUnmount(() => {
   border-color: rgb(255 255 255 / 0.22);
   background: rgb(255 255 255 / 0.055);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+
+.library-pagination-row :deep(.pagination-container) {
+  padding: 4px 0 0;
+}
+
+.library-pagination-row :deep(.pagination-container > *) {
+  margin-left: 8px;
+}
+
+.library-pagination-row :deep(.pagination-container > *:first-child) {
+  margin-left: 0;
+}
+
+.library-pagination-row :deep(.pagination-container .c-primary) {
+  min-width: 38px;
+  height: 38px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.04);
+  color: rgb(228 238 255 / 0.9);
+  font-size: 15px;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.library-pagination-row :deep(.pagination-container .c-primary:hover) {
+  border-color: rgb(255 255 255 / 0.24);
+  background: rgb(255 255 255 / 0.08);
+  transform: translateY(-1px);
+}
+
+.library-pagination-row :deep(.pagination-container .b-primary) {
+  border-color: rgb(203 230 255 / 0.34);
+  background: rgb(191 224 255 / 0.16);
+  color: #fff;
+}
+
+.library-pagination-row :deep(.pagination-container) {
+  padding: 4px 0 0;
+}
+
+.library-pagination-row :deep(.pagination-container > *) {
+  margin-left: 8px;
+}
+
+.library-pagination-row :deep(.pagination-container > *:first-child) {
+  margin-left: 0;
+}
+
+.library-pagination-row :deep(.pagination-container .c-primary) {
+  min-width: 38px;
+  height: 38px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.04);
+  color: rgb(228 238 255 / 0.9);
+  font-size: 15px;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.library-pagination-row :deep(.pagination-container .c-primary:hover) {
+  border-color: rgb(255 255 255 / 0.24);
+  background: rgb(255 255 255 / 0.08);
+  transform: translateY(-1px);
+}
+
+.library-pagination-row :deep(.pagination-container .b-primary) {
+  border-color: rgb(203 230 255 / 0.34);
+  background: rgb(191 224 255 / 0.16);
+  color: #fff;
 }
 
 @media (prefers-reduced-motion: reduce) {

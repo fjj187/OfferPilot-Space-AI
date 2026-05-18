@@ -16,6 +16,7 @@ interface OrbitGhostItem {
 
 interface UseMockInterviewSpaceOrbitOptions {
   scenes: SceneItem[]
+  initialActiveIndex?: number
   centerSlot: number
   transitionMs: number
   orbitSlots: ComputedRef<Array<{
@@ -36,7 +37,16 @@ interface UseMockInterviewSpaceOrbitOptions {
 }
 
 export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOptions) {
-  const orbitOrder = ref([3, 4, 0, 1, 2])
+  const resolveInitialOrbitOrder = () => {
+    const sceneCount = options.scenes.length
+    const initialIndex = options.initialActiveIndex ?? 0
+    return Array.from({ length: sceneCount }, (_, orderIndex) => {
+      const offset = orderIndex - options.centerSlot
+      return (initialIndex + offset + sceneCount) % sceneCount
+    })
+  }
+
+  const orbitOrder = ref(resolveInitialOrbitOrder())
   const activeIndex = ref(orbitOrder.value[options.centerSlot])
   const displayIndex = ref(orbitOrder.value[options.centerSlot])
   const copySceneIndex = ref(orbitOrder.value[options.centerSlot])

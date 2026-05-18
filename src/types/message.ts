@@ -4,6 +4,7 @@ export type InterviewMessageStatus = 'streaming' | 'done' | 'error'
 
 export interface InterviewMessage {
   id: string
+  threadId: string
   role: InterviewMessageRole
   content: string
   displayContent: string

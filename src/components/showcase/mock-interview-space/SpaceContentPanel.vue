@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SceneItem } from '@/constants/showcase/mockInterviewSpaceScenes'
+import type { PersistedPracticePlan } from '@/types/workbench'
 import SpaceGeneralScenePanel from '@/components/showcase/mock-interview-space/SpaceGeneralScenePanel.vue'
 import SpaceMockScene from '@/components/showcase/mock-interview-space/scenes/SpaceMockScene.vue'
 import SpacePracticeScene from '@/components/showcase/mock-interview-space/scenes/SpacePracticeScene.vue'
@@ -14,6 +15,8 @@ defineProps<{
   formatLibraryBytes: (size: number) => string
   importFeedbackText: string
   isLibraryListVisible: boolean
+  libraryCurrentPage: number
+  libraryFilteredCount: number
   isMockCurrentSubmitted: boolean
   isMockStreaming: boolean
   libraryActiveFilter: string
@@ -21,30 +24,47 @@ defineProps<{
   libraryFilterTabs: any[]
   libraryNextStepDesc: string
   libraryNextStepTitle: string
+  libraryPageCount: number
   librarySourceLabelMap: Record<string, string>
   libraryTopicLabelMap: Record<string, string>
   libraryWorkspaceDesc: string
   libraryWorkspaceTitle: string
   mockAnswerDraft: string
+  mockAllMessages: any[]
   mockHintText: string
   mockMessages: any[]
   mockAnsweredCount: number
+  mockCurrentQuestionPosition: number
+  mockHasNextQuestion: boolean
+  mockIsAwaitingSetup: boolean
+  mockIsViewingHistoryPreview: boolean
+  mockHasRecentHistory: boolean
   mockPanelMeta: string[]
+  mockQuestionThreads: any[]
+  mockActiveQuestionThreadId: string
+  mockPracticePlan: PersistedPracticePlan | null
   mockQuestionPrompt: string
   mockSessionStatusText: string
+  mockStreamMode: string
+  mockStreamModeLabel: string
   mockScrollVersion?: string
   mockStreamError?: string
   mockTotalCount: number
+  mockSceneResetVersion: number
   overviewPrimaryActionLabel: string
   overviewProgressPercent: number
   overviewStatusLabel: string
   overviewSummaryItems: any[]
   reportHeaderMeta: string[]
+  reportAnswerSnapshot: string[]
+  reportFocusAreas: string[]
   reportLatestHistory: any
   reportOverviewStats: any[]
   reportPrimaryWeakness: string
   reportSceneSummary: any
   reportSnapshotItems: any[]
+  reportSummaryBody: string
+  reportSummaryHeadline: string
   reportSuggestionList: string[]
   reportWeaknessTags: string[]
   selectedDocument: any
@@ -57,7 +77,14 @@ const emit = defineEmits<{
   backLibrary: []
   backOverview: []
   clearMockAnswer: []
+  clearMockHistory: []
   continueMock: []
+  continuePractice: []
+  openMockLibrary: []
+  openMockPractice: []
+  openMock: []
+  openPractice: []
+  startPractice: [plan: any]
   openHistory: []
   openLibrary: []
   openReport: []
@@ -69,10 +96,13 @@ const emit = defineEmits<{
   resolveContentPanel: [element: HTMLElement | null]
   resolveContentSection: [element: HTMLElement | null]
   selectDocument: [value: string]
+  selectMockQuestionThread: [value: string]
   finishMockSession: []
+  nextMockQuestion: []
   stopMockStream: []
   submitMockAnswer: []
   updateActiveFilter: [value: string]
+  updateLibraryPage: [value: number]
   updateMockAnswerDraft: [value: string]
 }>()
 
@@ -130,16 +160,21 @@ onBeforeUnmount(() => {
                 :section-title="displayScene.sectionTitle"
                 :section-body="displayScene.sectionBody"
                 :header-meta="reportHeaderMeta"
+                :answer-snapshot="reportAnswerSnapshot"
+                :focus-areas="reportFocusAreas"
                 :overview-stats="reportOverviewStats"
                 :primary-weakness="reportPrimaryWeakness"
                 :weakness-tags="reportWeaknessTags"
                 :snapshot-items="reportSnapshotItems"
+                :summary-body="reportSummaryBody"
+                :summary-headline="reportSummaryHeadline"
                 :suggestion-list="reportSuggestionList"
                 :latest-history="reportLatestHistory"
                 :current-topic-label="currentTopicLabel"
                 :topic-label-map="topicLabelMap"
                 :has-summary="Boolean(reportSceneSummary)"
                 @continue-mock="$emit('continueMock')"
+                @continue-practice="$emit('continuePractice')"
                 @back-library="$emit('backLibrary')"
                 @open-history="$emit('openHistory')"
                 @open-workbench-report="$emit('openWorkbenchReport')"
@@ -149,16 +184,28 @@ onBeforeUnmount(() => {
             <template v-else>
               <SpaceMockScene
                 v-if="displayScene.id === 'mock'"
+                :key="`mock-${mockSceneResetVersion}`"
                 :nav-label="displayScene.navLabel"
                 :section-title="displayScene.sectionTitle"
                 :section-body="displayScene.sectionBody"
                 :panel-meta="mockPanelMeta"
+                :all-messages="mockAllMessages"
                 :source-meta="activeInterviewDocumentMeta"
                 :knowledge-tags="activeDocument?.tags?.slice(0, 4) || reportWeaknessTags.slice(0, 4)"
+                :question-threads="mockQuestionThreads"
+                :active-question-thread-id="mockActiveQuestionThreadId"
                 :question-prompt="mockQuestionPrompt"
                 :hint-text="mockHintText"
                 :messages="mockMessages"
                 :answered-count="mockAnsweredCount"
+                :current-question-position="mockCurrentQuestionPosition"
+                :has-next-question="mockHasNextQuestion"
+                :has-recent-history="mockHasRecentHistory"
+                :is-awaiting-setup="mockIsAwaitingSetup"
+                :is-viewing-history-preview="mockIsViewingHistoryPreview"
+                :practice-plan="mockPracticePlan"
+                :stream-mode="mockStreamMode"
+                :stream-mode-label="mockStreamModeLabel"
                 :scroll-version="mockScrollVersion"
                 :answer-draft="mockAnswerDraft"
                 :submitted="isMockCurrentSubmitted"
@@ -169,8 +216,14 @@ onBeforeUnmount(() => {
                 @update:answer-draft="$emit('updateMockAnswerDraft', $event)"
                 @submit="$emit('submitMockAnswer')"
                 @finish="$emit('finishMockSession')"
+                @next-question="$emit('nextMockQuestion')"
                 @clear="$emit('clearMockAnswer')"
+                @clear-history="$emit('clearMockHistory')"
+                @open-library="$emit('openMockLibrary')"
+                @open-history="$emit('openHistory')"
+                @open-practice="$emit('openMockPractice')"
                 @stop="$emit('stopMockStream')"
+                @select-question-thread="$emit('selectMockQuestionThread', $event)"
               />
               <SpacePracticeScene
                 v-else-if="displayScene.id === 'feedback'"
@@ -178,8 +231,9 @@ onBeforeUnmount(() => {
                 :section-title="displayScene.sectionTitle"
                 :section-body="displayScene.sectionBody"
                 :primary-weakness="reportPrimaryWeakness"
+                :report-summary="reportSceneSummary"
                 :weakness-tags="reportWeaknessTags"
-                @continue-mock="$emit('continueMock')"
+                @start-practice="$emit('startPractice', $event)"
                 @open-report="$emit('openReport')"
               />
               <SpaceGeneralScenePanel
@@ -190,10 +244,13 @@ onBeforeUnmount(() => {
                 :import-feedback-text="importFeedbackText"
                 :is-library-list-visible="isLibraryListVisible"
                 :library-active-filter="libraryActiveFilter"
+                :library-current-page="libraryCurrentPage"
+                :library-filtered-count="libraryFilteredCount"
                 :library-derived-stats="libraryDerivedStats"
                 :library-filter-tabs="libraryFilterTabs"
                 :library-next-step-desc="libraryNextStepDesc"
                 :library-next-step-title="libraryNextStepTitle"
+                :library-page-count="libraryPageCount"
                 :library-source-label-map="librarySourceLabelMap"
                 :library-topic-label-map="libraryTopicLabelMap"
                 :library-workspace-desc="libraryWorkspaceDesc"
@@ -208,11 +265,14 @@ onBeforeUnmount(() => {
                 @pick-files="$emit('pickFiles')"
                 @pick-folder="$emit('pickFolder')"
                 @update-active-filter="$emit('updateActiveFilter', $event)"
+                @update-library-page="$emit('updateLibraryPage', $event)"
                 @select-document="$emit('selectDocument', $event)"
-                @primary-action="$emit('primaryAction')"
+                @open-mock="$emit('openMock')"
+                @open-practice="$emit('openPractice')"
                 @back-overview="$emit('backOverview')"
                 @open-library="$emit('openLibrary')"
                 @open-report="$emit('openReport')"
+                @primary-action="$emit('primaryAction')"
               />
             </template>
           </div>

@@ -48,14 +48,13 @@ export const useLibraryWorkspaceState = (options: LibraryWorkspaceOptions = {}) 
   const preferredSource = options.preferredSource
 
   const resolveFilterFromContext = () => {
-    const topic = preferredTopic?.value
-    if (topic && filterTabs.some(tab => tab.key === topic)) return topic
     return 'all'
   }
 
   const activeFilter = ref(resolveFilterFromContext())
   const documentList = ref<LibraryDocument[]>(loadLibraryDocuments(initialDocumentList))
   const selectedDocumentId = ref(persistedContext.value?.activeDocumentId || documentList.value[0]?.id || '')
+  const shouldPersistSelectedDocument = ref(Boolean(persistedContext.value?.activeDocumentId))
   const lastImportedIds = ref<string[]>([])
   const showImportFeedback = ref(false)
   const importFeedbackText = ref('')
@@ -64,7 +63,8 @@ export const useLibraryWorkspaceState = (options: LibraryWorkspaceOptions = {}) 
   let importFeedbackTimer: ReturnType<typeof setTimeout> | null = null
 
   const selectedDocument = computed(() => {
-    return documentList.value.find(item => item.id === selectedDocumentId.value) || documentList.value[0] || null
+    if (!selectedDocumentId.value) return null
+    return documentList.value.find(item => item.id === selectedDocumentId.value) || null
   })
 
   const filteredDocuments = computed(() => {
@@ -271,18 +271,12 @@ export const useLibraryWorkspaceState = (options: LibraryWorkspaceOptions = {}) 
     }
 
     const exists = list.some(item => item.id === selectedDocumentId.value)
-    if (!selectedDocumentId.value || !exists) {
+    if (selectedDocumentId.value && !exists) {
       selectedDocumentId.value = resolvePreferredDocumentId(list)
     }
   }, {
     immediate: true,
     deep: true
-  })
-
-  watch(preferredTopic || ref<PersistedTopicKey>('scenario' as PersistedTopicKey), (topic) => {
-    if (topic && filterTabs.some(tab => tab.key === topic)) {
-      activeFilter.value = topic
-    }
   })
 
   watch(documentList, (list) => {
@@ -293,18 +287,24 @@ export const useLibraryWorkspaceState = (options: LibraryWorkspaceOptions = {}) 
   })
 
   watch(selectedDocumentId, (documentId) => {
-    if (!documentId) return
+    if (!documentId || !shouldPersistSelectedDocument.value) return
     const selected = documentList.value.find(item => item.id === documentId)
     const fallbackTopic = selected?.topicKeys[0] || 'scenario'
+    const currentSourcePage = persistedContext.value?.sourcePage || loadWorkbenchContext()?.sourcePage || 'library'
 
     persistedContext.value = saveWorkbenchContext({
       activeTopic: (preferredTopic?.value || fallbackTopic) as PersistedTopicKey,
       activeDocumentId: documentId,
-      sourcePage: 'library'
+      sourcePage: currentSourcePage
     })
   }, {
     immediate: true
   })
+
+  const setSelectedDocumentId = (documentId: string) => {
+    shouldPersistSelectedDocument.value = Boolean(documentId)
+    selectedDocumentId.value = documentId
+  }
 
   const pickFiles = () => {
     refFileInput.value?.click()
@@ -324,6 +324,7 @@ export const useLibraryWorkspaceState = (options: LibraryWorkspaceOptions = {}) 
     documentList,
     filteredDocuments,
     selectedDocumentId,
+    setSelectedDocumentId,
     selectedDocument,
     lastImportedIds,
     showImportFeedback,

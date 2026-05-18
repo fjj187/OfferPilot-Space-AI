@@ -36,3 +36,6 @@ vite.config.ts.timestamp*
 
 # local docs
 /docs
+
+# local browser automation artifacts
+.playwright-cli/

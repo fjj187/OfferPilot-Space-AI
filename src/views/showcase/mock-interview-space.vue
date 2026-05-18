@@ -1,13 +1,16 @@
 ﻿<script lang="tsx" setup>
 import type { CSSProperties } from 'vue'
+import type { PersistedMockSessionConfig, PersistedPracticePlan } from '@/types/workbench'
 import SpaceContentPanel from '@/components/showcase/mock-interview-space/SpaceContentPanel.vue'
 import SpaceHeader from '@/components/showcase/mock-interview-space/SpaceHeader.vue'
 import SpaceOrbitNav from '@/components/showcase/mock-interview-space/SpaceOrbitNav.vue'
+import SpaceReportPreviewModal from '@/components/showcase/mock-interview-space/SpaceReportPreviewModal.vue'
 import SpaceScrollCapsule from '@/components/showcase/mock-interview-space/SpaceScrollCapsule.vue'
 import SpaceVisualStage from '@/components/showcase/mock-interview-space/SpaceVisualStage.vue'
 import { scenes } from '@/constants/showcase/mockInterviewSpaceScenes'
 import { useInterviewStream } from '@/composables/useInterviewStream'
 import { useLibraryWorkspaceState } from '@/composables/useLibraryWorkspaceState'
+import { useMockInterviewFlow } from '@/composables/showcase/useMockInterviewFlow'
 import { useMockInterviewSpaceMockState } from '@/composables/showcase/useMockInterviewSpaceMockState'
 import { useMockInterviewSpaceOrbit } from '@/composables/showcase/useMockInterviewSpaceOrbit'
 import { useMockInterviewSpaceReportScene } from '@/composables/showcase/useMockInterviewSpaceReportScene'
@@ -26,7 +29,10 @@ const {
   messages: mockMessages,
   isStreaming: isMockStreaming,
   streamError: mockStreamError,
+  streamMode: mockStreamMode,
+  streamModeLabel: mockStreamModeLabel,
   scrollVersion: mockScrollVersion,
+  setActiveThreadId,
   appendUserMessage,
   appendSystemMessage,
   startStream: startMockStream,
@@ -42,6 +48,7 @@ const topicLabelMap = interviewTopics.reduce<Record<string, string>>((map, item)
 const {
   activeTopic,
   activeDocument,
+  currentMode,
   currentSourceKey,
   currentSourceLabel,
   currentModeLabel,
@@ -52,14 +59,27 @@ const {
   progressPercent: overviewProgressPercent,
   statusLabel: overviewStatusLabel,
   summaryItems: overviewSummaryItems,
-  primaryActionLabel: overviewPrimaryActionLabel,
-  reportQuery
+  primaryActionLabel: overviewPrimaryActionLabel
 } = useOverviewLaunchState()
 
 const {
+  loadWorkbenchContext,
   getReportSummaryBySessionId,
-  loadReportSummaries
+  loadReportSummaries,
+  saveWorkbenchContext
 } = useWorkbenchPersistence()
+const currentWorkbenchContext = computed(() => loadWorkbenchContext())
+
+const initialWorkbenchContext = currentWorkbenchContext.value
+const initialSceneIdBySourcePage: Record<string, string> = {
+  overview: 'overview',
+  library: 'library',
+  'mock-interview-space': 'mock',
+  practice: 'feedback',
+  report: 'report'
+}
+const initialSceneId = initialSceneIdBySourcePage[initialWorkbenchContext?.sourcePage || 'overview'] || 'overview'
+const initialSceneIndex = scenes.findIndex(scene => scene.id === initialSceneId)
 
 const {
   refFileInput,
@@ -68,8 +88,10 @@ const {
   sourceLabelMap: librarySourceLabelMap,
   topicLabelMap: libraryTopicLabelMap,
   activeFilter: libraryActiveFilter,
+  documentList: libraryDocumentList,
   filteredDocuments,
   selectedDocumentId,
+  setSelectedDocumentId,
   selectedDocument,
   showImportFeedback,
   importFeedbackText,
@@ -88,22 +110,49 @@ const {
 })
 
 const currentTrainingDocument = computed(() => selectedDocument.value || activeDocument.value)
+const currentContextDocument = computed(() => {
+  const activeDocumentId = currentWorkbenchContext.value?.activeDocumentId || ''
+  if (!activeDocumentId) return null
+  return libraryDocumentList.value.find(item => item.id === activeDocumentId) || null
+})
 
 const {
   currentGuide,
+  currentMockSessionConfig,
+  hasNextMockFollowUp,
+  hasMockSetup,
+  currentPracticePlan,
+  currentSessionId,
+  displayAllMessages,
+  displayMessages,
   answeredCount: mockAnsweredCount,
+  currentQuestionPosition: mockCurrentQuestionPosition,
+  isMockAwaitingSetup,
   mockAnswerDraft,
   mockSessionStatusText,
   totalCount: mockTotalCount,
   mockPanelMeta,
+  questionThreads: mockQuestionThreads,
+  activeQuestionThread,
+  activeQuestionThreadId,
   primaryQuestion,
   clearMockAnswer,
+  clearMockHistory,
+  finalizeFinishedMockSession,
   finishMockSession,
+  hasRestorableHistoryPreview,
+  historyPreviewSessionId,
   isMockCurrentSubmitted,
+  exitHistoryPreview,
+  openLatestHistoryPreview,
+  rotateMockFollowUp,
+  selectQuestionThread,
   submitMockAnswer
 } = useMockInterviewSpaceMockState({
   isStreaming: isMockStreaming,
-  activeDocument: currentTrainingDocument,
+  activeDocument: currentContextDocument,
+  messages: mockMessages,
+  setActiveThreadId,
   appendUserMessage,
   appendSystemMessage,
   startStream: startMockStream,
@@ -112,7 +161,18 @@ const {
 
 const displayedLibraryDocuments = ref([...filteredDocuments.value])
 const isLibraryListVisible = ref(true)
+const libraryPageSize = 5
+const libraryCurrentPage = ref(1)
 let libraryListTransitionTimer: ReturnType<typeof setTimeout> | null = null
+
+const libraryPageCount = computed(() => {
+  return Math.max(1, Math.ceil(filteredDocuments.value.length / libraryPageSize))
+})
+
+const pagedLibraryDocuments = computed(() => {
+  const startIndex = (libraryCurrentPage.value - 1) * libraryPageSize
+  return filteredDocuments.value.slice(startIndex, startIndex + libraryPageSize)
+})
 
 const syncDisplayedLibraryDocuments = (nextList: typeof filteredDocuments.value, animate = true) => {
   if (libraryListTransitionTimer) {
@@ -135,15 +195,29 @@ const syncDisplayedLibraryDocuments = (nextList: typeof filteredDocuments.value,
 }
 
 watch(filteredDocuments, (nextList, previousList) => {
+  const nextPageCount = Math.max(1, Math.ceil(nextList.length / libraryPageSize))
+
+  if (libraryCurrentPage.value > nextPageCount) {
+    libraryCurrentPage.value = nextPageCount
+  }
+
   const shouldAnimate = Boolean(previousList)
-  syncDisplayedLibraryDocuments(nextList, shouldAnimate)
+  syncDisplayedLibraryDocuments(pagedLibraryDocuments.value, shouldAnimate)
 }, {
   immediate: true,
   deep: true
 })
 
+watch(libraryActiveFilter, () => {
+  libraryCurrentPage.value = 1
+})
+
+watch(libraryCurrentPage, () => {
+  syncDisplayedLibraryDocuments(pagedLibraryDocuments.value)
+})
+
 const activeInterviewDocumentMeta = computed(() => {
-  const document = currentTrainingDocument.value
+  const document = currentContextDocument.value
   if (!document) return []
   return [
     `资料: ${ document.name }`,
@@ -152,24 +226,40 @@ const activeInterviewDocumentMeta = computed(() => {
   ]
 })
 
-const mockQuestionPrompt = computed(() => primaryQuestion.value?.prompt || '')
-const mockHintText = computed(() => primaryQuestion.value?.hint || currentGuide.value?.desc || '')
+const mockQuestionPrompt = computed(() => isMockAwaitingSetup.value ? '' : (activeQuestionThread.value?.prompt || primaryQuestion.value?.prompt || ''))
+const mockHintText = computed(() => isMockAwaitingSetup.value ? '' : (primaryQuestion.value?.hint || currentGuide.value?.desc || ''))
 const handleMockFinish = () => {
-  const summary = finishMockSession()
-  if (!summary) return
-  openSceneContent('report')
+  if (!finishAndOpenReport()) return
+  requestSceneChange(findSceneIndexById('report'), {
+    pauseAutoplay: true,
+    scrollToContent: true
+  })
+}
+const handleMockOpenHistory = () => {
+  if (openLatestHistory()) return
+  window.$ModalMessage?.warning?.('当前无对话历史', {
+    duration: 2200,
+    closable: false
+  })
+}
+const handleClearMockHistory = () => {
+  clearAllMockHistory()
 }
 const {
+  reportAnswerSnapshot,
+  reportFocusAreas,
   reportHeaderMeta,
   reportLatestHistory,
   reportOverviewStats,
   reportPrimaryWeakness,
   reportSceneSummary,
   reportSnapshotItems,
+  reportSummaryBody,
+  reportSummaryHeadline,
   reportSuggestionList,
   reportWeaknessTags
 } = useMockInterviewSpaceReportScene({
-  activeDocument: currentTrainingDocument,
+  activeDocument: currentContextDocument,
   currentModeLabel,
   currentSourceLabel,
   currentTopicLabel,
@@ -178,6 +268,31 @@ const {
   latestReportSummary,
   getReportSummaryBySessionId,
   loadReportSummaries
+})
+
+const {
+  finishAndOpenReport,
+  flowMode,
+  openLatestHistory,
+  restartLastMockRound,
+  startMockRound,
+  clearAllMockHistory
+} = useMockInterviewFlow({
+  activeSessionId: currentSessionId,
+  currentContext: currentWorkbenchContext,
+  currentMockSessionConfig,
+  currentPracticePlan,
+  currentTopic: activeTopic,
+  currentMode,
+  exitHistoryPreview,
+  finalizeFinishedMockSession,
+  finishMockRound: finishMockSession,
+  hasMockSetup,
+  hasRestorableHistory: hasRestorableHistoryPreview,
+  openLatestHistoryPreview,
+  previewSessionId: historyPreviewSessionId,
+  saveWorkbenchContext,
+  clearAllMockHistoryState: clearMockHistory
 })
 
 const sceneIndexById = scenes.reduce<Record<string, number>>((map, scene, index) => {
@@ -234,9 +349,11 @@ const contentPanelRef = ref<HTMLElement | null>(null)
 const contentLeadRef = ref<HTMLElement | null>(null)
 const visualStageRef = ref<InstanceType<typeof SpaceVisualStage> | null>(null)
 const headerRef = ref<HTMLElement | null>(null)
+const isReportPreviewVisible = ref(false)
 const isScrollCapsuleVisible = ref(true)
 const scrollCapsuleHideLock = ref(false)
 const forceScrollCapsuleVisible = ref(false)
+const mockSceneResetVersion = ref(0)
 
 let scrollCapsuleRevealTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -306,6 +423,7 @@ const {
   toggleAutoplay
 } = useMockInterviewSpaceOrbit({
   scenes,
+  initialActiveIndex: initialSceneIndex >= 0 ? initialSceneIndex : 0,
   centerSlot,
   transitionMs,
   orbitSlots,
@@ -388,15 +506,91 @@ const releaseScrollCapsuleReveal = () => {
   forceScrollCapsuleVisible.value = false
 }
 
+const persistSceneContext = (sceneId: string) => {
+  const context = loadWorkbenchContext()
+  const sourcePageBySceneId: Record<string, string> = {
+    overview: 'overview',
+    library: 'library',
+    mock: 'mock-interview-space',
+    feedback: 'practice',
+    report: 'report'
+  }
+
+  const sourcePage = sourcePageBySceneId[sceneId]
+  if (!sourcePage) return
+
+  saveWorkbenchContext({
+    activeTopic: activeTopic.value,
+    activeDocumentId: context?.activeDocumentId || '',
+    currentMode: currentMode.value,
+    sourcePage,
+    practicePlan: context?.practicePlan || null,
+    mockEntryMode: context?.mockEntryMode || 'direct',
+    mockSessionConfig: context?.mockSessionConfig || null
+  })
+}
+
+const buildDirectMockSessionConfig = (): PersistedMockSessionConfig => ({
+  entryMode: 'direct',
+  activeDocumentId: currentTrainingDocument.value?.id || ''
+})
+
+const buildPracticeMockSessionConfig = (plan: PersistedPracticePlan): PersistedMockSessionConfig => ({
+  entryMode: 'practice',
+  activeDocumentId: currentTrainingDocument.value?.id || '',
+  zone: plan.zone,
+  questionType: plan.questionType,
+  questionCount: plan.questionCount,
+  difficulty: plan.difficulty
+})
+
+const resolveInitialSceneId = () => {
+  const sceneIdBySourcePage: Record<string, string> = {
+    overview: 'overview',
+    library: 'library',
+    'mock-interview-space': 'mock',
+    practice: 'feedback',
+    report: 'report'
+  }
+
+  const sourcePage = loadWorkbenchContext()?.sourcePage || 'overview'
+  return sceneIdBySourcePage[sourcePage] || 'overview'
+}
+
 const openSceneContent = (sceneId: string) => {
+  if (sceneId === 'mock' && flowMode.value === 'report') {
+    finalizeFinishedMockSession()
+    mockSceneResetVersion.value += 1
+  }
+  if (sceneId !== 'mock') {
+    exitHistoryPreview()
+  }
+  persistSceneContext(sceneId)
   requestSceneChange(findSceneIndexById(sceneId), {
     pauseAutoplay: true,
     scrollToContent: true
   })
 }
 
+const openMockSceneFromLibrary = () => {
+  const activeDocumentId = currentTrainingDocument.value?.id || currentWorkbenchContext.value?.activeDocumentId || ''
+  startMockRound({
+    activeDocumentId,
+    activeTopic: activeTopic.value,
+    currentMode: currentMode.value,
+    mockEntryMode: 'direct',
+    practicePlan: null,
+    mockSessionConfig: buildDirectMockSessionConfig(),
+    sourcePage: 'mock-interview-space'
+  })
+  requestSceneChange(findSceneIndexById('mock'), {
+    pauseAutoplay: true,
+    scrollToContent: true
+  })
+}
+
 const handleOverviewPrimaryAction = () => {
-  openSceneContent('mock')
+  openSceneContent('library')
 }
 
 const handleOverviewSecondaryAction = () => {
@@ -408,7 +602,69 @@ const handleOverviewReportAction = () => {
 }
 
 const handleReportContinueMock = () => {
-  openSceneContent('mock')
+  if (!restartLastMockRound()) {
+    const latestSession = latestCompletedSession.value
+    const summaryPlan = reportSceneSummary.value?.practicePlan || null
+    const restoredDocumentId = reportSceneSummary.value?.sourceDocumentId
+      || latestSession?.sourceDocumentId
+      || currentContextDocument.value?.id
+      || currentWorkbenchContext.value?.activeDocumentId
+      || ''
+    startMockRound({
+      activeDocumentId: restoredDocumentId,
+      activeTopic: latestSession?.topic || activeTopic.value,
+      currentMode: latestSession?.mode || currentMode.value,
+      mockEntryMode: summaryPlan ? 'practice' : 'direct',
+      practicePlan: summaryPlan,
+      mockSessionConfig: summaryPlan
+        ? {
+          ...buildPracticeMockSessionConfig(summaryPlan),
+          activeDocumentId: restoredDocumentId
+        }
+        : {
+          entryMode: 'direct',
+          activeDocumentId: restoredDocumentId
+        },
+      sourcePage: 'mock-interview-space'
+    })
+  }
+  requestSceneChange(findSceneIndexById('mock'), {
+    pauseAutoplay: true,
+    scrollToContent: true
+  })
+}
+
+const practiceTopicByZone: Record<PersistedPracticePlan['zone'], keyof typeof topicLabelMap> = {
+  vue: 'vue3',
+  javascript: 'browser',
+  typescript: 'typescript',
+  engineering: 'engineering',
+  performance: 'performance'
+}
+
+const handlePracticeStart = (plan: PersistedPracticePlan) => {
+  startMockRound({
+    activeDocumentId: currentTrainingDocument.value?.id || currentWorkbenchContext.value?.activeDocumentId || '',
+    activeTopic: practiceTopicByZone[plan.zone] || activeTopic.value,
+    currentMode: 'standard',
+    mockEntryMode: 'practice',
+    practicePlan: plan,
+    mockSessionConfig: buildPracticeMockSessionConfig(plan),
+    sourcePage: 'mock-interview-space'
+  })
+  requestSceneChange(findSceneIndexById('mock'), {
+    pauseAutoplay: true,
+    scrollToContent: true
+  })
+}
+
+const handleReportContinuePractice = () => {
+  const summaryPlan = reportSceneSummary.value?.practicePlan
+  if (summaryPlan) {
+    handlePracticeStart(summaryPlan)
+    return
+  }
+  openSceneContent('feedback')
 }
 
 const handleReportBackToLibrary = () => {
@@ -416,20 +672,48 @@ const handleReportBackToLibrary = () => {
 }
 
 const handleReportOpenHistory = () => {
-  router.push({
-    name: 'WorkbenchHistory'
-  })
+  handleMockOpenHistory()
+  if (flowMode.value === 'history_preview') {
+    requestSceneChange(findSceneIndexById('mock'), {
+      pauseAutoplay: true,
+      scrollToContent: true
+    })
+  }
 }
 
 const handleReportOpenWorkbenchReport = () => {
-  router.push({
-    name: 'WorkbenchReport',
-    query: reportQuery.value
-  })
+  isReportPreviewVisible.value = true
+}
+
+const handleMockStop = () => {
+  if (!isMockStreaming.value) return
+  stopMockStream()
+  appendSystemMessage('本次生成已停止。你可以补充回答后重新提交，或者直接结束本轮查看复盘。')
+}
+
+const handleReportPreviewContinuePractice = () => {
+  isReportPreviewVisible.value = false
+  handleReportContinuePractice()
+}
+
+const handleReportPreviewContinueMock = () => {
+  isReportPreviewVisible.value = false
+  handleReportContinueMock()
 }
 
 const handleOrbitSceneSelect = (index: number) => {
   revealScrollCapsule()
+  const nextScene = scenes[index]
+  if (nextScene) {
+    if (nextScene.id === 'mock' && flowMode.value === 'report') {
+      finalizeFinishedMockSession()
+      mockSceneResetVersion.value += 1
+    }
+    if (nextScene.id !== 'mock') {
+      exitHistoryPreview()
+    }
+    persistSceneContext(nextScene.id)
+  }
   handleOrbitStopClick(index)
 }
 
@@ -499,12 +783,39 @@ watch(displayScene, async () => {
 })
 
 onMounted(() => {
+  const context = loadWorkbenchContext()
+  const restoredSceneId = resolveInitialSceneId()
+  const restoredSceneIndex = findSceneIndexById(restoredSceneId)
+  const shouldRestoreContentScene = restoredSceneId !== 'overview'
+  saveWorkbenchContext({
+    activeTopic: activeTopic.value,
+    activeDocumentId: context?.activeDocumentId || '',
+    currentMode: currentMode.value,
+    sourcePage: context?.sourcePage || 'overview',
+    practicePlan: context?.practicePlan || null,
+    mockEntryMode: context?.mockEntryMode || 'direct',
+    mockSessionConfig: context?.mockSessionConfig || null
+  })
+
+  requestSceneChange(restoredSceneIndex, {
+    pauseAutoplay: shouldRestoreContentScene,
+    scrollToContent: false
+  })
+
   nextTick(() => {
+    if (pageRef.value) {
+      pageRef.value.scrollTop = 0
+    }
     refreshScrollMetrics()
     syncVisualLayers(true)
+    releaseScrollCapsuleReveal()
+    scrollCapsuleHideLock.value = false
+    isScrollCapsuleVisible.value = true
     updateScrollCapsuleVisibility()
   })
-  startAutoplay()
+  if (!shouldRestoreContentScene) {
+    startAutoplay()
+  }
   updateHeaderFade()
   window.addEventListener('resize', handleVisualResize)
   pageRef.value?.addEventListener('scroll', handlePageScroll, {
@@ -622,7 +933,7 @@ onBeforeUnmount(() => {
     />
 
     <SpaceContentPanel
-      :active-document="currentTrainingDocument"
+      :active-document="currentContextDocument"
       :active-interview-document-meta="activeInterviewDocumentMeta"
       :current-topic-label="currentTopicLabel"
       :display-scene="displayScene"
@@ -630,6 +941,8 @@ onBeforeUnmount(() => {
       :format-library-bytes="formatLibraryBytes"
       :import-feedback-text="importFeedbackText"
       :is-library-list-visible="isLibraryListVisible"
+      :library-current-page="libraryCurrentPage"
+      :library-filtered-count="filteredDocuments.length"
       :is-mock-current-submitted="isMockCurrentSubmitted"
       :is-mock-streaming="isMockStreaming"
       :library-active-filter="libraryActiveFilter"
@@ -637,30 +950,47 @@ onBeforeUnmount(() => {
       :library-filter-tabs="libraryFilterTabs"
       :library-next-step-desc="libraryNextStepDesc"
       :library-next-step-title="libraryNextStepTitle"
+      :library-page-count="libraryPageCount"
       :library-source-label-map="librarySourceLabelMap"
       :library-topic-label-map="libraryTopicLabelMap"
       :library-workspace-desc="libraryWorkspaceDesc"
       :library-workspace-title="libraryWorkspaceTitle"
       :mock-answer-draft="mockAnswerDraft"
+      :mock-all-messages="displayAllMessages"
       :mock-hint-text="mockHintText"
-      :mock-messages="mockMessages"
+      :mock-messages="displayMessages"
       :mock-panel-meta="mockPanelMeta"
+      :mock-question-threads="mockQuestionThreads"
+      :mock-active-question-thread-id="activeQuestionThreadId"
+      :mock-practice-plan="currentPracticePlan"
+      :mock-has-next-question="hasNextMockFollowUp"
+      :mock-has-recent-history="hasRestorableHistoryPreview"
+      :mock-is-awaiting-setup="isMockAwaitingSetup"
       :mock-session-status-text="mockSessionStatusText"
       :mock-answered-count="mockAnsweredCount"
+      :mock-current-question-position="mockCurrentQuestionPosition"
       :mock-total-count="mockTotalCount"
+      :mock-is-viewing-history-preview="flowMode === 'history_preview'"
+      :mock-scene-reset-version="mockSceneResetVersion"
       :mock-question-prompt="mockQuestionPrompt"
       :mock-scroll-version="mockScrollVersion"
       :mock-stream-error="mockStreamError"
+      :mock-stream-mode="mockStreamMode"
+      :mock-stream-mode-label="mockStreamModeLabel"
       :overview-primary-action-label="overviewPrimaryActionLabel"
       :overview-progress-percent="overviewProgressPercent"
       :overview-status-label="overviewStatusLabel"
       :overview-summary-items="overviewSummaryItems"
       :report-header-meta="reportHeaderMeta"
+      :report-answer-snapshot="reportAnswerSnapshot"
+      :report-focus-areas="reportFocusAreas"
       :report-latest-history="reportLatestHistory"
       :report-overview-stats="reportOverviewStats"
       :report-primary-weakness="reportPrimaryWeakness"
       :report-scene-summary="reportSceneSummary"
       :report-snapshot-items="reportSnapshotItems"
+      :report-summary-body="reportSummaryBody"
+      :report-summary-headline="reportSummaryHeadline"
       :report-suggestion-list="reportSuggestionList"
       :report-weakness-tags="reportWeaknessTags"
       :selected-document="selectedDocument"
@@ -670,9 +1000,15 @@ onBeforeUnmount(() => {
       @back-library="handleReportBackToLibrary"
       @back-overview="openSceneContent('overview')"
       @clear-mock-answer="clearMockAnswer"
+      @clear-mock-history="handleClearMockHistory"
+      @open-mock-library="openSceneContent('library')"
+      @open-mock-practice="openSceneContent('feedback')"
       @continue-mock="handleReportContinueMock"
+      @continue-practice="handleReportContinuePractice"
       @open-history="handleReportOpenHistory"
       @open-library="handleOverviewSecondaryAction"
+      @open-mock="openMockSceneFromLibrary"
+      @open-practice="openSceneContent('feedback')"
       @open-report="handleOverviewReportAction"
       @open-workbench-report="handleReportOpenWorkbenchReport"
       @pick-files="pickLibraryFiles"
@@ -681,12 +1017,31 @@ onBeforeUnmount(() => {
       @resolve-content-lead="resolveContentLeadElement"
       @resolve-content-panel="resolveContentPanelElement"
       @resolve-content-section="resolveContentSectionElement"
-      @select-document="selectedDocumentId = $event"
-      @stop-mock-stream="stopMockStream"
+      @select-document="setSelectedDocumentId($event)"
+      @select-mock-question-thread="selectQuestionThread"
+      @start-practice="handlePracticeStart"
+      @next-mock-question="rotateMockFollowUp"
+      @stop-mock-stream="handleMockStop"
       @submit-mock-answer="submitMockAnswer"
       @finish-mock-session="handleMockFinish"
       @update-active-filter="libraryActiveFilter = $event"
+      @update-library-page="libraryCurrentPage = $event"
       @update-mock-answer-draft="mockAnswerDraft = $event"
+    />
+
+    <SpaceReportPreviewModal
+      v-model:show="isReportPreviewVisible"
+      :has-summary="Boolean(reportSceneSummary)"
+      :summary-headline="reportSummaryHeadline"
+      :summary-body="reportSummaryBody"
+      :header-meta="reportHeaderMeta"
+      :focus-areas="reportFocusAreas"
+      :weakness-tags="reportWeaknessTags"
+      :answer-snapshot="reportAnswerSnapshot"
+      :suggestion-list="reportSuggestionList"
+      :snapshot-items="reportSnapshotItems"
+      @continue-practice="handleReportPreviewContinuePractice"
+      @continue-mock="handleReportPreviewContinueMock"
     />
   </div>
 </template>

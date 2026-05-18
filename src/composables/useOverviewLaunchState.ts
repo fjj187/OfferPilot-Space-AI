@@ -28,7 +28,10 @@ const sourceLabelMap: Record<string, string> = {
   'queue-vue-reactivity': 'Vue 响应式专项',
   'queue-ts-generics': 'TypeScript 泛型专项',
   'queue-performance-project': '性能优化专项',
-  library: '资料库上下文'
+  library: '资料库上下文',
+  practice: '专项刷题上下文',
+  report: '复盘报告上下文',
+  'mock-interview-space': '宇宙模拟面试场景'
 }
 
 const railLabels = [
@@ -171,7 +174,7 @@ export const useOverviewLaunchState = () => {
   })
 
   const primaryActionLabel = computed(() => {
-    return inProgressSession.value ? '继续面试' : '开始本轮模拟'
+    return '先导入资料'
   })
 
   const summaryItems = computed(() => [
