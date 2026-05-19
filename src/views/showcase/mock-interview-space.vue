@@ -1,6 +1,10 @@
 ﻿<script lang="tsx" setup>
 import type { CSSProperties } from 'vue'
-import type { PersistedMockSessionConfig, PersistedPracticePlan } from '@/types/workbench'
+import type {
+  PersistedInterviewFeedbackStyle,
+  PersistedMockSessionConfig,
+  PersistedPracticePlan
+} from '@/types/workbench'
 import SpaceContentPanel from '@/components/showcase/mock-interview-space/SpaceContentPanel.vue'
 import SpaceHeader from '@/components/showcase/mock-interview-space/SpaceHeader.vue'
 import SpaceOrbitNav from '@/components/showcase/mock-interview-space/SpaceOrbitNav.vue'
@@ -118,6 +122,7 @@ const currentContextDocument = computed(() => {
 
 const {
   currentGuide,
+  currentFeedbackStyle,
   currentMockSessionConfig,
   hasNextMockFollowUp,
   hasMockSetup,
@@ -147,7 +152,8 @@ const {
   openLatestHistoryPreview,
   rotateMockFollowUp,
   selectQuestionThread,
-  submitMockAnswer
+  submitMockAnswer,
+  updateFeedbackStyle
 } = useMockInterviewSpaceMockState({
   isStreaming: isMockStreaming,
   activeDocument: currentContextDocument,
@@ -530,14 +536,21 @@ const persistSceneContext = (sceneId: string) => {
   })
 }
 
-const buildDirectMockSessionConfig = (): PersistedMockSessionConfig => ({
+const buildDirectMockSessionConfig = (
+  feedbackStyle: PersistedInterviewFeedbackStyle = currentFeedbackStyle.value
+): PersistedMockSessionConfig => ({
   entryMode: 'direct',
-  activeDocumentId: currentTrainingDocument.value?.id || ''
+  activeDocumentId: currentTrainingDocument.value?.id || '',
+  feedbackStyle
 })
 
-const buildPracticeMockSessionConfig = (plan: PersistedPracticePlan): PersistedMockSessionConfig => ({
+const buildPracticeMockSessionConfig = (
+  plan: PersistedPracticePlan,
+  feedbackStyle: PersistedInterviewFeedbackStyle = currentFeedbackStyle.value
+): PersistedMockSessionConfig => ({
   entryMode: 'practice',
   activeDocumentId: currentTrainingDocument.value?.id || '',
+  feedbackStyle,
   zone: plan.zone,
   questionType: plan.questionType,
   questionCount: plan.questionCount,
@@ -623,7 +636,8 @@ const handleReportContinueMock = () => {
         }
         : {
           entryMode: 'direct',
-          activeDocumentId: restoredDocumentId
+          activeDocumentId: restoredDocumentId,
+          feedbackStyle: currentFeedbackStyle.value
         },
       sourcePage: 'mock-interview-space'
     })
@@ -689,6 +703,10 @@ const handleMockStop = () => {
   if (!isMockStreaming.value) return
   stopMockStream()
   appendSystemMessage('本次生成已停止。你可以补充回答后重新提交，或者直接结束本轮查看复盘。')
+}
+
+const handleMockFeedbackStyleChange = (feedbackStyle: PersistedInterviewFeedbackStyle) => {
+  updateFeedbackStyle(feedbackStyle)
 }
 
 const handleReportPreviewContinuePractice = () => {
@@ -960,6 +978,7 @@ onBeforeUnmount(() => {
       :mock-hint-text="mockHintText"
       :mock-messages="displayMessages"
       :mock-panel-meta="mockPanelMeta"
+      :mock-feedback-style="currentFeedbackStyle"
       :mock-question-threads="mockQuestionThreads"
       :mock-active-question-thread-id="activeQuestionThreadId"
       :mock-practice-plan="currentPracticePlan"
@@ -1024,6 +1043,7 @@ onBeforeUnmount(() => {
       @stop-mock-stream="handleMockStop"
       @submit-mock-answer="submitMockAnswer"
       @finish-mock-session="handleMockFinish"
+      @update-mock-feedback-style="handleMockFeedbackStyleChange"
       @update-active-filter="libraryActiveFilter = $event"
       @update-library-page="libraryCurrentPage = $event"
       @update-mock-answer-draft="mockAnswerDraft = $event"

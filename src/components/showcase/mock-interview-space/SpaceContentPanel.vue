@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { SceneItem } from '@/constants/showcase/mockInterviewSpaceScenes'
-import type { PersistedPracticePlan } from '@/types/workbench'
+import type { PersistedInterviewFeedbackStyle, PersistedPracticePlan } from '@/types/workbench'
 import SpaceGeneralScenePanel from '@/components/showcase/mock-interview-space/SpaceGeneralScenePanel.vue'
 import SpaceMockScene from '@/components/showcase/mock-interview-space/scenes/SpaceMockScene.vue'
 import SpacePracticeScene from '@/components/showcase/mock-interview-space/scenes/SpacePracticeScene.vue'
@@ -40,6 +40,7 @@ defineProps<{
   mockIsViewingHistoryPreview: boolean
   mockHasRecentHistory: boolean
   mockPanelMeta: string[]
+  mockFeedbackStyle: PersistedInterviewFeedbackStyle
   mockQuestionThreads: any[]
   mockActiveQuestionThreadId: string
   mockPracticePlan: PersistedPracticePlan | null
@@ -101,6 +102,7 @@ const emit = defineEmits<{
   nextMockQuestion: []
   stopMockStream: []
   submitMockAnswer: []
+  updateMockFeedbackStyle: [value: PersistedInterviewFeedbackStyle]
   updateActiveFilter: [value: string]
   updateLibraryPage: [value: number]
   updateMockAnswerDraft: [value: string]
@@ -189,6 +191,7 @@ onBeforeUnmount(() => {
                 :section-title="displayScene.sectionTitle"
                 :section-body="displayScene.sectionBody"
                 :panel-meta="mockPanelMeta"
+                :feedback-style="mockFeedbackStyle"
                 :all-messages="mockAllMessages"
                 :source-meta="activeInterviewDocumentMeta"
                 :knowledge-tags="activeDocument?.tags?.slice(0, 4) || reportWeaknessTags.slice(0, 4)"
@@ -223,6 +226,7 @@ onBeforeUnmount(() => {
                 @open-history="$emit('openHistory')"
                 @open-practice="$emit('openMockPractice')"
                 @stop="$emit('stopMockStream')"
+                @update:feedback-style="$emit('updateMockFeedbackStyle', $event)"
                 @select-question-thread="$emit('selectMockQuestionThread', $event)"
               />
               <SpacePracticeScene

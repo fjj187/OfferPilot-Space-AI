@@ -4,6 +4,7 @@ import { useWorkbenchPersistence } from '@/composables/useWorkbenchPersistence'
 import type { InterviewMessage } from '@/types/message'
 import type { InterviewGuide, InterviewQuestion } from '@/views/workbench/mock-interview.data'
 import type {
+  PersistedInterviewFeedbackStyle,
   PersistedInterviewMode,
   PersistedLibraryDocument,
   PersistedMockSessionConfig,
@@ -33,6 +34,10 @@ interface StartMockStreamPayload {
   answer: string
   sourceContext?: string
   sourceDocumentName?: string
+  sourceDocumentSummary?: string
+  sourceDocumentTags?: string[]
+  sourceDocumentExcerpt?: string
+  feedbackStyle?: PersistedInterviewFeedbackStyle
   format: 'markdown'
 }
 
@@ -68,6 +73,14 @@ export interface FinishMockRoundResult {
   sessionId: string
   summary: PersistedReportSummary
   replayConfig: MockInterviewReplayConfig
+}
+
+export const defaultMockFeedbackStyle: PersistedInterviewFeedbackStyle = 'corrective'
+
+export const feedbackStyleLabelMap: Record<PersistedInterviewFeedbackStyle, string> = {
+  followup: '追问型',
+  corrective: '纠偏型',
+  guided: '引导型'
 }
 
 export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMockStateOptions) {
@@ -116,6 +129,7 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     return {
       entryMode: 'practice',
       activeDocumentId: options.activeDocument.value?.id || '',
+      feedbackStyle: defaultMockFeedbackStyle,
       zone: currentPracticePlan.value.zone,
       questionType: currentPracticePlan.value.questionType,
       questionCount: currentPracticePlan.value.questionCount,
@@ -142,12 +156,18 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     mode: activeMode.value,
     entryMode: currentMockEntryMode.value,
     activeDocumentId: options.activeDocument.value?.id || currentMockSessionConfig.value?.activeDocumentId || '',
+    feedbackStyle: currentMockSessionConfig.value?.feedbackStyle || defaultMockFeedbackStyle,
     zone: currentMockSessionConfig.value?.zone,
     questionType: currentMockSessionConfig.value?.questionType,
     questionCount: currentMockSessionConfig.value?.questionCount,
     difficulty: currentMockSessionConfig.value?.difficulty,
     practicePlan: currentPracticePlan.value
   }))
+  const currentFeedbackStyle = computed<PersistedInterviewFeedbackStyle>(() => {
+    return currentMockSessionConfig.value?.feedbackStyle
+      || workbenchContext.value?.mockSessionConfig?.feedbackStyle
+      || defaultMockFeedbackStyle
+  })
 
   const activeTopicKey = computed<PersistedTopicKey>(() => {
     if (currentPracticePlan.value?.zone) {
@@ -171,6 +191,16 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     return /理解|基础|核心|原理|概念/.test(subject)
   }
 
+  const hasSharedDocumentTags = (question: InterviewQuestion, document: PersistedLibraryDocument) => {
+    if (!document.tags.length || !question.tags.length) return false
+    return document.tags.some(tag => question.tags.includes(tag))
+  }
+
+  const resolveMatchedDocumentTags = (question: InterviewQuestion, document: PersistedLibraryDocument) => {
+    if (!document.tags.length || !question.tags.length) return []
+    return document.tags.filter(tag => question.tags.includes(tag))
+  }
+
   const topicQuestions = computed(() => {
     if (!hasMockSetup.value) return []
     const questions = questionBank.filter(item => item.topic === activeTopicKey.value)
@@ -189,33 +219,93 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     const document = options.activeDocument.value
     if (!document) return questions
 
-    const matchedByDocument = questions.filter(item => (
-      item.source === document.sourceKey
-      || item.docType === document.type
-      || document.tags.some(tag => item.tags.includes(tag))
-    ))
+    const matchedByTags = questions.filter(item => hasSharedDocumentTags(item, document))
+    if (matchedByTags.length) return matchedByTags
 
-    return matchedByDocument.length ? matchedByDocument : questions
+    const matchedByType = questions.filter(item => item.docType === document.type)
+    if (matchedByType.length) return matchedByType
+
+    return questions
   })
   const primaryQuestion = computed<InterviewQuestion | null>(() => topicQuestions.value[0] || null)
+  const activeQuestionMatchReason = computed(() => {
+    const question = activeQuestion.value || primaryQuestion.value
+    const document = options.activeDocument.value
+
+    if (!question || !document) {
+      return {
+        type: 'topic_fallback' as const,
+        matchedTags: [] as string[]
+      }
+    }
+
+    const matchedTags = resolveMatchedDocumentTags(question, document)
+    if (matchedTags.length) {
+      return {
+        type: 'tag_match' as const,
+        matchedTags
+      }
+    }
+
+    if (question.docType === document.type) {
+      return {
+        type: 'type_match' as const,
+        matchedTags: [] as string[]
+      }
+    }
+
+    return {
+      type: 'topic_fallback' as const,
+      matchedTags: [] as string[]
+    }
+  })
+  const activeTrainingDocumentCore = computed(() => {
+    const document = options.activeDocument.value
+    if (!document) return null
+    return {
+      name: document.name,
+      type: document.type,
+      tags: document.tags,
+      summary: document.summary,
+      rawText: document.rawText
+    }
+  })
   const currentGuide = computed<InterviewGuide | null>(() => {
     return interviewGuides.find(item => item.topic === activeTopicKey.value) || interviewGuides[0] || null
   })
   const activeDocumentContext = computed(() => {
     const document = options.activeDocument.value
+    const coreDocument = activeTrainingDocumentCore.value
     const practicePlan = currentPracticePlan.value
-    if (!document) return ''
+    if (!document || !coreDocument) return ''
 
-    const rawExcerpt = document.rawText?.slice(0, 900).replace(/\s+/g, ' ').trim()
+    const rawExcerpt = coreDocument.rawText.slice(0, 900).replace(/\s+/g, ' ').trim()
     return [
-      `当前训练资料：${ document.name }`,
-      `资料类型：${ document.type.toUpperCase() }`,
+      `当前训练资料：${ coreDocument.name }`,
+      `资料类型：${ coreDocument.type.toUpperCase() }`,
+      `核心训练标签：${ coreDocument.tags.join(' / ') || '待补标签' }`,
+      `资料摘要：${ coreDocument.summary }`,
+      rawExcerpt ? `资料原文片段：${ rawExcerpt }` : '资料原文片段：当前为空，可继续补充正文内容。',
       `资料状态：${ document.status }`,
-      `资料摘要：${ document.summary }`,
-      `主题&标签：${ [...new Set([...document.topicKeys, ...document.tags])].join(' / ') }`,
-      practicePlan ? `专项训练目标：围绕“${ practicePlan.weaknessTag }”进行 ${ practicePlan.questionCount } 题 ${ practicePlan.difficulty } 难度 ${ practicePlan.questionType } 训练。` : '',
-      rawExcerpt ? `资料原文片段：${ rawExcerpt }` : ''
+      `附加元数据：${ [...new Set([...document.topicKeys, ...coreDocument.tags])].join(' / ') }`,
+      practicePlan ? `专项训练目标：围绕“${ practicePlan.weaknessTag }”进行 ${ practicePlan.questionCount } 题 ${ practicePlan.difficulty } 难度 ${ practicePlan.questionType } 训练。` : ''
     ].filter(Boolean).join('\n')
+  })
+  const activeDocumentRequestContext = computed(() => {
+    const coreDocument = activeTrainingDocumentCore.value
+    if (!coreDocument) {
+      return {
+        summary: '',
+        tags: [] as string[],
+        excerpt: ''
+      }
+    }
+
+    return {
+      summary: coreDocument.summary.trim(),
+      tags: [...coreDocument.tags],
+      excerpt: coreDocument.rawText.slice(0, 320).replace(/\s+/g, ' ').trim()
+    }
   })
 
   const mockAnswerDraft = ref('')
@@ -314,10 +404,19 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       performance: '性能优化'
     }
     const practiceConfig = currentMockSessionConfig.value
+    const matchReasonLabelMap = {
+      tag_match: '标签匹配',
+      type_match: '类型兜底',
+      topic_fallback: '主题保底'
+    } as const
+    const matchReason = activeQuestionMatchReason.value
 
     return [
       `模式: ${ trainingModeLabel }`,
       `难度: ${ difficultyLabelMap[practiceConfig?.difficulty || question.difficulty] }`,
+      `风格: ${ feedbackStyleLabelMap[currentFeedbackStyle.value] }`,
+      ...(options.activeDocument.value ? [`命中: ${ matchReasonLabelMap[matchReason.type] }`] : []),
+      ...(matchReason.matchedTags.length ? [`命中标签: ${ matchReason.matchedTags.join(' / ') }`] : []),
       ...(currentMockEntryMode.value === 'practice' && practiceConfig?.zone ? [`专项专区: ${ practiceZoneLabelMap[practiceConfig.zone] }`] : []),
       ...(currentMockEntryMode.value === 'practice' && practiceConfig?.questionType ? [`题型: ${ practiceQuestionTypeLabelMap[practiceConfig.questionType] }`] : []),
       ...(currentMockEntryMode.value === 'practice' && practiceConfig?.questionCount ? [`题数: ${ practiceConfig.questionCount }题`] : []),
@@ -758,6 +857,10 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       answer,
       sourceContext: activeDocumentContext.value,
       sourceDocumentName: options.activeDocument.value?.name,
+      sourceDocumentSummary: activeDocumentRequestContext.value.summary,
+      sourceDocumentTags: activeDocumentRequestContext.value.tags,
+      sourceDocumentExcerpt: activeDocumentRequestContext.value.excerpt,
+      feedbackStyle: currentFeedbackStyle.value,
       format: 'markdown'
     })
     persistMockSession()
@@ -905,6 +1008,25 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     })
   }
 
+  const updateFeedbackStyle = (feedbackStyle: PersistedInterviewFeedbackStyle) => {
+    const context = loadWorkbenchContext()
+    saveWorkbenchContext({
+      activeTopic: context?.activeTopic || activeTopicKey.value,
+      activeDocumentId: context?.activeDocumentId || options.activeDocument.value?.id || '',
+      currentMode: context?.currentMode || activeMode.value,
+      sourcePage: context?.sourcePage || 'mock-interview-space',
+      practicePlan: context?.practicePlan || currentPracticePlan.value || null,
+      mockEntryMode: context?.mockEntryMode || currentMockEntryMode.value,
+      mockSessionConfig: {
+        ...(currentMockSessionConfig.value || {
+          entryMode: currentMockEntryMode.value,
+          activeDocumentId: options.activeDocument.value?.id || ''
+        }),
+        feedbackStyle
+      }
+    })
+  }
+
   watch(
     () => `${ primaryQuestion.value?.id || '' }:${ options.activeDocument.value?.id || '' }:${ currentPracticePlan.value?.weaknessTag || '' }:${ currentSessionConfigKey.value }`,
     () => {
@@ -950,6 +1072,7 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     activeTopicKey,
     answeredCount,
     currentGuide,
+    currentFeedbackStyle,
     currentQuestionPosition,
     currentMockFollowUp,
     currentPracticePlan,
@@ -985,6 +1108,7 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     rotateMockFollowUp,
     selectQuestionThread,
     submitMockAnswer,
+    updateFeedbackStyle,
     totalCount
   }
 }

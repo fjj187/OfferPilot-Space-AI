@@ -22,26 +22,34 @@ import {
 const nowISO = () => new Date().toISOString()
 const workbenchStorageVersion = ref(0)
 
+const normalizeLibraryDocument = <T extends PersistedLibraryDocument>(document: T): T => ({
+  ...document,
+  tags: Array.isArray(document.tags) ? document.tags : [],
+  summary: document.summary || '当前资料还没有摘要，后续可补充解析。',
+  rawText: document.rawText || ''
+})
+
 const touchWorkbenchStorage = () => {
   workbenchStorageVersion.value += 1
 }
 
 export const useWorkbenchPersistence = () => {
   const loadLibraryDocuments = <T extends PersistedLibraryDocument>(seedDocuments: T[]) => {
-    workbenchStorageVersion.value
-    const storedDocuments = getPersistedLibraryDocuments() as T[]
-    const seedMap = new Map(seedDocuments.map(item => [item.id, item]))
-    const merged = [...storedDocuments.filter(item => !seedMap.has(item.id)), ...seedDocuments]
+    void workbenchStorageVersion.value
+    const storedDocuments = (getPersistedLibraryDocuments() as T[]).map(item => normalizeLibraryDocument(item))
+    const normalizedSeeds = seedDocuments.map(item => normalizeLibraryDocument(item))
+    const seedMap = new Map(normalizedSeeds.map(item => [item.id, item]))
+    const merged = [...storedDocuments.filter(item => !seedMap.has(item.id)), ...normalizedSeeds]
     return merged
   }
 
   const saveImportedLibraryDocuments = (documents: PersistedLibraryDocument[]) => {
-    setPersistedLibraryDocuments(documents)
+    setPersistedLibraryDocuments(documents.map(item => normalizeLibraryDocument(item)))
     touchWorkbenchStorage()
   }
 
   const loadWorkbenchContext = () => {
-    workbenchStorageVersion.value
+    void workbenchStorageVersion.value
     return getPersistedWorkbenchContext()
   }
 
@@ -58,12 +66,12 @@ export const useWorkbenchPersistence = () => {
   }
 
   const loadInterviewSessions = () => {
-    workbenchStorageVersion.value
+    void workbenchStorageVersion.value
     return getPersistedInterviewSessions()
   }
 
   const getInterviewSessionById = (sessionId: string) => {
-    workbenchStorageVersion.value
+    void workbenchStorageVersion.value
     return getPersistedInterviewSessions().find(item => item.id === sessionId) || null
   }
 
@@ -74,14 +82,14 @@ export const useWorkbenchPersistence = () => {
     sessionConfigKey?: string
     status?: PersistedInterviewStatus
   }) => {
-    workbenchStorageVersion.value
-      return getPersistedInterviewSessions().find(item => (
-        item.topic === matcher.topic
-        && item.mode === matcher.mode
-        && item.source === matcher.source
-        && (!matcher.sessionConfigKey || item.sessionConfigKey === matcher.sessionConfigKey)
-        && (!matcher.status || item.status === matcher.status)
-      ))
+    void workbenchStorageVersion.value
+    return getPersistedInterviewSessions().find(item => (
+      item.topic === matcher.topic
+      && item.mode === matcher.mode
+      && item.source === matcher.source
+      && (!matcher.sessionConfigKey || item.sessionConfigKey === matcher.sessionConfigKey)
+      && (!matcher.status || item.status === matcher.status)
+    ))
   }
 
   const createInterviewSession = (payload: Omit<PersistedInterviewSession, 'startedAt'>) => {
@@ -133,12 +141,12 @@ export const useWorkbenchPersistence = () => {
   }
 
   const loadReportSummaries = () => {
-    workbenchStorageVersion.value
+    void workbenchStorageVersion.value
     return getPersistedReportSummaries()
   }
 
   const getReportSummaryBySessionId = (sessionId: string) => {
-    workbenchStorageVersion.value
+    void workbenchStorageVersion.value
     return getPersistedReportSummaries().find(item => item.sessionId === sessionId) || null
   }
 

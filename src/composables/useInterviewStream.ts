@@ -1,4 +1,5 @@
 import type { InterviewMessage, InterviewMessageFormat, InterviewMessageRole } from '@/types/message'
+import type { PersistedInterviewFeedbackStyle } from '@/types/workbench'
 import { parseInterviewStreamChunk } from '@/services/message/interview-message-parser'
 import { InterviewMessageQueue } from '@/services/message/interview-message-queue'
 import { startInterviewStream } from '@/services/sse/interview-stream'
@@ -13,6 +14,10 @@ interface StartInterviewStreamParams {
   answer: string
   sourceContext?: string
   sourceDocumentName?: string
+  sourceDocumentSummary?: string
+  sourceDocumentTags?: string[]
+  sourceDocumentExcerpt?: string
+  feedbackStyle?: PersistedInterviewFeedbackStyle
   format?: InterviewMessageFormat
 }
 

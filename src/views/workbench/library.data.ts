@@ -1,10 +1,9 @@
-export type LibraryTopicKey =
-  | 'vue3'
-  | 'typescript'
-  | 'engineering'
-  | 'browser'
-  | 'performance'
-  | 'scenario'
+import type {
+  PersistedLibraryDocument,
+  PersistedTopicKey
+} from '@/types/workbench'
+
+export type LibraryTopicKey = PersistedTopicKey
 
 export interface LibraryStatItem {
   label: string
@@ -18,20 +17,7 @@ export interface LibraryFilterTab {
   label: string
 }
 
-export interface LibraryDocument {
-  id: string
-  name: string
-  type: 'md' | 'docx'
-  size: number
-  importedAt: string
-  summary: string
-  tags: string[]
-  status: 'pending' | 'parsed' | 'error'
-  topicKeys: LibraryTopicKey[]
-  sourceKey?: string
-  recommendedReason?: string
-  rawText?: string
-}
+export type LibraryDocument = PersistedLibraryDocument
 
 export const libraryStats: LibraryStatItem[] = [
   {
@@ -53,15 +39,42 @@ export const libraryStats: LibraryStatItem[] = [
 ]
 
 export const filterTabs: LibraryFilterTab[] = [
-  { key: 'all', label: '全部' },
-  { key: 'md', label: 'Markdown' },
-  { key: 'docx', label: 'Word' },
-  { key: 'vue3', label: 'Vue 3' },
-  { key: 'typescript', label: 'TypeScript' },
-  { key: 'engineering', label: '工程化' },
-  { key: 'browser', label: '浏览器' },
-  { key: 'performance', label: '性能优化' },
-  { key: 'scenario', label: '场景题' }
+  {
+    key: 'all',
+    label: '全部'
+  },
+  {
+    key: 'md',
+    label: 'Markdown'
+  },
+  {
+    key: 'docx',
+    label: 'Word'
+  },
+  {
+    key: 'vue3',
+    label: 'Vue 3'
+  },
+  {
+    key: 'typescript',
+    label: 'TypeScript'
+  },
+  {
+    key: 'engineering',
+    label: '工程化'
+  },
+  {
+    key: 'browser',
+    label: '浏览器'
+  },
+  {
+    key: 'performance',
+    label: '性能优化'
+  },
+  {
+    key: 'scenario',
+    label: '场景题'
+  }
 ]
 
 export const documentList: LibraryDocument[] = [
@@ -90,7 +103,8 @@ export const documentList: LibraryDocument[] = [
     status: 'pending',
     topicKeys: ['scenario', 'engineering'],
     sourceKey: 'library-project-review',
-    recommendedReason: '适合承接项目追问与场景表达训练。'
+    recommendedReason: '适合承接项目追问与场景表达训练。',
+    rawText: ''
   },
   {
     id: 'doc-3',

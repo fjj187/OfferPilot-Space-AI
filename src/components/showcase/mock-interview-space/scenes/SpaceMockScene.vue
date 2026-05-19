@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import type { InterviewMessage } from '@/types/message'
-import type { PersistedPracticePlan } from '@/types/workbench'
-import type { MockInterviewQuestionThread } from '@/composables/showcase/useMockInterviewSpaceMockState'
+import type { PersistedInterviewFeedbackStyle, PersistedPracticePlan } from '@/types/workbench'
+import {
+  type MockInterviewQuestionThread,
+  feedbackStyleLabelMap
+} from '@/composables/showcase/useMockInterviewSpaceMockState'
 import Pagination from '@/components/Pagination/index.vue'
 import MessageList from '@/components/message/MessageList.vue'
 import AnswerInputPanel from '@/components/mock-interview/AnswerInputPanel.vue'
@@ -12,6 +15,7 @@ const props = defineProps<{
   sectionTitle: string
   sectionBody: string
   panelMeta: string[]
+  feedbackStyle: PersistedInterviewFeedbackStyle
   allMessages: InterviewMessage[]
   sourceMeta: string[]
   knowledgeTags: string[]
@@ -37,6 +41,27 @@ const props = defineProps<{
   streamError?: string
   sessionStatusText: string
 }>()
+
+const emit = defineEmits<{
+  'update:answerDraft': [value: string]
+  'update:feedbackStyle': [value: PersistedInterviewFeedbackStyle]
+  submit: []
+  finish: []
+  nextQuestion: []
+  clear: []
+  clearHistory: []
+  openLibrary: []
+  openHistory: []
+  openPractice: []
+  stop: []
+  selectQuestionThread: [value: string]
+}>()
+
+interface FeedbackStyleOption {
+  value: PersistedInterviewFeedbackStyle
+  label: string
+  description: string
+}
 
 interface MetaChip {
   key: string
@@ -68,6 +93,9 @@ interface MetaDetailState {
 const metaPriorityMap: Record<string, number> = {
   阶段: 10,
   难度: 20,
+  风格: 22,
+  命中: 25,
+  命中标签: 26,
   模式: 30,
   题源: 40,
   资料: 50,
@@ -77,6 +105,9 @@ const metaPriorityMap: Record<string, number> = {
 }
 
 const metaToneMap: Record<string, MetaChip['tone']> = {
+  风格: 'source',
+  命中: 'source',
+  命中标签: 'knowledge',
   题源: 'source',
   资料: 'document',
   类型: 'document',
@@ -90,10 +121,11 @@ const metaLabelValue = (label: string) => label.split(':').slice(1).join(':').tr
 const metaValueMaxLengthMap: Partial<Record<string, number>> = {
   资料: 16,
   题源: 14,
-  专项: 10
+  专项: 10,
+  命中标签: 18
 }
 
-const expandableMetaKeys = new Set(['资料', '题源', '专项'])
+const expandableMetaKeys = new Set(['资料', '题源', '专项', '命中标签'])
 
 const formatMetaChipLabel = (label: string) => {
   const key = metaLabelKey(label)
@@ -335,6 +367,24 @@ const practiceZoneLabelMap: Record<PersistedPracticePlan['zone'], string> = {
   performance: '性能优化'
 }
 
+const feedbackStyleOptions: FeedbackStyleOption[] = [
+  {
+    value: 'followup',
+    label: feedbackStyleLabelMap.followup,
+    description: '更像真实面试官，优先连续追问。'
+  },
+  {
+    value: 'corrective',
+    label: feedbackStyleLabelMap.corrective,
+    description: '先指出回答和资料重点哪里没对齐。'
+  },
+  {
+    value: 'guided',
+    label: feedbackStyleLabelMap.guided,
+    description: '先提醒资料重点，再继续往下问。'
+  }
+]
+
 const isQuestionHistoryView = ref(true)
 const isClearHistoryConfirmVisible = ref(false)
 const historyCurrentPage = ref(1)
@@ -421,20 +471,6 @@ const historyPlaceholderItems = computed(() => {
     length: placeholderCount
   }, (_, index) => `history-placeholder-${ index }`)
 })
-
-const emit = defineEmits<{
-  'update:answerDraft': [value: string]
-  submit: []
-  finish: []
-  nextQuestion: []
-  clear: []
-  clearHistory: []
-  openLibrary: []
-  openHistory: []
-  openPractice: []
-  stop: []
-  selectQuestionThread: [value: string]
-}>()
 
 const openQuestionThread = (threadId: string) => {
   emit('selectQuestionThread', threadId)
@@ -841,6 +877,23 @@ onBeforeUnmount(() => {
               </section>
 
               <div class="mock-draft-shell">
+                <div class="mock-feedback-style-card">
+                  <div class="mock-side-label">面试风格</div>
+                  <div class="mock-feedback-style-group">
+                    <button
+                      v-for="option in feedbackStyleOptions"
+                      :key="option.value"
+                      type="button"
+                      class="mock-feedback-style-button"
+                      :class="{ 'is-active': props.feedbackStyle === option.value }"
+                      :disabled="viewState.streaming"
+                      @click="$emit('update:feedbackStyle', option.value)"
+                    >
+                      <strong>{{ option.label }}</strong>
+                      <span>{{ option.description }}</span>
+                    </button>
+                  </div>
+                </div>
                 <AnswerInputPanel
                   :value="viewState.answerDraft"
                   :submitted="viewState.submitted"
@@ -1186,7 +1239,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: minmax(0, 7fr) minmax(340px, 3fr);
   gap: 20px;
-  align-items: start;
+  align-items: stretch;
   min-height: 0;
 }
 
@@ -1195,6 +1248,7 @@ onBeforeUnmount(() => {
   grid-template-rows: auto auto minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
+  overflow: hidden;
 }
 
 .mock-question-card,
@@ -1272,6 +1326,64 @@ onBeforeUnmount(() => {
   font-size: 14px;
   font-weight: 400;
   line-height: 1.5;
+}
+
+.mock-feedback-style-card {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.mock-feedback-style-group {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mock-feedback-style-button {
+  display: grid;
+  gap: 4px;
+  min-height: 84px;
+  padding: 10px 12px;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 0.04);
+  color: rgb(229 236 255 / 0.8);
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.mock-feedback-style-button strong {
+  color: rgb(247 249 255 / 0.96);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.mock-feedback-style-button span {
+  color: rgb(223 231 252 / 0.72);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.mock-feedback-style-button:hover:not(:disabled) {
+  border-color: rgb(168 154 255 / 0.34);
+  background: rgb(112 94 219 / 0.14);
+  transform: translateY(-1px);
+}
+
+.mock-feedback-style-button.is-active {
+  border-color: rgb(176 156 255 / 0.48);
+  background: linear-gradient(180deg, rgb(118 97 255 / 0.26) 0%, rgb(93 73 222 / 0.22) 100%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
+}
+
+.mock-feedback-style-button:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
 }
 
 .mock-conversation-shell {
@@ -1711,6 +1823,8 @@ onBeforeUnmount(() => {
 .mock-draft-shell {
   min-height: 0;
   overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .mock-session-footer {
@@ -1865,11 +1979,20 @@ onBeforeUnmount(() => {
 }
 
 .mock-draft-shell :deep(.answer-panel) {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100%;
+  min-height: 0;
   padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
+}
+
+.mock-draft-shell :deep(.draft-bubble),
+.mock-draft-shell :deep(.bubble-body),
+.mock-draft-shell :deep(.answer-input) {
+  min-height: 0;
 }
 
 .mock-draft-shell :deep(.panel-title) {
@@ -2024,6 +2147,10 @@ onBeforeUnmount(() => {
   }
 
   .mock-practice-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mock-feedback-style-group {
     grid-template-columns: 1fr;
   }
 }

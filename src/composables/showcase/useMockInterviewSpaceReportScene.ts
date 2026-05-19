@@ -9,6 +9,7 @@ import type {
 interface ReportSourceDocument {
   id?: string
   name?: string
+  type?: string
 }
 
 interface UseMockInterviewSpaceReportSceneOptions {
@@ -80,7 +81,8 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
     if (reportSceneSummary.value?.sourceDocumentName) {
       return {
         id: reportSceneSummary.value.sourceDocumentId,
-        name: reportSceneSummary.value.sourceDocumentName
+        name: reportSceneSummary.value.sourceDocumentName,
+        type: reportSceneSession.value?.docType || options.activeDocument.value?.type
       }
     }
 
@@ -93,13 +95,21 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
     return options.activeDocument.value
   })
 
+  const reportSourceDocumentLabel = computed(() => {
+    const name = reportSourceDocument.value?.name
+    const type = reportSourceDocument.value?.type?.toUpperCase()
+    if (name && type) return `${ name } (${ type })`
+    if (name) return name
+    return options.currentSourceLabel.value
+  })
+
   const reportStartedAtText = computed(() => reportSceneSession.value?.startedAt || '当前还没有训练开始记录')
   const reportFinishedAtText = computed(() => reportSceneSession.value?.finishedAt || '本轮尚未结束，仍可继续回到面试区')
 
   const reportHeaderMeta = computed(() => [
     `主题: ${ options.currentTopicLabel.value }`,
     `模式: ${ reportSceneSession.value?.mode ? options.currentModeLabel.value : '标准模拟' }`,
-    `来源: ${ reportSourceDocument.value?.name || options.currentSourceLabel.value }`
+    `来源资料: ${ reportSourceDocumentLabel.value }`
   ])
 
   const reportSummaryHeadline = computed(() => {
@@ -144,7 +154,7 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
     },
     {
       label: '训练来源',
-      value: reportSourceDocument.value?.name || options.currentSourceLabel.value
+      value: reportSourceDocumentLabel.value
     },
     {
       label: '开始时间',

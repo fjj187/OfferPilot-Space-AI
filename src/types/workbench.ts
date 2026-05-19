@@ -17,6 +17,7 @@ export type PersistedPracticeQuestionType = 'concept' | 'code' | 'scenario'
 export type PersistedPracticeDifficulty = 'easy' | 'medium' | 'hard'
 export type PersistedPracticeFocusArea = 'structure' | 'case_detail' | 'result_metric' | 'principle_depth'
 export type PersistedMockEntryMode = 'direct' | 'practice'
+export type PersistedInterviewFeedbackStyle = 'followup' | 'corrective' | 'guided'
 
 export interface PersistedPracticePlan {
   weaknessTag: string
@@ -35,21 +36,25 @@ export interface PersistedMockSessionConfig {
   questionType?: PersistedPracticeQuestionType
   questionCount?: number
   difficulty?: PersistedPracticeDifficulty
+  feedbackStyle?: PersistedInterviewFeedbackStyle
 }
 
-export interface PersistedLibraryDocument {
-  id: string
+export interface PersistedTrainingDocumentCore {
   name: string
   type: PersistedDocumentType
+  tags: string[]
+  summary: string
+  rawText: string
+}
+
+export interface PersistedLibraryDocument extends PersistedTrainingDocumentCore {
+  id: string
   size: number
   importedAt: string
-  summary: string
-  tags: string[]
   status: PersistedDocumentStatus
   topicKeys: PersistedTopicKey[]
   sourceKey?: string
   recommendedReason?: string
-  rawText?: string
 }
 
 export interface PersistedWorkbenchContext {

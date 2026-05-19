@@ -1,4 +1,5 @@
 import type { InterviewMessageFormat } from '@/types/message'
+import type { PersistedInterviewFeedbackStyle } from '@/types/workbench'
 
 export type InterviewStreamMode = 'mock' | 'remote'
 
@@ -23,6 +24,10 @@ export interface InterviewStreamRequest {
   answer: string
   sourceContext?: string
   sourceDocumentName?: string
+  sourceDocumentSummary?: string
+  sourceDocumentTags?: string[]
+  sourceDocumentExcerpt?: string
+  feedbackStyle?: PersistedInterviewFeedbackStyle
   format?: InterviewMessageFormat
 }
 

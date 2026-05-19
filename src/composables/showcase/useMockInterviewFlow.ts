@@ -68,6 +68,7 @@ export function useMockInterviewFlow(options: UseMockInterviewFlowOptions) {
       mode: context?.currentMode || options.currentMode.value,
       entryMode: config.entryMode,
       activeDocumentId: context?.activeDocumentId || config.activeDocumentId || '',
+      feedbackStyle: config.feedbackStyle,
       zone: config.zone,
       questionType: config.questionType,
       questionCount: config.questionCount,
@@ -116,6 +117,7 @@ export function useMockInterviewFlow(options: UseMockInterviewFlowOptions) {
       mockSessionConfig: {
         entryMode: result.replayConfig.entryMode,
         activeDocumentId: result.replayConfig.activeDocumentId,
+        feedbackStyle: result.replayConfig.feedbackStyle,
         zone: result.replayConfig.zone,
         questionType: result.replayConfig.questionType,
         questionCount: result.replayConfig.questionCount,
@@ -138,6 +140,7 @@ export function useMockInterviewFlow(options: UseMockInterviewFlowOptions) {
       mockSessionConfig: {
         entryMode: lastReplayConfig.value.entryMode,
         activeDocumentId: lastReplayConfig.value.activeDocumentId,
+        feedbackStyle: lastReplayConfig.value.feedbackStyle,
         zone: lastReplayConfig.value.zone,
         questionType: lastReplayConfig.value.questionType,
         questionCount: lastReplayConfig.value.questionCount,
