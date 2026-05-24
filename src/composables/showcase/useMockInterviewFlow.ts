@@ -39,13 +39,13 @@ interface UseMockInterviewFlowOptions {
   currentMode: Ref<PersistedInterviewMode>
   exitHistoryPreview: () => void
   finalizeFinishedMockSession: () => void
-  finishMockRound: () => FinishMockRoundResult | null
+  finishMockRound: () => Promise<FinishMockRoundResult | null> | FinishMockRoundResult | null
   hasMockSetup: ComputedRef<boolean>
   hasRestorableHistory: ComputedRef<boolean>
   openLatestHistoryPreview: () => boolean
   previewSessionId: Ref<string>
   saveWorkbenchContext: (payload: Omit<PersistedWorkbenchContext, 'updatedAt'>) => PersistedWorkbenchContext
-  clearAllMockHistoryState: () => void
+  clearAllMockHistoryState: () => Promise<void> | void
 }
 
 const resolveFlowModeByContext = (context: PersistedWorkbenchContext | null): MockInterviewFlowMode => {
@@ -99,8 +99,8 @@ export function useMockInterviewFlow(options: UseMockInterviewFlowOptions) {
     }
   }
 
-  const finishAndOpenReport = () => {
-    const result = options.finishMockRound()
+  const finishAndOpenReport = async () => {
+    const result = await options.finishMockRound()
     if (!result) return null
     lastReplayConfig.value = result.replayConfig
     currentRoundSnapshot.value = {
@@ -163,8 +163,8 @@ export function useMockInterviewFlow(options: UseMockInterviewFlowOptions) {
     flowMode.value = options.hasMockSetup.value ? 'mock' : 'idle'
   }
 
-  const clearAllMockHistory = () => {
-    options.clearAllMockHistoryState()
+  const clearAllMockHistory = async () => {
+    await options.clearAllMockHistoryState()
     currentRoundSnapshot.value = null
     lastReplayConfig.value = options.hasMockSetup.value ? lastReplayConfig.value : null
     flowMode.value = options.hasMockSetup.value ? 'mock' : 'idle'

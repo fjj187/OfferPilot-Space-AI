@@ -16,6 +16,7 @@ import { loadEnv } from 'vite'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd())
+  const interviewBackendOrigin = env.VITE_INTERVIEW_BACKEND_ORIGIN || 'http://localhost:3030'
 
   return {
     base: env.VITE_ROUTER_MODE === 'hash'
@@ -47,6 +48,10 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           ws: true,
           rewrite: (path) => path.replace(/^\/deepseek/, '')
+        },
+        '/api': {
+          target: interviewBackendOrigin,
+          changeOrigin: true
         }
       }
     },

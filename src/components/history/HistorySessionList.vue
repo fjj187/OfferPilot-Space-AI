@@ -7,8 +7,26 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  openReport: [sessionId: string]
+  openReport: [sessionId: string, threadId?: string]
 }>()
+
+const modeLabelMap: Record<string, string> = {
+  standard: '标准模拟',
+  guided: '引导模式'
+}
+
+const statusLabelMap: Record<string, string> = {
+  in_progress: '进行中',
+  completed: '已完成',
+  aborted: '已中断'
+}
+
+const sourceLabelMap: Record<string, string> = {
+  'backend-session': '后端真实会话',
+  overview: '总览页入口',
+  library: '资料库入口',
+  'hero-import': '导入资料入口'
+}
 </script>
 
 <template>
@@ -28,19 +46,33 @@ const emit = defineEmits<{
         <div class="session-head">
           <div>
             <div class="session-title">{{ topicLabelMap[item.topic] || item.topic }}</div>
-            <div class="session-meta">{{ item.mode }} · {{ item.source }}</div>
+            <div class="session-meta">{{ modeLabelMap[item.mode] || item.mode }} · {{ sourceLabelMap[item.source] || item.source }}</div>
           </div>
           <span
             class="session-status"
             :class="`is-${item.status}`"
           >
-            {{ item.status }}
+            {{ statusLabelMap[item.status] || item.status }}
           </span>
+        </div>
+
+        <div
+          v-if="item.questionTitle"
+          class="session-question"
+        >
+          {{ item.questionTitle }}
         </div>
 
         <div class="session-stats">
           <span>{{ item.answeredCount }} / {{ item.questionCount }} 题</span>
           <span>{{ item.weaknessTags.length }} 个薄弱点</span>
+        </div>
+
+        <div
+          v-if="item.backendLatestAssistantMessage || item.backendLatestUserMessage"
+          class="session-preview"
+        >
+          {{ item.backendLatestAssistantMessage || item.backendLatestUserMessage }}
         </div>
 
         <div class="session-time">
@@ -50,7 +82,7 @@ const emit = defineEmits<{
         <n-button
           size="small"
           secondary
-          @click="emit('openReport', item.id)"
+          @click="emit('openReport', item.id, item.activeQuestionThreadId)"
         >
           查看对应报告
         </n-button>
@@ -121,6 +153,14 @@ h3 {
   color: #7b88a0;
 }
 
+.session-question {
+  margin-top: 12px;
+  color: #2b3650;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
 .session-status {
   padding: 6px 10px;
   border-radius: 999px;
@@ -151,6 +191,13 @@ h3 {
   margin-top: 12px;
   font-size: 13px;
   color: #5f6f8a;
+}
+
+.session-preview {
+  margin-top: 12px;
+  color: #62708a;
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 .empty-text {

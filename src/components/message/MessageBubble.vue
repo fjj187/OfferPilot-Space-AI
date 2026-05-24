@@ -67,6 +67,11 @@ const timeLabel = computed(() => {
   background: #fff8f8;
 }
 
+.message-bubble.is-aborted {
+  border-color: #efdca8;
+  background: #fffaf0;
+}
+
 .bubble-head {
   display: flex;
   align-items: center;

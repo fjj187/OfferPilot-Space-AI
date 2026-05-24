@@ -3,8 +3,13 @@ import type { CSSProperties } from 'vue'
 import type {
   PersistedInterviewFeedbackStyle,
   PersistedMockSessionConfig,
-  PersistedPracticePlan
+  PersistedPracticePlan,
+  PersistedReportSummary
 } from '@/types/workbench'
+import {
+  isInterviewReportApiAvailable,
+  listRemoteInterviewReports
+} from '@/services/interview/interview-report-api'
 import SpaceContentPanel from '@/components/showcase/mock-interview-space/SpaceContentPanel.vue'
 import SpaceHeader from '@/components/showcase/mock-interview-space/SpaceHeader.vue'
 import SpaceOrbitNav from '@/components/showcase/mock-interview-space/SpaceOrbitNav.vue'
@@ -17,10 +22,12 @@ import { useLibraryWorkspaceState } from '@/composables/useLibraryWorkspaceState
 import { useMockInterviewFlow } from '@/composables/showcase/useMockInterviewFlow'
 import { useMockInterviewSpaceMockState } from '@/composables/showcase/useMockInterviewSpaceMockState'
 import { useMockInterviewSpaceOrbit } from '@/composables/showcase/useMockInterviewSpaceOrbit'
+import { useMockInterviewSpaceReportHydration } from '@/composables/showcase/useMockInterviewSpaceReportHydration'
 import { useMockInterviewSpaceReportScene } from '@/composables/showcase/useMockInterviewSpaceReportScene'
 import { useMockInterviewSpaceScroll } from '@/composables/showcase/useMockInterviewSpaceScroll'
 import { useOverviewLaunchState } from '@/composables/useOverviewLaunchState'
 import { useWorkbenchPersistence } from '@/composables/useWorkbenchPersistence'
+import { buildPracticeQuestionGroup } from '@/services/practice/practice-question-group-builder'
 import { interviewTopics } from '@/views/workbench/mock-interview.data'
 
 interface OrbitSlot {
@@ -50,6 +57,45 @@ const topicLabelMap = interviewTopics.reduce<Record<string, string>>((map, item)
 }, {})
 
 const {
+  loadWorkbenchContext,
+  getReportSummaryBySessionId,
+  loadReportSummaries,
+  saveWorkbenchContext
+} = useWorkbenchPersistence()
+
+const remoteReportSummaries = ref<PersistedReportSummary[]>([])
+const remoteReportsLoaded = ref(false)
+
+const mergeReportSummaries = () => {
+  const summaryMap = new Map<string, PersistedReportSummary>()
+  loadReportSummaries().forEach((item) => {
+    summaryMap.set(item.sessionId, item)
+  })
+  if (remoteReportsLoaded.value) {
+    remoteReportSummaries.value.forEach((item) => {
+      summaryMap.set(item.sessionId, item)
+    })
+  }
+  return [...summaryMap.values()].sort((prev, next) => {
+    return new Date(next.createdAt).getTime() - new Date(prev.createdAt).getTime()
+  })
+}
+
+const loadRemoteReportSummaries = async () => {
+  if (!isInterviewReportApiAvailable()) {
+    remoteReportsLoaded.value = true
+    return
+  }
+  try {
+    remoteReportSummaries.value = await listRemoteInterviewReports()
+  } catch {
+    remoteReportSummaries.value = []
+  } finally {
+    remoteReportsLoaded.value = true
+  }
+}
+
+const {
   activeTopic,
   activeDocument,
   currentMode,
@@ -64,14 +110,9 @@ const {
   statusLabel: overviewStatusLabel,
   summaryItems: overviewSummaryItems,
   primaryActionLabel: overviewPrimaryActionLabel
-} = useOverviewLaunchState()
-
-const {
-  loadWorkbenchContext,
-  getReportSummaryBySessionId,
-  loadReportSummaries,
-  saveWorkbenchContext
-} = useWorkbenchPersistence()
+} = useOverviewLaunchState({
+  resolveReportSummaries: mergeReportSummaries
+})
 const currentWorkbenchContext = computed(() => loadWorkbenchContext())
 
 const initialWorkbenchContext = currentWorkbenchContext.value
@@ -234,13 +275,25 @@ const activeInterviewDocumentMeta = computed(() => {
 
 const mockQuestionPrompt = computed(() => isMockAwaitingSetup.value ? '' : (activeQuestionThread.value?.prompt || primaryQuestion.value?.prompt || ''))
 const mockHintText = computed(() => isMockAwaitingSetup.value ? '' : (primaryQuestion.value?.hint || currentGuide.value?.desc || ''))
-const handleMockFinish = () => {
-  if (!finishAndOpenReport()) return
-  requestSceneChange(findSceneIndexById('report'), {
-    pauseAutoplay: true,
-    scrollToContent: true
-  })
+
+const getLocalReportSummaryBySessionId = (sessionId: string) => {
+  return mergeReportSummaries().find(item => item.sessionId === sessionId)
+    || getReportSummaryBySessionId(sessionId)
+    || undefined
 }
+
+const reportTargetSession = computed(() => latestCompletedSession.value || inProgressSession.value || null)
+
+const {
+  reportAnswerSnapshotFromRemote,
+  resolveReportSummary
+} = useMockInterviewSpaceReportHydration({
+  reportSession: reportTargetSession,
+  getLocalReportSummary: getLocalReportSummaryBySessionId
+})
+
+const getMergedReportSummaryBySessionId = (sessionId: string) => resolveReportSummary(sessionId)
+
 const handleMockOpenHistory = () => {
   if (openLatestHistory()) return
   window.$ModalMessage?.warning?.('当前无对话历史', {
@@ -248,8 +301,14 @@ const handleMockOpenHistory = () => {
     closable: false
   })
 }
-const handleClearMockHistory = () => {
-  clearAllMockHistory()
+const handleClearMockHistory = async () => {
+  await clearAllMockHistory()
+  remoteReportSummaries.value = []
+  await loadRemoteReportSummaries()
+  window.$ModalMessage?.success?.('对话历史已清空', {
+    duration: 2200,
+    closable: false
+  })
 }
 const {
   reportAnswerSnapshot,
@@ -272,8 +331,9 @@ const {
   inProgressSession,
   latestCompletedSession,
   latestReportSummary,
-  getReportSummaryBySessionId,
-  loadReportSummaries
+  getReportSummaryBySessionId: getMergedReportSummaryBySessionId,
+  loadReportSummaries: mergeReportSummaries,
+  reportAnswerSnapshotFromRemote
 })
 
 const {
@@ -300,6 +360,15 @@ const {
   saveWorkbenchContext,
   clearAllMockHistoryState: clearMockHistory
 })
+
+const handleMockFinish = async () => {
+  if (!(await finishAndOpenReport())) return
+  await loadRemoteReportSummaries()
+  requestSceneChange(findSceneIndexById('report'), {
+    pauseAutoplay: true,
+    scrollToContent: true
+  })
+}
 
 const sceneIndexById = scenes.reduce<Record<string, number>>((map, scene, index) => {
   map[scene.id] = index
@@ -657,6 +726,14 @@ const practiceTopicByZone: Record<PersistedPracticePlan['zone'], keyof typeof to
 }
 
 const handlePracticeStart = (plan: PersistedPracticePlan) => {
+  const buildResult = buildPracticeQuestionGroup(plan, {
+    reportSummary: reportSceneSummary.value
+  })
+  const practiceQuestionGroup = {
+    ...buildResult.group,
+    status: 'in_progress' as const
+  }
+
   startMockRound({
     activeDocumentId: currentTrainingDocument.value?.id || currentWorkbenchContext.value?.activeDocumentId || '',
     activeTopic: practiceTopicByZone[plan.zone] || activeTopic.value,
@@ -665,6 +742,16 @@ const handlePracticeStart = (plan: PersistedPracticePlan) => {
     practicePlan: plan,
     mockSessionConfig: buildPracticeMockSessionConfig(plan),
     sourcePage: 'mock-interview-space'
+  })
+  saveWorkbenchContext({
+    activeTopic: practiceTopicByZone[plan.zone] || activeTopic.value,
+    activeDocumentId: currentTrainingDocument.value?.id || currentWorkbenchContext.value?.activeDocumentId || '',
+    currentMode: 'standard',
+    sourcePage: 'mock-interview-space',
+    practicePlan: plan,
+    practiceQuestionGroup,
+    mockEntryMode: 'practice',
+    mockSessionConfig: buildPracticeMockSessionConfig(plan)
   })
   requestSceneChange(findSceneIndexById('mock'), {
     pauseAutoplay: true,
@@ -842,6 +929,7 @@ onMounted(() => {
   pageRef.value?.addEventListener('wheel', handleWheelDuringAutoScroll, {
     passive: false
   })
+  void loadRemoteReportSummaries()
 })
 
 onBeforeUnmount(() => {

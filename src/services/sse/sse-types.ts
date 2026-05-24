@@ -1,24 +1,32 @@
 import type { InterviewMessageFormat } from '@/types/message'
-import type { PersistedInterviewFeedbackStyle } from '@/types/workbench'
+import type { PersistedInterviewFeedbackStyle, PersistedTopicKey } from '@/types/workbench'
 
 export type InterviewStreamMode = 'mock' | 'remote'
 
-export interface InterviewStreamEvent {
-  type: 'start' | 'delta' | 'done' | 'error'
-  messageId: string
-  mode?: InterviewStreamMode
-  delta?: string
-  errorMessage?: string
+export interface InterviewApiError {
+  code: string
+  message: string
 }
 
-// Frontend request contract for the mock interview streaming endpoint.
-// The backend should accept this JSON payload over POST and return a text
-// streaming response whose chunks can be appended directly to the assistant
-// message body.
-export interface InterviewStreamRequest {
+export interface InterviewStreamEvent {
+  type: 'start' | 'chunk' | 'done' | 'error'
   messageId: string
-  prompt: string
+  mode?: InterviewStreamMode
+  chunk?: string
+  error?: InterviewApiError
+}
+
+// Frontend request contract for the interview streaming endpoint.
+// The backend should accept this JSON payload over POST and return an SSE-like
+// text streaming response whose chunks can be appended directly to the
+// assistant message body.
+export interface InterviewStreamRequest {
+  sessionId: string
+  messageId: string
+  threadId: string
+  topic: PersistedTopicKey
   topicLabel: string
+  prompt: string
   questionTitle: string
   questionPrompt: string
   answer: string

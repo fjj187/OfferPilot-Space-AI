@@ -2,6 +2,11 @@
 import WorkbenchContentShell from '@/components/workbench/WorkbenchContentShell.vue'
 import WorkbenchPageIntro from '@/components/workbench/WorkbenchPageIntro.vue'
 import { useWorkbenchPersistence } from '@/composables/useWorkbenchPersistence'
+import {
+  buildInterviewMessagesFromRemote,
+  getRemoteInterviewSessionDetail,
+  listRemoteInterviewSessions
+} from '@/services/interview/interview-session-api'
 
 interface ReportSectionItem {
   title: string
@@ -19,6 +24,8 @@ interface ReportEvidenceItem {
 const route = useRoute()
 const router = useRouter()
 const { getInterviewSessionById, getReportSummaryBySessionId } = useWorkbenchPersistence()
+const remoteSessionDetail = ref<null | Awaited<ReturnType<typeof getRemoteInterviewSessionDetail>>>(null)
+const remoteSessionLoaded = ref(false)
 
 const topicLabelMap: Record<string, string> = {
   vue3: 'Vue 3',
@@ -41,6 +48,7 @@ const statusLabelMap: Record<string, string> = {
 }
 
 const sourceLabelMap: Record<string, string> = {
+  'backend-session': '后端真实会话',
   'hero-import': '总览页导入资料入口',
   overview: '总览页训练推荐入口',
   'library-frontend-notes': '前端八股总纲资料',
@@ -53,15 +61,31 @@ const sourceLabelMap: Record<string, string> = {
 }
 
 const currentSessionId = computed(() => String(route.query.sessionId || ''))
+const currentThreadId = computed(() => String(route.query.threadId || ''))
 const currentSession = computed(() => (
   currentSessionId.value ? getInterviewSessionById(currentSessionId.value) : null
 ))
 const currentSummary = computed(() => (
   currentSessionId.value ? getReportSummaryBySessionId(currentSessionId.value) : null
 ))
+const remoteMessages = computed(() => (
+  remoteSessionDetail.value ? buildInterviewMessagesFromRemote(remoteSessionDetail.value) : []
+))
+const latestUserMessage = computed(() => {
+  return [...remoteMessages.value].reverse().find(item => item.role === 'user')?.displayContent || ''
+})
+const latestAssistantMessage = computed(() => {
+  return [...remoteMessages.value].reverse().find(item => item.role === 'assistant')?.displayContent || ''
+})
 
 const currentTopic = computed(() => (
-  topicLabelMap[String(currentSession.value?.topic || currentSummary.value?.topic || route.query.topic || '')] || '综合'
+  topicLabelMap[String(
+    remoteSessionDetail.value?.topic
+    || currentSession.value?.topic
+    || currentSummary.value?.topic
+    || route.query.topic
+    || ''
+  )] || '综合'
 ))
 
 const currentSource = computed(() => {
@@ -70,24 +94,37 @@ const currentSource = computed(() => {
 })
 
 const currentMode = computed(() => (
-  modeLabelMap[String(currentSession.value?.mode || route.query.mode || 'standard')] || '标准模拟'
+  modeLabelMap[String(
+    remoteSessionDetail.value?.feedbackStyle === 'guided'
+      ? 'guided'
+      : currentSession.value?.mode || route.query.mode || 'standard'
+  )] || '标准模拟'
 ))
 
 const currentStatus = computed(() => (
-  statusLabelMap[String(currentSession.value?.status || 'completed')] || '已完成'
+  statusLabelMap[String(
+    currentSession.value?.status
+    || (remoteSessionDetail.value?.messageCount ? 'completed' : 'in_progress')
+  )] || '已完成'
 ))
 
 const answeredCount = computed(() => (
-  currentSession.value?.answeredCount ?? currentSummary.value?.answeredCount ?? Number(route.query.answered || 0)
+  currentSession.value?.answeredCount
+  ?? currentSummary.value?.answeredCount
+  ?? (remoteSessionDetail.value ? Math.max(Math.floor(remoteSessionDetail.value.messageCount / 2), 0) : undefined)
+  ?? Number(route.query.answered || 0)
 ))
 
 const totalCount = computed(() => (
-  currentSession.value?.questionCount ?? currentSummary.value?.totalCount ?? Number(route.query.total || 0)
+  currentSession.value?.questionCount
+  ?? currentSummary.value?.totalCount
+  ?? (remoteSessionDetail.value ? Math.max(Math.ceil(remoteSessionDetail.value.messageCount / 2), 1) : undefined)
+  ?? Number(route.query.total || 0)
 ))
 
 const answeredText = computed(() => `${ answeredCount.value } / ${ totalCount.value || 0 } 题`)
-const startedAtText = computed(() => currentSession.value?.startedAt || '本轮开始时间已记录在训练会话中')
-const finishedAtText = computed(() => currentSession.value?.finishedAt || currentSummary.value?.createdAt || '刚刚完成本轮模拟')
+const startedAtText = computed(() => currentSession.value?.startedAt || remoteSessionDetail.value?.updatedAt || '本轮开始时间已记录在训练会话中')
+const finishedAtText = computed(() => currentSession.value?.finishedAt || currentSummary.value?.createdAt || remoteSessionDetail.value?.updatedAt || '刚刚完成本轮模拟')
 
 const weaknessTags = computed(() => {
   const list = currentSummary.value?.weaknessTags || currentSession.value?.weaknessTags || []
@@ -108,11 +145,15 @@ const focusAreaLabelMap: Record<string, string> = {
 }
 
 const headline = computed(() => (
-  currentSummary.value?.summaryHeadline || `本轮 ${ currentTopic.value } 模拟已经形成第一版复盘结论`
+  currentSummary.value?.summaryHeadline
+  || remoteSessionDetail.value?.questionTitle
+  || `本轮 ${ currentTopic.value } 模拟已经形成第一版复盘结论`
 ))
 
 const reportSummary = computed(() => (
   currentSummary.value?.summaryBody
+  || latestAssistantMessage.value
+  || latestUserMessage.value
   || `这轮训练已经完成，当前最明显的问题集中在 ${ weaknessTags.value.slice(0, 2).join('、') }。建议先看完整报告确认问题，再决定是直接补练还是再做一轮模拟。`
 ))
 
@@ -135,14 +176,14 @@ const evidenceItems = computed<ReportEvidenceItem[]>(() => {
   return [
     {
       title: '证据 01',
-      question: `围绕 ${ currentTopic.value } 当前题目的回答表现`,
-      answer: answerSnapshot[1] || '你的回答已经开始命中主题，但表达较短，缺少展开与承接。',
-      feedback: answerSnapshot[2] || `系统反馈显示：当前需要继续补 ${ weaknessTags.value.slice(0, 2).join('、') }，把答案从“知道”升级成“能讲清”。`
+      question: remoteSessionDetail.value?.questionTitle || `围绕 ${ currentTopic.value } 当前题目的回答表现`,
+      answer: answerSnapshot[1] || latestUserMessage.value || '你的回答已经开始命中主题，但表达较短，缺少展开与承接。',
+      feedback: answerSnapshot[2] || latestAssistantMessage.value || `系统反馈显示：当前需要继续补 ${ weaknessTags.value.slice(0, 2).join('、') }，把答案从“知道”升级成“能讲清”。`
     },
     {
       title: '证据 02',
       question: '为什么这轮会形成这个复盘结论？',
-      answer: answerSnapshot[0] || '当前回答样本显示，你能快速进入问题，但没有把过程、取舍和结果讲完整。',
+      answer: answerSnapshot[0] || latestUserMessage.value || '当前回答样本显示，你能快速进入问题，但没有把过程、取舍和结果讲完整。',
       feedback: feedbackText
     }
   ]
@@ -205,6 +246,42 @@ const continueMock = () => {
     name: 'WorkbenchMockInterview'
   })
 }
+
+const loadRemoteSessionDetail = async () => {
+  if (!currentSessionId.value) {
+    remoteSessionDetail.value = null
+    remoteSessionLoaded.value = true
+    return
+  }
+
+  try {
+    let resolvedThreadId = currentThreadId.value
+
+    if (!resolvedThreadId) {
+      const sessions = await listRemoteInterviewSessions()
+      resolvedThreadId = sessions.find(item => item.sessionId === currentSessionId.value)?.threadId || ''
+    }
+
+    remoteSessionDetail.value = resolvedThreadId
+      ? await getRemoteInterviewSessionDetail(currentSessionId.value, resolvedThreadId)
+      : null
+  } catch {
+    remoteSessionDetail.value = null
+  } finally {
+    remoteSessionLoaded.value = true
+  }
+}
+
+watch(
+  () => route.fullPath,
+  () => {
+    remoteSessionLoaded.value = false
+    loadRemoteSessionDetail()
+  },
+  {
+    immediate: true
+  }
+)
 </script>
 
 <template>

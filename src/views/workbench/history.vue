@@ -4,9 +4,13 @@ import HistorySessionList from '@/components/history/HistorySessionList.vue'
 import WorkbenchContentShell from '@/components/workbench/WorkbenchContentShell.vue'
 import WorkbenchPageIntro from '@/components/workbench/WorkbenchPageIntro.vue'
 import { useWorkbenchPersistence } from '@/composables/useWorkbenchPersistence'
+import { listRemoteInterviewSessions } from '@/services/interview/interview-session-api'
+import type { PersistedInterviewSession } from '@/types/workbench'
 
 const router = useRouter()
 const { loadInterviewSessions, loadReportSummaries } = useWorkbenchPersistence()
+const remoteSessions = ref<PersistedInterviewSession[]>([])
+const remoteSessionsLoaded = ref(false)
 
 const topicLabelMap: Record<string, string> = {
   vue3: 'Vue 3',
@@ -17,8 +21,18 @@ const topicLabelMap: Record<string, string> = {
   scenario: '场景题'
 }
 
+const trimPreview = (text: string, maxLength = 84) => {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+  return normalized.length > maxLength ? `${ normalized.slice(0, maxLength) }...` : normalized
+}
+
 const sessions = computed(() => {
-  return [...loadInterviewSessions()].sort((prev, next) => {
+  const sourceSessions = remoteSessionsLoaded.value && remoteSessions.value.length
+    ? remoteSessions.value
+    : loadInterviewSessions()
+
+  return [...sourceSessions].sort((prev, next) => {
     return new Date(next.startedAt).getTime() - new Date(prev.startedAt).getTime()
   })
 })
@@ -29,14 +43,55 @@ const summaries = computed(() => {
   })
 })
 
-const openReport = (sessionId: string) => {
+const openReport = (sessionId: string, threadId?: string) => {
   router.push({
     name: 'WorkbenchReport',
     query: {
-      sessionId
+      sessionId,
+      ...(threadId ? { threadId } : {})
     }
   })
 }
+
+const buildFallbackStatus = (messageCount: number): PersistedInterviewSession['status'] => {
+  return messageCount >= 2 ? 'completed' : 'in_progress'
+}
+
+const loadRemoteSessions = async () => {
+  try {
+    const sessionsPayload = await listRemoteInterviewSessions()
+    remoteSessions.value = sessionsPayload.map(item => ({
+      id: item.sessionId,
+      topic: (item.topic as PersistedInterviewSession['topic']) || 'vue3',
+      mode: item.feedbackStyle === 'guided' ? 'guided' : 'standard',
+      source: 'backend-session',
+      questionTitle: item.questionTitle,
+      backendThreadId: item.threadId,
+      backendLatestUserMessage: trimPreview(item.latestUserMessage || ''),
+      backendLatestAssistantMessage: trimPreview(item.latestAssistantMessage || ''),
+      questionCount: Math.max(Math.ceil(item.messageCount / 2), 1),
+      answeredCount: Math.max(Math.floor(item.messageCount / 2), 0),
+      currentQuestionIndex: 0,
+      submittedQuestionIds: [],
+      activeQuestionThreadId: item.threadId,
+      generatedThreadCount: 1,
+      weaknessTags: [],
+      followUpIndex: 0,
+      hintVisible: false,
+      startedAt: item.updatedAt,
+      finishedAt: item.updatedAt,
+      status: buildFallbackStatus(item.messageCount)
+    }))
+  } catch {
+    remoteSessions.value = []
+  } finally {
+    remoteSessionsLoaded.value = true
+  }
+}
+
+onMounted(() => {
+  loadRemoteSessions()
+})
 </script>
 
 <template>

@@ -57,7 +57,11 @@ const railLabels = [
   }
 ] as const
 
-export const useOverviewLaunchState = () => {
+interface UseOverviewLaunchStateOptions {
+  resolveReportSummaries?: () => PersistedReportSummary[]
+}
+
+export const useOverviewLaunchState = (options: UseOverviewLaunchStateOptions = {}) => {
   const {
     loadLibraryDocuments,
     loadWorkbenchContext,
@@ -79,7 +83,8 @@ export const useOverviewLaunchState = () => {
   })
 
   const allSummaries = computed(() => {
-    return [...loadReportSummaries()].sort((prev, next) => {
+    const source = options.resolveReportSummaries?.() ?? loadReportSummaries()
+    return [...source].sort((prev, next) => {
       return new Date(next.createdAt).getTime() - new Date(prev.createdAt).getTime()
     })
   })

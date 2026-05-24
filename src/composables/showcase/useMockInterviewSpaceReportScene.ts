@@ -22,6 +22,8 @@ interface UseMockInterviewSpaceReportSceneOptions {
   latestReportSummary: ComputedRef<PersistedReportSummary | null>
   getReportSummaryBySessionId: (sessionId: string) => PersistedReportSummary | undefined
   loadReportSummaries: () => PersistedReportSummary[]
+  /** 远程 session 消息摘录；summary 无 answerSnapshot 时作证据补充 */
+  reportAnswerSnapshotFromRemote?: ComputedRef<string[]>
 }
 
 export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceReportSceneOptions) {
@@ -121,7 +123,10 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
   })
 
   const reportAnswerSnapshot = computed(() => {
-    return reportSceneSummary.value?.answerSnapshot || []
+    if (reportSceneSummary.value?.answerSnapshot?.length) {
+      return reportSceneSummary.value.answerSnapshot
+    }
+    return options.reportAnswerSnapshotFromRemote?.value || []
   })
 
   const reportOverviewStats = computed(() => [
@@ -143,7 +148,11 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
     {
       label: '报告状态',
       value: reportSceneStatusText.value,
-      note: reportSceneSummary.value ? '已承接真实报告摘要' : '当前使用 session 结果生成摘要'
+      note: reportSceneSummary.value
+        ? (options.reportAnswerSnapshotFromRemote?.value.length && !reportSceneSummary.value.answerSnapshot?.length
+          ? '摘要来自服务端，证据来自会话消息'
+          : '已承接真实报告摘要')
+        : '当前使用 session 结果生成摘要'
     }
   ])
 

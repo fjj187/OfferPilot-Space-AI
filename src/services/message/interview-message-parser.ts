@@ -18,8 +18,8 @@ export const parseInterviewStreamChunk = (
   }
 
   return {
-    type: 'delta',
+    type: 'chunk',
     messageId,
-    delta: normalized
+    chunk: normalized
   }
 }

@@ -8,6 +8,21 @@ export type InterviewTopicKey =
 
 export type InterviewMode = 'standard' | 'guided'
 
+export type InterviewQuestionType = 'concept' | 'code' | 'scenario'
+
+export type InterviewQuestionFocusArea =
+  | 'structure'
+  | 'case_detail'
+  | 'result_metric'
+  | 'principle_depth'
+
+export type InterviewPracticeZone =
+  | 'vue'
+  | 'javascript'
+  | 'typescript'
+  | 'engineering'
+  | 'performance'
+
 export interface InterviewQuestion {
   id: string
   topic: InterviewTopicKey
@@ -22,6 +37,10 @@ export interface InterviewQuestion {
   reference: string
   weaknessSignal: string
   followUps: string[]
+  questionType?: InterviewQuestionType
+  focusAreas?: InterviewQuestionFocusArea[]
+  practiceZones?: InterviewPracticeZone[]
+  weaknessKeywords?: string[]
 }
 
 export interface InterviewGuide {
@@ -59,6 +78,10 @@ export const questionBank: InterviewQuestion[] = [
     hint: '先说输入输出，再说内部状态，最后说 watch / 生命周期怎么处理。',
     reference: '前端八股总纲.md',
     weaknessSignal: '组合式 API 的封装边界表达不够稳定',
+    questionType: 'concept',
+    focusAreas: ['structure', 'principle_depth'],
+    practiceZones: ['vue'],
+    weaknessKeywords: ['组合式', 'composable', '封装'],
     followUps: [
       '如果上传成功后还要自动切换当前文档上下文，你会把跳转逻辑放在哪里？',
       '这个 composable 如果以后要接 SSE 状态流，你会提前预留什么字段？'
@@ -77,6 +100,10 @@ export const questionBank: InterviewQuestion[] = [
     hint: '把答案分成 track、trigger、scheduler 三段来讲，结构会更稳。',
     reference: '前端八股总纲.md',
     weaknessSignal: '源码原理能讲关键词，但链路顺序容易乱',
+    questionType: 'code',
+    focusAreas: ['principle_depth', 'structure'],
+    practiceZones: ['vue'],
+    weaknessKeywords: ['响应式', '依赖', '源码'],
     followUps: [
       '为什么有些场景下要配合 computed 或 watch 来减少无效更新？',
       '如果你要向面试官解释 effect 和组件更新的关系，会怎么讲？'
@@ -95,6 +122,10 @@ export const questionBank: InterviewQuestion[] = [
     hint: '先给一个业务函数，再讲输入输出约束，最后说 IDE 提示收益。',
     reference: '高频追问清单.md',
     weaknessSignal: '泛型能写，但落到业务场景时例子不够具体',
+    questionType: 'code',
+    focusAreas: ['case_detail', 'principle_depth'],
+    practiceZones: ['typescript'],
+    weaknessKeywords: ['泛型', '类型', '约束'],
     followUps: [
       '如果这个泛型要兼容接口返回值兜底，你会怎么设计默认类型？',
       '你会怎么向面试官解释 any、unknown 和泛型的边界差异？'
@@ -113,6 +144,10 @@ export const questionBank: InterviewQuestion[] = [
     hint: '用“问题 - 方案 - 结果”结构会比堆工具名更像真实项目表达。',
     reference: '项目复盘沉淀.docx',
     weaknessSignal: '工程化回答里结果量化指标还不够',
+    questionType: 'scenario',
+    focusAreas: ['case_detail', 'result_metric'],
+    practiceZones: ['engineering'],
+    weaknessKeywords: ['工程化', '构建', '协作'],
     followUps: [
       '如果团队成员对规范工具排斥，你会怎么推动落地？',
       'CI/CD 改造时，你会优先监控哪两个风险点？'
@@ -131,6 +166,10 @@ export const questionBank: InterviewQuestion[] = [
     hint: '时间线比概念堆砌更重要，先说 from memory / disk，再说协商。',
     reference: '前端八股总纲.md',
     weaknessSignal: '缓存概念知道，但时间线表达不够利落',
+    questionType: 'concept',
+    focusAreas: ['structure', 'principle_depth'],
+    practiceZones: ['javascript'],
+    weaknessKeywords: ['缓存', 'HTTP', '浏览器'],
     followUps: [
       '如果资源是 hash 文件名，缓存策略你会怎么配？',
       '面试官继续问 CDN 缓存和浏览器缓存的关系，你会怎么衔接？'
@@ -149,6 +188,10 @@ export const questionBank: InterviewQuestion[] = [
     hint: '至少给出一个核心指标，例如 LCP、FCP 或白屏时间，答案会更扎实。',
     reference: '高频追问清单.md',
     weaknessSignal: '优化动作能说，指标和结果验证偏弱',
+    questionType: 'scenario',
+    focusAreas: ['result_metric', 'case_detail'],
+    practiceZones: ['performance'],
+    weaknessKeywords: ['性能', '指标', '优化'],
     followUps: [
       '如果你没有真实监控平台，怎么先做低成本验证？',
       '为什么只说“加载更快了”在面试里说服力不够？'
@@ -167,6 +210,10 @@ export const questionBank: InterviewQuestion[] = [
     hint: '这题重点不是“硬答”，而是让面试官看到你的判断和沟通能力。',
     reference: '项目复盘沉淀.docx',
     weaknessSignal: '高压追问时答案容易从结构化变成碎片化',
+    questionType: 'scenario',
+    focusAreas: ['structure', 'case_detail'],
+    practiceZones: ['javascript'],
+    weaknessKeywords: ['追问', '场景', '表达'],
     followUps: [
       '如果面试官继续质疑你的方案不够完整，你下一句会怎么接？',
       '你会怎样把“不会”回答得既诚实又不失分？'

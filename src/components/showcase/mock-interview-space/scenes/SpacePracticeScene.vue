@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import SpaceSceneHeader from '@/components/showcase/mock-interview-space/SpaceSceneHeader.vue'
+import {
+  buildPracticeQuestionGroup,
+  practiceFocusAreaLabelMap,
+  practiceQuestionMatchReasonLabelMap
+} from '@/services/practice/practice-question-group-builder'
 import type {
-  PersistedPracticeFocusArea,
   PersistedPracticePlan,
   PersistedReportSummary
 } from '@/types/workbench'
@@ -128,13 +132,6 @@ const selectedDifficultyLabel = computed(() => {
   return difficultyOptions.find(item => item.value === selectedDifficulty.value)?.label || '进阶'
 })
 
-const practiceFocusAreaLabelMap: Record<PersistedPracticeFocusArea, string> = {
-  structure: '结构表达',
-  case_detail: '案例细节',
-  result_metric: '结果指标',
-  principle_depth: '原理追问'
-}
-
 const practicePlan = computed(() => props.reportSummary?.practicePlan || null)
 const practiceReason = computed(() => {
   return practicePlan.value?.reason || '当前先按最近一轮复盘里的主要弱项生成默认专项训练配置。'
@@ -153,6 +150,47 @@ const currentPracticePlan = computed<PersistedPracticePlan>(() => ({
   difficulty: selectedDifficulty.value as PersistedPracticePlan['difficulty'],
   reason: practiceReason.value
 }))
+
+const practiceGroupPreview = computed(() => buildPracticeQuestionGroup(currentPracticePlan.value, {
+  reportSummary: props.reportSummary
+}))
+
+const practiceGroupPreviewItems = computed(() => practiceGroupPreview.value.group.items)
+
+const practiceGroupShortfallText = computed(() => {
+  if (!practiceGroupPreview.value.isShortfall) return ''
+  return `题库不足，仅找到 ${ practiceGroupPreview.value.actualCount } / ${ practiceGroupPreview.value.requestedCount } 题。`
+})
+
+/** 预览列表每页条数（约填满固定高度区域；超过 2 题时出现翻页） */
+const previewPageSize = 2
+const previewPageIndex = ref(0)
+
+const previewPageCount = computed(() => {
+  const total = practiceGroupPreviewItems.value.length
+  if (!total) return 0
+  return Math.ceil(total / previewPageSize)
+})
+
+const previewPagedItems = computed(() => {
+  const start = previewPageIndex.value * previewPageSize
+  return practiceGroupPreviewItems.value.slice(start, start + previewPageSize)
+})
+
+const previewHasNextPage = computed(() => previewPageIndex.value < previewPageCount.value - 1)
+
+const previewArrowPointsRight = computed(() => previewHasNextPage.value)
+
+const resolvePreviewItemOrder = (indexOnPage: number) => (
+  previewPageIndex.value * previewPageSize + indexOnPage + 1
+)
+
+const advancePreviewPage = () => {
+  if (previewPageCount.value <= 1) return
+  previewPageIndex.value = previewHasNextPage.value
+    ? previewPageIndex.value + 1
+    : previewPageIndex.value - 1
+}
 
 const resolvePracticePlanSignature = (plan: PersistedPracticePlan | null) => {
   if (!plan) return ''
@@ -185,6 +223,13 @@ watch(practicePlan, (plan) => {
 }, {
   immediate: true
 })
+
+watch(
+  () => resolvePracticePlanSignature(currentPracticePlan.value),
+  () => {
+    previewPageIndex.value = 0
+  }
+)
 </script>
 
 <template>
@@ -196,43 +241,79 @@ watch(practicePlan, (plan) => {
 
     <section class="practice-layout">
       <div class="practice-main">
-        <div class="weakness-panel">
-          <div class="panel-label">第一步 · 查看当前弱点</div>
-          <h3>{{ activeWeakness }}</h3>
-          <p>先确认这轮要收敛的问题，再选择专项训练范围。</p>
-          <div class="weakness-tags">
-            <button
-              v-for="tag in displayedWeaknessTags"
-              :key="tag"
-              type="button"
-              :class="{ 'is-active': activeWeakness === tag }"
-              @click="selectedWeakness = tag"
-            >
-              {{ tag }}
-            </button>
+        <div class="config-panel">
+          <div class="config-block config-block--weakness">
+            <div class="panel-label">第一步 · 查看当前弱点</div>
+            <h3 class="config-heading">{{ activeWeakness }}</h3>
+            <p class="config-desc">先确认这轮要收敛的问题，再选择专项训练范围。</p>
+            <div class="weakness-tags">
+              <button
+                v-for="tag in displayedWeaknessTags"
+                :key="tag"
+                type="button"
+                :class="{ 'is-active': activeWeakness === tag }"
+                @click="selectedWeakness = tag"
+              >
+                {{ tag }}
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div class="selector-panel">
-          <div class="panel-label">第二步 · 选择专项专区</div>
-          <p class="practice-inline-note">{{ practiceReason }}</p>
-          <div
-            v-if="practiceFocusAreaText"
-            class="practice-focus-pill"
-          >
-            本轮补练重点：{{ practiceFocusAreaText }}
-          </div>
-          <div class="option-grid">
-            <button
-              v-for="zone in zoneOptions"
-              :key="zone.value"
-              type="button"
-              class="option-chip"
-              :class="{ 'is-active': selectedZone === zone.value }"
-              @click="selectedZone = zone.value"
+          <div class="config-block config-block--zone">
+            <div class="panel-label">第二步 · 选择专项专区</div>
+            <p class="config-desc practice-inline-note">{{ practiceReason }}</p>
+            <div
+              v-if="practiceFocusAreaText"
+              class="practice-focus-pill"
             >
-              {{ zone.label }}
-            </button>
+              本轮补练重点：{{ practiceFocusAreaText }}
+            </div>
+            <div class="option-grid">
+              <button
+                v-for="zone in zoneOptions"
+                :key="zone.value"
+                type="button"
+                class="option-chip"
+                :class="{ 'is-active': selectedZone === zone.value }"
+                @click="selectedZone = zone.value"
+              >
+                {{ zone.label }}
+              </button>
+            </div>
+          </div>
+
+          <div class="config-block config-block--count">
+            <div class="panel-label">第三步 · 设置题量和难度</div>
+            <div class="count-difficulty-grid">
+              <div class="side-option-group">
+                <span>题数</span>
+                <div class="side-options">
+                  <button
+                    v-for="option in questionCountOptions"
+                    :key="option.value"
+                    type="button"
+                    :class="{ 'is-active': selectedQuestionCount === option.value }"
+                    @click="selectedQuestionCount = option.value"
+                  >
+                    {{ option.label }}
+                  </button>
+                </div>
+              </div>
+              <div class="side-option-group">
+                <span>难度</span>
+                <div class="side-options">
+                  <button
+                    v-for="option in difficultyOptions"
+                    :key="option.value"
+                    type="button"
+                    :class="{ 'is-active': selectedDifficulty === option.value }"
+                    @click="selectedDifficulty = option.value"
+                  >
+                    {{ option.label }}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -253,44 +334,81 @@ watch(practicePlan, (plan) => {
       </div>
 
       <aside class="practice-side">
-        <div class="side-card">
-          <div class="panel-label">第三步 · 设置题量和难度</div>
-          <div class="side-option-group">
-            <span>题数</span>
-            <div class="side-options">
-              <button
-                v-for="option in questionCountOptions"
-                :key="option.value"
-                type="button"
-                :class="{ 'is-active': selectedQuestionCount === option.value }"
-                @click="selectedQuestionCount = option.value"
-              >
-                {{ option.label }}
-              </button>
-            </div>
+        <div class="side-card preview-card">
+          <div class="preview-card-header">
+            <div class="panel-label">第四步 · 预览本轮题组</div>
+            <h3>本轮专项题组 · 共 {{ practiceGroupPreviewItems.length }} 题</h3>
+            <p
+              v-if="practiceGroupShortfallText"
+              class="practice-shortfall-note"
+            >
+              {{ practiceGroupShortfallText }}
+            </p>
           </div>
-          <div class="side-option-group">
-            <span>难度</span>
-            <div class="side-options">
-              <button
-                v-for="option in difficultyOptions"
-                :key="option.value"
-                type="button"
-                :class="{ 'is-active': selectedDifficulty === option.value }"
-                @click="selectedDifficulty = option.value"
+          <div class="preview-card-body">
+            <div class="preview-card-body__content">
+              <Transition
+                v-if="practiceGroupPreviewItems.length"
+                name="preview-page-fade"
+                mode="out-in"
               >
-                {{ option.label }}
-              </button>
+                <ol
+                  :key="previewPageIndex"
+                  class="practice-group-preview"
+                >
+                  <li
+                    v-for="(item, index) in previewPagedItems"
+                    :key="item.questionId"
+                  >
+                    <span class="preview-item-order">{{ resolvePreviewItemOrder(index) }}.</span>
+                    <span
+                      v-if="item.focusArea"
+                      class="preview-focus"
+                    >[{{ practiceFocusAreaLabelMap[item.focusArea] }}]</span>
+                    {{ item.title }}
+                    <span class="preview-reason">{{ practiceQuestionMatchReasonLabelMap[item.matchReason] }}</span>
+                  </li>
+                </ol>
+              </Transition>
+              <p
+                v-else
+                class="practice-inline-note preview-empty"
+              >
+                当前配置下未匹配到题目，请调整专区、题型或难度。
+              </p>
             </div>
+            <button
+              v-if="previewPageCount > 1"
+              type="button"
+              class="preview-page-nav"
+              :aria-label="previewArrowPointsRight ? '预览下一页' : '预览上一页'"
+              @click="advancePreviewPage"
+            >
+              <svg
+                class="preview-page-nav__icon"
+                :class="{ 'is-back': !previewArrowPointsRight }"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  d="M10 7l5 5-5 5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                />
+              </svg>
+            </button>
           </div>
         </div>
 
         <div class="side-card action-card">
-          <div class="panel-label">第四步 · 开始训练</div>
+          <div class="panel-label">第五步 · 开始训练</div>
           <h3>{{ selectedZoneLabel }} · {{ selectedQuestionTypeLabel }}</h3>
           <p>
-            将围绕“{{ activeWeakness }}”生成 {{ selectedQuestionCount }} 道{{ selectedDifficultyLabel }}题，
-            进入模拟面试后用追问验证是否真的掌握。
+            将按上方预览顺序练 {{ practiceGroupPreviewItems.length || selectedQuestionCount }} 道{{ selectedDifficultyLabel }}题，
+            模拟面试中一题一线程按序推进。
           </p>
           <div
             v-if="practicePlan"
@@ -302,6 +420,7 @@ watch(practicePlan, (plan) => {
             <button
               type="button"
               class="scene-action primary"
+              :disabled="!practiceGroupPreviewItems.length"
               @click="emit('startPractice', currentPracticePlan)"
             >
               开始模拟面试
@@ -335,30 +454,36 @@ watch(practicePlan, (plan) => {
   text-transform: uppercase;
 }
 
-.weakness-panel p,
+.config-desc,
 .practice-inline-note,
 .drill-card p,
 .action-card p {
-  margin: 14px 0 0;
+  margin: 10px 0 0;
   color: rgb(232 244 255 / 78%);
-  font-size: 16px;
-  line-height: 1.75;
+  font-size: 15px;
+  line-height: 1.65;
 }
 
 .practice-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.75fr);
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.75fr);
   gap: 24px;
+  align-items: stretch;
 }
 
-.practice-main,
-.practice-side {
+.practice-main {
   display: grid;
   gap: 16px;
 }
 
-.weakness-panel,
-.selector-panel,
+.practice-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.config-panel,
 .drill-card,
 .side-card {
   border: 1px solid rgb(255 255 255 / 12%);
@@ -368,17 +493,66 @@ watch(practicePlan, (plan) => {
   backdrop-filter: blur(16px);
 }
 
-.weakness-panel,
-.selector-panel {
-  padding: 24px;
+.config-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 20px 28px;
+  padding: 22px 24px;
 }
 
-.weakness-panel h3,
+.config-block {
+  min-width: 0;
+}
+
+.config-block--weakness {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgb(255 255 255 / 10%);
+}
+
+.config-block--weakness .config-heading {
+  max-width: none;
+}
+
+.config-block--weakness .weakness-tags {
+  margin-top: 14px;
+}
+
+.config-block--zone {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: start;
+}
+
+.config-block--count {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: start;
+}
+
+.config-heading,
 .side-card h3,
 .drill-card h3 {
-  margin: 9px 0 0;
+  margin: 8px 0 0;
   color: #fff;
-  font-size: 24px;
+  font-size: 22px;
+  line-height: 1.35;
+}
+
+.count-difficulty-grid {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.config-block--count .side-option-group {
+  margin-top: 0;
+}
+
+.config-block--count .side-option-group + .side-option-group {
+  margin-top: 12px;
 }
 
 .weakness-tags {
@@ -423,7 +597,7 @@ watch(practicePlan, (plan) => {
 }
 
 .practice-inline-note {
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 .practice-focus-pill {
@@ -457,10 +631,97 @@ watch(practicePlan, (plan) => {
   transition: background 0.22s ease, border-color 0.22s ease, transform 0.22s ease;
 }
 
+.preview-card {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 360px;
+  padding: 20px;
+}
+
+.preview-card-header {
+  flex: 0 0 auto;
+}
+
+.preview-card-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 240px;
+  margin-top: 12px;
+  padding-top: 4px;
+}
+
+.preview-card-body__content {
+  min-height: inherit;
+  padding-right: 52px;
+}
+
+.preview-page-nav {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 50%;
+  background: rgb(255 255 255 / 10%);
+  color: rgb(244 250 255 / 92%);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: background 0.22s ease, border-color 0.22s ease, transform 0.22s ease;
+}
+
+.preview-page-nav:hover {
+  border-color: rgb(186 245 255 / 48%);
+  background: rgb(186 245 255 / 16%);
+  transform: translateY(-50%) scale(1.04);
+}
+
+.preview-page-nav__icon {
+  width: 20px;
+  height: 20px;
+  transition: transform 0.28s ease;
+}
+
+.preview-page-nav__icon.is-back {
+  transform: rotate(180deg);
+}
+
+.preview-page-fade-enter-active,
+.preview-page-fade-leave-active {
+  transition: opacity 0.28s ease;
+}
+
+.preview-page-fade-enter-from,
+.preview-page-fade-leave-to {
+  opacity: 0;
+}
+
+.preview-item-order {
+  margin-right: 4px;
+  color: rgb(244 250 255 / 72%);
+  font-weight: 700;
+}
+
+.preview-empty {
+  display: flex;
+  align-items: center;
+  min-height: inherit;
+  margin: 0;
+}
+
+.action-card {
+  flex: 0 0 auto;
+}
+
 .side-option-group {
   display: grid;
   gap: 10px;
-  margin-top: 18px;
+  margin-top: 14px;
 }
 
 .side-option-group > span {
@@ -486,6 +747,46 @@ watch(practicePlan, (plan) => {
   color: rgb(232 244 255 / 72%);
   font-size: 14px;
   line-height: 1.7;
+}
+
+.practice-shortfall-note {
+  margin-top: 12px;
+  color: #ffd9a8;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.practice-group-preview {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 20px;
+  color: rgb(244 250 255 / 90%);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.practice-group-preview li {
+  padding-left: 4px;
+}
+
+.preview-focus {
+  margin-right: 6px;
+  color: var(--scene-primary);
+  font-weight: 700;
+}
+
+.preview-reason {
+  display: block;
+  margin-top: 4px;
+  color: rgb(232 244 255 / 62%);
+  font-size: 13px;
+}
+
+.scene-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .scene-action {
@@ -520,6 +821,31 @@ watch(practicePlan, (plan) => {
   .practice-layout,
   .drill-grid {
     grid-template-columns: 1fr;
+  }
+
+  .config-panel {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .config-block--weakness {
+    grid-column: 1;
+    grid-row: auto;
+    padding-bottom: 16px;
+  }
+
+  .config-block--zone,
+  .config-block--count {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .preview-card {
+    min-height: 320px;
+  }
+
+  .preview-card-body {
+    min-height: 200px;
   }
 }
 </style>

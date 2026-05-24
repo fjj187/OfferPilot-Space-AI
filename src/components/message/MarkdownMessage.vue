@@ -48,7 +48,23 @@ const safeHtml = computed(() => {
   }
 
   :deep(code) {
-    font-size: 13px;
+    font-family: inherit;
+    font-size: 0.95em;
+    font-weight: 500;
+    font-style: normal;
+    padding: 0 0.2em;
+    border-radius: 4px;
+    background: rgb(49 65 98 / 0.08);
+  }
+
+  :deep(pre code),
+  :deep(.hljs) {
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.75;
+    background: transparent;
+    padding: 0;
   }
 }
 </style>

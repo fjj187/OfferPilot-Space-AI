@@ -91,21 +91,19 @@ interface MetaDetailState {
 }
 
 const metaPriorityMap: Record<string, number> = {
-  阶段: 10,
-  难度: 20,
-  风格: 22,
-  命中: 25,
-  命中标签: 26,
-  模式: 30,
-  题源: 40,
-  资料: 50,
-  类型: 60,
-  主题: 70,
-  知识点: 80
+  资料: 10,
+  模式: 20,
+  难度: 35,
+  阶段: 40,
+  题源: 50,
+  主题: 60,
+  知识点: 70,
+  类型: 80,
+  命中: 90,
+  命中标签: 100
 }
 
 const metaToneMap: Record<string, MetaChip['tone']> = {
-  风格: 'source',
   命中: 'source',
   命中标签: 'knowledge',
   题源: 'source',
@@ -386,6 +384,10 @@ const feedbackStyleOptions: FeedbackStyleOption[] = [
 ]
 
 const isQuestionHistoryView = ref(true)
+const isSessionFullscreen = ref(false)
+const sessionFullscreenPhase = ref<'idle' | 'entering' | 'leaving'>('idle')
+const sessionFullscreenTransitionMs = 320
+let sessionFullscreenTransitionTimer: ReturnType<typeof setTimeout> | null = null
 const isClearHistoryConfirmVisible = ref(false)
 const historyCurrentPage = ref(1)
 const finishSnapshot = ref<null | {
@@ -477,6 +479,55 @@ const openQuestionThread = (threadId: string) => {
   isQuestionHistoryView.value = false
 }
 
+const syncSessionFullscreenLock = (active: boolean) => {
+  document.documentElement.classList.toggle('mock-session-is-fullscreen', active)
+}
+
+const clearSessionFullscreenTransitionTimer = () => {
+  if (!sessionFullscreenTransitionTimer) return
+  window.clearTimeout(sessionFullscreenTransitionTimer)
+  sessionFullscreenTransitionTimer = null
+}
+
+const enterSessionFullscreen = () => {
+  if (isSessionFullscreen.value || sessionFullscreenPhase.value === 'entering') return
+  clearSessionFullscreenTransitionTimer()
+  closeTopicKnowledge()
+  closeMetaDetail()
+  isSessionFullscreen.value = true
+  sessionFullscreenPhase.value = 'entering'
+  syncSessionFullscreenLock(true)
+  sessionFullscreenTransitionTimer = window.setTimeout(() => {
+    sessionFullscreenPhase.value = 'idle'
+    sessionFullscreenTransitionTimer = null
+  }, sessionFullscreenTransitionMs)
+}
+
+const exitSessionFullscreen = () => {
+  if (!isSessionFullscreen.value || sessionFullscreenPhase.value === 'leaving') return
+  clearSessionFullscreenTransitionTimer()
+  sessionFullscreenPhase.value = 'leaving'
+  sessionFullscreenTransitionTimer = window.setTimeout(() => {
+    isSessionFullscreen.value = false
+    sessionFullscreenPhase.value = 'idle'
+    syncSessionFullscreenLock(false)
+    sessionFullscreenTransitionTimer = null
+  }, sessionFullscreenTransitionMs)
+}
+
+const toggleSessionFullscreen = () => {
+  if (isSessionFullscreen.value) {
+    exitSessionFullscreen()
+    return
+  }
+  enterSessionFullscreen()
+}
+
+const handleSessionFullscreenEscape = (event: KeyboardEvent) => {
+  if (event.key !== 'Escape' || !isSessionFullscreen.value) return
+  exitSessionFullscreen()
+}
+
 const openClearHistoryConfirm = () => {
   if (viewState.value.streaming) return
   isClearHistoryConfirmVisible.value = true
@@ -541,18 +592,23 @@ watch(activeMetaDetail, (detail) => {
 })
 
 watch(
-  () => [viewState.value.isAwaitingSetup, viewState.value.messages.length, viewState.value.activeQuestionThreadId] as const,
-  ([isAwaitingSetup, messageCount]) => {
+  () => props.isAwaitingSetup,
+  (isAwaitingSetup) => {
     if (isAwaitingSetup) {
-      isQuestionHistoryView.value = true
-      return
-    }
-    if (!messageCount) {
       isQuestionHistoryView.value = true
     }
   },
   {
     immediate: true
+  }
+)
+
+watch(
+  () => props.activeQuestionThreadId,
+  (threadId) => {
+    if (!threadId) {
+      isQuestionHistoryView.value = true
+    }
   }
 )
 
@@ -583,23 +639,36 @@ onMounted(() => {
   document.addEventListener('pointerdown', handleTopicKnowledgeDocumentPointerDown)
   window.addEventListener('resize', handleTopicKnowledgeViewportChange)
   window.addEventListener('scroll', handleTopicKnowledgeViewportChange, true)
+  document.addEventListener('keydown', handleSessionFullscreenEscape)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', handleTopicKnowledgeDocumentPointerDown)
   window.removeEventListener('resize', handleTopicKnowledgeViewportChange)
   window.removeEventListener('scroll', handleTopicKnowledgeViewportChange, true)
+  document.removeEventListener('keydown', handleSessionFullscreenEscape)
+  clearSessionFullscreenTransitionTimer()
+  isSessionFullscreen.value = false
+  sessionFullscreenPhase.value = 'idle'
+  syncSessionFullscreenLock(false)
 })
 
 </script>
 
 <template>
-  <div class="mock-scene-shell">
-    <SpaceSceneHeader
-      :title="sectionTitle"
-      :body="sectionBody"
-      aside-min-width="560px"
+  <div
+    class="mock-scene-shell"
+    :class="{ 'is-session-fullscreen': isSessionFullscreen }"
+  >
+    <div
+      v-show="!isSessionFullscreen"
+      class="mock-scene-header-wrap"
     >
+      <SpaceSceneHeader
+        :title="sectionTitle"
+        :body="sectionBody"
+        aside-min-width="560px"
+      >
       <template #aside>
         <div class="mock-meta-row">
           <span
@@ -686,125 +755,174 @@ onBeforeUnmount(() => {
           </Transition>
         </Teleport>
       </template>
-    </SpaceSceneHeader>
+      </SpaceSceneHeader>
+    </div>
 
     <div class="mock-live-shell">
-      <section class="mock-session-card">
+      <section
+        class="mock-session-card"
+        :class="{
+          'is-fullscreen': isSessionFullscreen,
+          'is-fullscreen-entering': sessionFullscreenPhase === 'entering',
+          'is-fullscreen-leaving': sessionFullscreenPhase === 'leaving'
+        }"
+      >
         <div class="mock-session-layout">
-          <div class="mock-conversation-shell">
+          <div
+            class="mock-conversation-shell"
+            :class="{ 'has-history-actions': isQuestionHistoryView }"
+          >
             <div class="mock-conversation-head">
-              <div class="mock-conversation-heading">
+              <div class="mock-conversation-head-top">
                 <div class="mock-conversation-label">问答内容区</div>
-                <p class="mock-session-status-copy">{{ viewState.sessionStatusText }}</p>
-                <p
-                  v-if="!isQuestionHistoryView && activeQuestionThread"
-                  class="mock-thread-caption"
+                <div
+                  v-if="!viewState.isAwaitingSetup"
+                  class="mock-conversation-head-meta"
                 >
-                  {{ activeQuestionThread.title }}
-                </p>
-              </div>
-              <div
-                v-if="!viewState.isAwaitingSetup"
-                class="mock-conversation-head-meta"
-              >
-                <button
-                  v-if="!isQuestionHistoryView && viewState.questionThreads.length > 1"
-                  type="button"
-                  class="mock-history-back-button"
-                  @click="isQuestionHistoryView = true"
-                >
-                  返回问题历史
-                </button>
-                <span
-                  class="mock-stream-mode-pill"
-                  :class="{ 'is-remote': viewState.streamMode === 'remote', 'is-mock': viewState.streamMode === 'mock' }"
-                >
-                  {{ viewState.streamModeLabel }}
-                </span>
-                <span class="mock-session-pill">
-                  {{ viewState.currentQuestionPosition }} / {{ viewState.totalCount || 0 }} 题
-                </span>
-              </div>
-            </div>
-            <div
-              v-if="viewState.isAwaitingSetup"
-              class="mock-empty-state"
-            >
-              <div class="mock-empty-orb"></div>
-              <strong>从这里开始你的回答</strong>
-              <p>请先去资料页或专项刷题页选择对应资料或题型，再回来开始面试。</p>
-              <div class="mock-empty-actions">
-                <button
-                  type="button"
-                  class="mock-empty-action primary"
-                  @click="emit('openLibrary')"
-                >
-                  去资料页
-                </button>
-                <button
-                  type="button"
-                  class="mock-empty-action"
-                  @click="emit('openPractice')"
-                >
-                  去专项刷题页
-                </button>
-                <button
-                  type="button"
-                  class="mock-empty-action"
-                  @click="emit('openHistory')"
-                >
-                  查看上次模拟面试历史
-                </button>
-              </div>
-            </div>
-            <div
-              v-else-if="isQuestionHistoryView"
-              class="mock-thread-history"
-            >
-              <button
-                v-for="item in pagedQuestionThreadCards"
-                :key="item.id"
-                type="button"
-                class="mock-thread-card"
-                @click="openQuestionThread(item.id)"
-              >
-                <div class="mock-thread-card-head">
-                  <strong>{{ item.title }}</strong>
-                  <span>{{ item.statusLabel }}</span>
+                  <button
+                    type="button"
+                    class="mock-fullscreen-button"
+                    :aria-label="isSessionFullscreen ? '退出全屏' : '全屏'"
+                    :title="isSessionFullscreen ? '退出全屏' : '全屏'"
+                    @click="toggleSessionFullscreen"
+                  >
+                    <svg
+                      v-if="!isSessionFullscreen"
+                      class="mock-fullscreen-icon"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="1.8"
+                      />
+                    </svg>
+                    <svg
+                      v-else
+                      class="mock-fullscreen-icon"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M9 4H4v5M20 9V4h-5M4 15v5h5M15 20h5v-5"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="1.8"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    v-if="!isQuestionHistoryView && viewState.questionThreads.length > 1"
+                    type="button"
+                    class="mock-history-back-button"
+                    @click="isQuestionHistoryView = true"
+                  >
+                    返回问题历史
+                  </button>
+                  <span
+                    class="mock-stream-mode-pill"
+                    :class="{ 'is-remote': viewState.streamMode === 'remote', 'is-mock': viewState.streamMode === 'mock' }"
+                  >
+                    {{ viewState.streamModeLabel }}
+                  </span>
+                  <span class="mock-session-pill">
+                    {{ viewState.currentQuestionPosition }} / {{ viewState.totalCount || 0 }} 题
+                  </span>
                 </div>
-                <p>{{ item.preview }}</p>
-              </button>
-              <div
-                v-for="placeholder in historyPlaceholderItems"
-                :key="placeholder"
-                class="mock-thread-card mock-thread-card-placeholder"
-                aria-hidden="true"
-              ></div>
-            </div>
-            <MessageList
-              v-else
-              :messages="viewState.messages"
-              :scroll-version="viewState.scrollVersion"
-            />
-            <div
-              v-if="viewState.streamError"
-              class="mock-stream-error"
-            >
-              {{ viewState.streamError }}
+              </div>
             </div>
             <div
-              class="mock-conversation-actions"
-              :class="{ 'is-history-view': isQuestionHistoryView }"
+              class="mock-conversation-body"
+              :class="{ 'has-dialogue-frame': !viewState.isAwaitingSetup && !isQuestionHistoryView }"
             >
-              <div
-                v-if="isQuestionHistoryView"
-                class="mock-conversation-actions-spacer"
-                aria-hidden="true"
-              ></div>
-              <div
-                v-if="isQuestionHistoryView && historyPageCount > 1"
-                class="mock-thread-pagination-row"
+              <p
+                v-if="!viewState.isAwaitingSetup && !isQuestionHistoryView && activeQuestionThread"
+                class="mock-thread-caption"
               >
+                {{ activeQuestionThread.title }}
+              </p>
+              <div
+                v-if="viewState.isAwaitingSetup"
+                class="mock-empty-state"
+              >
+                <div class="mock-empty-orb"></div>
+                <strong>从这里开始你的回答</strong>
+                <p>请先去资料页或专项刷题页选择对应资料或题型，再回来开始面试。</p>
+                <div class="mock-empty-actions">
+                  <button
+                    type="button"
+                    class="mock-empty-action primary"
+                    @click="emit('openLibrary')"
+                  >
+                    去资料页
+                  </button>
+                  <button
+                    type="button"
+                    class="mock-empty-action"
+                    @click="emit('openPractice')"
+                  >
+                    去专项刷题页
+                  </button>
+                  <button
+                    type="button"
+                    class="mock-empty-action"
+                    @click="emit('openHistory')"
+                  >
+                    查看上次模拟面试历史
+                  </button>
+                </div>
+              </div>
+              <div
+                v-else-if="isQuestionHistoryView"
+                class="mock-thread-history"
+              >
+                <button
+                  v-for="item in pagedQuestionThreadCards"
+                  :key="item.id"
+                  type="button"
+                  class="mock-thread-card"
+                  @click="openQuestionThread(item.id)"
+                >
+                  <div class="mock-thread-card-head">
+                    <strong>{{ item.title }}</strong>
+                    <span>{{ item.statusLabel }}</span>
+                  </div>
+                  <p>{{ item.preview }}</p>
+                </button>
+                <div
+                  v-for="placeholder in historyPlaceholderItems"
+                  :key="placeholder"
+                  class="mock-thread-card mock-thread-card-placeholder"
+                  aria-hidden="true"
+                ></div>
+              </div>
+              <div
+                v-else-if="!isQuestionHistoryView"
+                class="mock-dialogue-pane"
+              >
+                <MessageList
+                  :messages="viewState.messages"
+                  :scroll-version="viewState.scrollVersion"
+                />
+                <div
+                  v-if="viewState.streamError"
+                  class="mock-stream-error"
+                >
+                  {{ viewState.streamError }}
+                </div>
+              </div>
+            </div>
+            <div
+              v-if="isQuestionHistoryView && historyPageCount > 1"
+              class="mock-conversation-actions is-history-view"
+            >
+              <div class="mock-thread-pagination-row">
                 <Pagination
                   :page="historyCurrentPage"
                   :page-count="historyPageCount"
@@ -812,14 +930,6 @@ onBeforeUnmount(() => {
                   @change="historyCurrentPage = $event"
                 />
               </div>
-              <button
-                type="button"
-                class="mock-clear-history-button"
-                :disabled="viewState.streaming"
-                @click="openClearHistoryConfirm"
-              >
-                清空对话历史
-              </button>
             </div>
           </div>
 
@@ -850,14 +960,9 @@ onBeforeUnmount(() => {
             </section>
 
             <template v-if="viewState.isAwaitingSetup">
-              <div class="mock-question-card is-empty">
-                <div class="mock-prompt-label">题目</div>
-                <div class="mock-prompt-body">当前还没有面试题目。请先从资料页或专项刷题页选择训练上下文。</div>
-              </div>
-
               <section class="mock-question-info is-empty">
                 <div class="mock-side-label">提示</div>
-                <p>完成资料或题型选择后，系统才会生成对应题目并恢复作答区域。</p>
+                <p>完成资料或题型选择后，系统会在左侧对话区展示题目并开放作答。</p>
               </section>
 
               <div class="mock-draft-empty">
@@ -866,14 +971,12 @@ onBeforeUnmount(() => {
               </div>
             </template>
             <template v-else>
-              <div class="mock-question-card">
-                <div class="mock-prompt-label">题目</div>
-                <div class="mock-prompt-body">{{ viewState.questionPrompt || sectionBody }}</div>
-              </div>
-
-              <section class="mock-question-info">
+              <section
+                v-if="viewState.hintText"
+                class="mock-question-info"
+              >
                 <div class="mock-side-label">提示</div>
-                <p>{{ viewState.hintText || '当前还没有提示内容。' }}</p>
+                <p>{{ viewState.hintText }}</p>
               </section>
 
               <div class="mock-draft-shell">
@@ -955,6 +1058,14 @@ onBeforeUnmount(() => {
           >
             结束本轮并查看报告
           </button>
+          <button
+            type="button"
+            class="mock-clear-history-button"
+            :disabled="viewState.streaming"
+            @click="openClearHistoryConfirm"
+          >
+            清空对话历史
+          </button>
         </div>
       </section>
     </div>
@@ -967,6 +1078,14 @@ onBeforeUnmount(() => {
   z-index: 5;
   display: grid;
   gap: 24px;
+}
+
+.mock-scene-shell.is-session-fullscreen {
+  gap: 0;
+}
+
+.mock-scene-header-wrap {
+  min-width: 0;
 }
 
 .mock-prompt-label,
@@ -1217,35 +1336,85 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(14px);
 }
 
-.mock-conversation-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.mock-session-card.is-fullscreen,
+.mock-session-card.is-fullscreen-leaving {
+  position: fixed;
+  inset: 12px;
+  z-index: 1200;
+  width: auto;
+  height: calc(100dvh - 24px);
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  box-shadow:
+    0 24px 80px rgb(8 6 24 / 0.32),
+    inset 0 1px 0 rgb(255 255 255 / 0.08);
 }
 
-.mock-conversation-heading {
+.mock-session-card.is-fullscreen-entering {
+  animation: mock-session-fullscreen-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.mock-session-card.is-fullscreen-leaving {
+  animation: mock-session-fullscreen-out 0.28s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes mock-session-fullscreen-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes mock-session-fullscreen-out {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(0.98) translateY(10px);
+  }
+}
+
+.mock-conversation-head {
   display: grid;
   gap: 6px;
 }
 
+.mock-conversation-head-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 30px;
+}
+
 .mock-conversation-head-meta {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
 }
 
 .mock-session-layout {
   display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(340px, 3fr);
+  grid-template-columns: minmax(0, 7fr) minmax(360px, 3.2fr);
   gap: 20px;
   align-items: stretch;
   min-height: 0;
 }
 
 .mock-side-column {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 12px;
   min-height: 0;
   overflow: hidden;
@@ -1389,7 +1558,7 @@ onBeforeUnmount(() => {
 .mock-conversation-shell {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 12px;
+  gap: 10px;
   min-height: 0;
   height: 100%;
   overflow: hidden;
@@ -1400,15 +1569,41 @@ onBeforeUnmount(() => {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
 }
 
-.mock-conversation-label {
-  color: rgb(92 82 152 / 0.92);
+.mock-conversation-shell.has-history-actions {
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
-.mock-session-status-copy {
-  margin: 0;
-  color: rgb(231 236 255 / 0.72);
-  font-size: 14px;
-  line-height: 1.6;
+.mock-conversation-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mock-conversation-body.has-dialogue-frame {
+  gap: 10px;
+}
+
+.mock-dialogue-pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  border-top: 1px solid rgb(255 255 255 / 0.1);
+  border-bottom: 1px solid rgb(255 255 255 / 0.1);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.04),
+    inset 0 -1px 0 rgb(255 255 255 / 0.04);
+}
+
+.mock-conversation-body.has-dialogue-frame .mock-thread-caption {
+  flex-shrink: 0;
+}
+
+.mock-conversation-label {
+  color: rgb(92 82 152 / 0.92);
 }
 
 .mock-thread-caption {
@@ -1441,6 +1636,36 @@ onBeforeUnmount(() => {
   color: rgb(231 237 255 / 0.82);
   font-size: 13px;
   white-space: nowrap;
+}
+
+.mock-fullscreen-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.05);
+  color: rgb(238 243 255 / 0.9);
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.mock-fullscreen-button:hover {
+  border-color: rgb(255 255 255 / 0.22);
+  background: rgb(255 255 255 / 0.09);
+  transform: translateY(-1px);
+}
+
+.mock-fullscreen-icon {
+  width: 15px;
+  height: 15px;
 }
 
 .mock-history-back-button {
@@ -1500,24 +1725,12 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.mock-conversation-actions {
+.mock-conversation-actions.is-history-view {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
+  justify-content: center;
   min-height: 42px;
-  padding-top: 10px;
-}
-
-.mock-conversation-actions.is-history-view {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 12px;
-  align-items: center;
-}
-
-.mock-conversation-actions-spacer {
-  min-width: 0;
+  padding-top: 4px;
 }
 
 .mock-empty-state {
@@ -1811,16 +2024,8 @@ onBeforeUnmount(() => {
   padding-top: 0;
 }
 
-.mock-conversation-actions.is-history-view .mock-thread-pagination-row {
-  grid-column: 2;
-}
-
-.mock-conversation-actions.is-history-view .mock-clear-history-button {
-  grid-column: 3;
-  justify-self: end;
-}
-
 .mock-draft-shell {
+  flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
   display: grid;
@@ -1829,10 +2034,18 @@ onBeforeUnmount(() => {
 
 .mock-session-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: flex-start;
   gap: 16px;
   padding-top: 8px;
+}
+
+.mock-session-footer .mock-clear-history-button {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 14px;
+  font-size: 14px;
 }
 
 .mock-secondary-button,
@@ -1884,16 +2097,17 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
-.mock-live-shell :deep(.message-list) {
+.mock-dialogue-pane :deep(.message-list) {
+  flex: 1;
   min-height: 0;
   max-height: none;
-  height: 100%;
+  height: auto;
   box-sizing: border-box;
   padding: 8px 14px 8px 8px;
   overflow-y: hidden;
 }
 
-.mock-live-shell :deep(.message-list.has-messages) {
+.mock-dialogue-pane :deep(.message-list.has-messages) {
   overflow-y: auto;
 }
 
@@ -1942,6 +2156,7 @@ onBeforeUnmount(() => {
 .mock-live-shell :deep(.markdown-message ul) {
   color: rgb(247 249 255 / 0.96);
   font-size: 17px;
+  font-weight: 500;
   line-height: 1.85;
 }
 
@@ -1960,6 +2175,42 @@ onBeforeUnmount(() => {
 
 .mock-live-shell :deep(.markdown-message li) {
   padding-left: 2px;
+}
+
+/* 行内 code / 英文术语与正文同字体同字重，避免等宽细体与中文反差过大 */
+.mock-live-shell :deep(.markdown-message code) {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 500;
+  font-style: normal;
+  letter-spacing: 0;
+  padding: 0 0.2em;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.1);
+  color: rgb(247 249 255 / 0.96);
+}
+
+.mock-live-shell :deep(.markdown-message pre) {
+  margin: 12px 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgb(8 12 28 / 0.55);
+  overflow-x: auto;
+}
+
+.mock-live-shell :deep(.markdown-message pre code),
+.mock-live-shell :deep(.markdown-message .markdown-code-wrapper code),
+.mock-live-shell :deep(.markdown-message .hljs) {
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.85;
+  background: transparent;
+  padding: 0;
+}
+
+.mock-live-shell :deep(.markdown-message strong) {
+  font-weight: 600;
 }
 
 .mock-live-shell :deep(.empty-title) {
@@ -2169,10 +2420,15 @@ onBeforeUnmount(() => {
     min-width: 0;
   }
 
-  .mock-session-card {
+  .mock-session-card:not(.is-fullscreen) {
     height: 750px;
     min-height: 750px;
     max-height: 750px;
+  }
+
+  .mock-session-card.is-fullscreen {
+    inset: 8px;
+    height: calc(100dvh - 16px);
   }
 
   .mock-conversation-shell {
@@ -2181,10 +2437,30 @@ onBeforeUnmount(() => {
     padding: 16px;
   }
 
-  .mock-conversation-head,
+  .mock-session-card.is-fullscreen .mock-conversation-shell {
+    min-height: 0;
+    max-height: none;
+  }
+
+  .mock-conversation-head-top,
   .mock-session-footer {
     align-items: flex-start;
     flex-direction: column;
   }
+
+  .mock-conversation-head-meta {
+    justify-content: flex-start;
+  }
+}
+</style>
+
+<style lang="scss">
+html.mock-session-is-fullscreen,
+html.mock-session-is-fullscreen body {
+  overflow: hidden;
+}
+
+html.mock-session-is-fullscreen .interview-space-showcase {
+  overflow: hidden !important;
 }
 </style>

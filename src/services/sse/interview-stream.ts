@@ -1,6 +1,5 @@
-import { consumeStreamText } from './sse-client'
-import type { InterviewStreamHandlers, InterviewStreamMode, InterviewStreamRequest } from './sse-types'
-import { splitStream } from '@/components/MarkdownPreview/transform'
+import { consumeSSEStream, consumeStreamText } from './sse-client'
+import type { InterviewApiError, InterviewStreamHandlers, InterviewStreamMode, InterviewStreamRequest } from './sse-types'
 
 const feedbackStyleInstructionMap = {
   followup: '反馈风格：追问型。请更像真实面试官，优先继续追问和压缩回答边界。',
@@ -9,8 +8,17 @@ const feedbackStyleInstructionMap = {
 } as const
 
 const createId = () => `msg-${ Date.now() }-${ Math.random().toString(36).slice(2, 8) }`
+const createStreamError = (message: string, code = 'INTERVIEW_STREAM_ERROR'): InterviewApiError => ({
+  code,
+  message
+})
 
-const resolveInterviewStreamEndpoint = () => import.meta.env.VITE_INTERVIEW_SSE_URL?.trim() || ''
+const resolveInterviewStreamEndpoint = () => {
+  const configuredEndpoint = import.meta.env.VITE_INTERVIEW_SSE_URL?.trim() || ''
+  if (configuredEndpoint) return configuredEndpoint
+
+  return import.meta.env.DEV ? '/api/interview/stream' : ''
+}
 
 const resolveInterviewStreamMode = (): InterviewStreamMode => (
   resolveInterviewStreamEndpoint() ? 'remote' : 'mock'
@@ -161,13 +169,23 @@ const createFetchReader = async (
   })
 
   if (!response.ok || !response.body) {
-    throw new Error(`Interview stream request failed: ${ response.status }`)
+    throw createStreamError(`Interview stream request failed: ${ response.status }`, `HTTP_${ response.status }`)
   }
 
   return response.body
     .pipeThrough(new TextDecoderStream())
-    .pipeThrough(splitStream('\n'))
     .getReader()
+}
+
+const resolveSSEEventData = <T>(data: string): T | null => {
+  const normalized = data.trim()
+  if (!normalized) return null
+
+  try {
+    return JSON.parse(normalized) as T
+  } catch {
+    return null
+  }
 }
 
 export const startInterviewStream = (
@@ -177,41 +195,110 @@ export const startInterviewStream = (
   const controller = new AbortController()
   const messageId = createId()
   const mode = resolveInterviewStreamMode()
+  let hasCompleted = false
+  const createReader = (signal?: AbortSignal) => createFetchReader({
+    ...payload,
+    messageId
+  }, signal)
 
-  consumeStreamText({
-    signal: controller.signal,
-    createReader: signal => createFetchReader({
-      ...payload,
-      messageId
-    }, signal),
-    onStart: () => {
-      handlers.onEvent({
-        type: 'start',
-        messageId,
-        mode
-      })
-    },
-    onChunk: chunk => {
-      handlers.onEvent({
-        type: 'delta',
-        messageId,
-        delta: chunk
-      })
-    },
-    onDone: () => {
-      handlers.onEvent({
-        type: 'done',
-        messageId
-      })
-    },
-    onError: error => {
-      handlers.onEvent({
-        type: 'error',
-        messageId,
-        errorMessage: error.message
-      })
-    }
-  })
+  if (mode === 'remote') {
+    consumeSSEStream({
+      signal: controller.signal,
+      createReader,
+      onStart: () => {
+        handlers.onEvent({
+          type: 'start',
+          messageId,
+          mode
+        })
+      },
+      onEvent: (frame) => {
+        if (frame.event === 'chunk' || frame.event === 'message') {
+          const chunkPayload = resolveSSEEventData<{ content?: string; }>(frame.data)
+          handlers.onEvent({
+            type: 'chunk',
+            messageId,
+            chunk: chunkPayload?.content || frame.data
+          })
+          return
+        }
+
+        if (frame.event === 'done') {
+          hasCompleted = true
+          handlers.onEvent({
+            type: 'done',
+            messageId
+          })
+          return
+        }
+
+        if (frame.event === 'error') {
+          const errorPayload = resolveSSEEventData<InterviewApiError>(frame.data)
+          handlers.onEvent({
+            type: 'error',
+            messageId,
+            error: errorPayload || createStreamError(frame.data || 'Stream request failed')
+          })
+        }
+      },
+      onDone: () => {
+        if (hasCompleted) return
+        hasCompleted = true
+        handlers.onEvent({
+          type: 'done',
+          messageId
+        })
+      },
+      onError: error => {
+        const streamError = 'code' in error && 'message' in error
+          ? error as InterviewApiError
+          : createStreamError(error.message)
+        handlers.onEvent({
+          type: 'error',
+          messageId,
+          error: streamError
+        })
+      }
+    })
+  }
+  else {
+    consumeStreamText({
+      signal: controller.signal,
+      createReader,
+      onStart: () => {
+        handlers.onEvent({
+          type: 'start',
+          messageId,
+          mode
+        })
+      },
+      onChunk: chunk => {
+        handlers.onEvent({
+          type: 'chunk',
+          messageId,
+          chunk
+        })
+      },
+      onDone: () => {
+        if (hasCompleted) return
+        hasCompleted = true
+        handlers.onEvent({
+          type: 'done',
+          messageId
+        })
+      },
+      onError: error => {
+        const streamError = 'code' in error && 'message' in error
+          ? error as InterviewApiError
+          : createStreamError(error.message)
+        handlers.onEvent({
+          type: 'error',
+          messageId,
+          error: streamError
+        })
+      }
+    })
+  }
 
   return {
     messageId,

@@ -38,11 +38,14 @@ const {
   messages,
   isStreaming,
   streamError,
+  canRetryStream,
+  retryActionLabel,
   scrollVersion,
   appendUserMessage,
   appendAssistantMessage,
   appendSystemMessage,
   startStream,
+  retryStream,
   stopStream,
   clearMessages
 } = useInterviewStream()
@@ -280,6 +283,9 @@ const submitAnswer = () => {
   appendUserMessage(answer)
 
   startStream({
+    sessionId: currentSessionId.value,
+    threadId: question.id,
+    topic: activeTopic.value,
     prompt: `${ question.title }\n${ answer }`,
     topicLabel: topicLabelMap[activeTopic.value] || 'Vue 3',
     questionTitle: question.title,
@@ -457,10 +463,19 @@ watch(
       />
 
       <div
-        v-if="streamError"
+        v-if="streamError || canRetryStream"
         class="stream-error"
       >
-        {{ streamError }}
+        <span>{{ streamError || '上一轮流式生成已停止，你可以重新发起本轮反馈。' }}</span>
+        <n-button
+          v-if="canRetryStream"
+          size="small"
+          tertiary
+          type="warning"
+          @click="retryStream"
+        >
+          {{ retryActionLabel }}
+        </n-button>
       </div>
     </section>
 
@@ -700,12 +715,20 @@ watch(
 }
 
 .stream-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-top: 14px;
   padding: 12px 14px;
   border-radius: 16px;
   background: #fff6f6;
   color: #b94d4d;
   font-size: 13px;
+}
+
+.stream-error :deep(.n-button) {
+  flex-shrink: 0;
 }
 
 @media (max-width: 1440px) {
@@ -722,7 +745,8 @@ watch(
 
 @media (max-width: 720px) {
   .round-head,
-  .stream-head {
+  .stream-head,
+  .stream-error {
     flex-direction: column;
     align-items: stretch;
   }

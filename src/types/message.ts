@@ -1,6 +1,6 @@
 export type InterviewMessageRole = 'assistant' | 'user' | 'system'
 export type InterviewMessageFormat = 'plain' | 'markdown'
-export type InterviewMessageStatus = 'streaming' | 'done' | 'error'
+export type InterviewMessageStatus = 'streaming' | 'done' | 'error' | 'aborted'
 
 export interface InterviewMessage {
   id: string

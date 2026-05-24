@@ -29,6 +29,32 @@ export interface PersistedPracticePlan {
   reason: string
 }
 
+export type PersistedPracticeQuestionMatchReason =
+  | 'focus_area'
+  | 'weakness_tag'
+  | 'type_zone'
+  | 'fallback'
+
+export interface PersistedPracticeQuestionGroupItem {
+  questionId: string
+  order: number
+  title: string
+  prompt: string
+  focusArea?: PersistedPracticeFocusArea
+  matchReason: PersistedPracticeQuestionMatchReason
+}
+
+export interface PersistedPracticeQuestionGroup {
+  id: string
+  sourceSessionId?: string
+  planSnapshot: PersistedPracticePlan
+  items: PersistedPracticeQuestionGroupItem[]
+  currentIndex: number
+  status: 'pending' | 'in_progress' | 'completed'
+  createdAt: string
+  updatedAt: string
+}
+
 export interface PersistedMockSessionConfig {
   entryMode: PersistedMockEntryMode
   activeDocumentId?: string
@@ -63,6 +89,7 @@ export interface PersistedWorkbenchContext {
   currentMode?: PersistedInterviewMode
   sourcePage?: string
   practicePlan?: PersistedPracticePlan | null
+  practiceQuestionGroup?: PersistedPracticeQuestionGroup | null
   mockEntryMode?: PersistedMockEntryMode
   mockSessionConfig?: PersistedMockSessionConfig | null
   updatedAt: string
@@ -73,6 +100,10 @@ export interface PersistedInterviewSession {
   topic: PersistedTopicKey
   mode: PersistedInterviewMode
   source: string
+  questionTitle?: string
+  backendThreadId?: string
+  backendLatestUserMessage?: string
+  backendLatestAssistantMessage?: string
   sessionConfigKey?: string
   sourceDocumentId?: string
   docType?: PersistedDocumentType

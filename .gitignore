@@ -28,6 +28,12 @@ vite-stderr.log
 
 # IDE
 .idea
+.vscode/settings.json
+
+# Cursor / AI assistant (local dev tooling, not required for build or deploy)
+.cursor/
+AGENTS.md
+CODEX.md
 
 .env*
 !.env.template
@@ -39,3 +45,11 @@ vite.config.ts.timestamp*
 
 # local browser automation artifacts
 .playwright-cli/
+
+# backend local artifacts
+/backend/node_modules
+/backend/dist
+/backend/data
+/backend/.env
+/backend/.env.*
+!/backend/.env.example

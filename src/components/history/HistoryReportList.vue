@@ -7,7 +7,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  openReport: [sessionId: string]
+  openReport: [sessionId: string, threadId?: string]
 }>()
 </script>
 
