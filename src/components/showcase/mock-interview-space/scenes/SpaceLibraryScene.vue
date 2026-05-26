@@ -1,5 +1,5 @@
 <script setup lang="tsx">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import DocumentListItem from '@/components/library/DocumentListItem.vue'
 import DocumentPreviewPanel from '@/components/library/DocumentPreviewPanel.vue'
 import ImportActionCard from '@/components/library/ImportActionCard.vue'
@@ -47,6 +47,14 @@ interface SelectedLibraryDocument {
   rawText: string
 }
 
+interface MaterialPreviewItem {
+  order: number
+  questionId: string
+  title: string
+  difficulty: string
+  matchReason: string
+}
+
 const props = defineProps<{
   sectionTitle: string
   sectionBody: string
@@ -69,6 +77,17 @@ const props = defineProps<{
   showImportFeedback: boolean
   importFeedbackText: string
   formatBytes: (size: number) => string
+  materialCompileCount: number
+  materialCompileCountMax: number
+  materialOrderMode: 'chapter' | 'random'
+  materialPoolQuestionTotal: number
+  materialPreviewCount: number
+  materialPreviewSignature: string
+  materialGroupShortfallText: string
+  materialIsPreparing: boolean
+  materialPoolStatusLabel: string
+  materialPreviewItems: MaterialPreviewItem[]
+  canStartMaterialMock: boolean
 }>()
 
 const emit = defineEmits<{
@@ -76,12 +95,108 @@ const emit = defineEmits<{
   pickFolder: []
   'update:activeFilter': [value: string]
   'update:page': [value: number]
+  'update:materialCompileCount': [value: number]
+  'update:materialOrderMode': [value: 'chapter' | 'random']
   'select-document': [value: string]
-  openMock: []
-  openPractice: []
-  backOverview: []
-  openReport: []
+  prepareMaterial: []
+  startMaterialMock: []
 }>()
+
+const materialCountMin = 1
+const localMaterialCompileCount = ref(props.materialCompileCount)
+const localMaterialOrderMode = ref(props.materialOrderMode)
+
+const materialCountMaxLimit = computed(() => (
+  Math.max(materialCountMin, props.materialCompileCountMax || materialCountMin)
+))
+
+const canShuffleMaterialGroup = computed(() => (
+  props.materialPoolQuestionTotal > 0 && !props.materialIsPreparing
+))
+
+const activeRoundCount = computed(() => (
+  Math.max(
+    materialCountMin,
+    Number(localMaterialCompileCount.value) || materialCountMin
+  )
+))
+
+/** 草稿与上次「生成练习题」已应用的组卷设置一致时，才允许开始模拟面试 */
+const materialCompileDraftApplied = computed(() => (
+  activeRoundCount.value === props.materialCompileCount
+  && localMaterialOrderMode.value === props.materialOrderMode
+))
+
+const hasMaterialPreview = computed(() => props.materialPreviewItems.length > 0)
+
+const canStartMaterialMockNow = computed(() => (
+  props.canStartMaterialMock && materialCompileDraftApplied.value
+))
+
+const materialCountFieldLabel = computed(() => (
+  props.materialPoolQuestionTotal > 0
+    ? `本轮题数（最多 ${ materialCountMaxLimit.value } 题）`
+    : '本轮题数（点击生成练习题后生效）'
+))
+
+const materialPreviewPendingHint = computed(() => {
+  if (materialCompileDraftApplied.value || !hasMaterialPreview.value) return ''
+  return '组卷设置已变更，点击「生成练习题」更新预览。'
+})
+
+watch(() => props.selectedDocumentId, () => {
+  localMaterialCompileCount.value = props.materialCompileCount
+  localMaterialOrderMode.value = props.materialOrderMode
+})
+
+watch(() => props.materialCompileCount, (value) => {
+  localMaterialCompileCount.value = value
+})
+
+watch(() => props.materialOrderMode, (value) => {
+  localMaterialOrderMode.value = value
+})
+
+const resolveDraftCompileCount = () => {
+  const next = Math.max(materialCountMin, Number(localMaterialCompileCount.value) || materialCountMin)
+  localMaterialCompileCount.value = next
+  return next
+}
+
+const handlePrepareMaterialClick = () => {
+  const count = resolveDraftCompileCount()
+  emit('update:materialCompileCount', count)
+  emit('update:materialOrderMode', localMaterialOrderMode.value)
+  materialPreviewPageIndex.value = 0
+  emit('prepareMaterial')
+}
+
+const notifyMaterialAction = (message: string, type: 'success' | 'info' | 'warning' = 'success') => {
+  if (type === 'warning') {
+    window.$ModalMessage?.warning?.(message, { duration: 2000, closable: false })
+    return
+  }
+  if (type === 'info') {
+    window.$ModalMessage?.info?.(message, { duration: 2000, closable: false })
+    return
+  }
+  window.$ModalMessage?.success?.(message, { duration: 2000, closable: false })
+}
+
+const handleMaterialOrderModeSelect = (orderMode: 'chapter' | 'random') => {
+  if (localMaterialOrderMode.value === orderMode) return
+  localMaterialOrderMode.value = orderMode
+}
+
+const selectAllMaterialCount = () => {
+  if (!canShuffleMaterialGroup.value) {
+    notifyMaterialAction('请先生成练习题以获取题库容量', 'warning')
+    return
+  }
+  localMaterialCompileCount.value = materialCountMaxLimit.value
+  materialPreviewPageIndex.value = 0
+  notifyMaterialAction(`已选全部 ${ materialCountMaxLimit.value } 题，点击生成练习题后生效`, 'info')
+}
 
 const sourceLabelText = (sourceKey?: string) => {
   return sourceKey ? (props.sourceLabelMap[sourceKey] || sourceKey) : ''
@@ -91,6 +206,53 @@ const placeholderItems = computed(() => {
   const placeholderCount = Math.max(0, 5 - props.displayedDocuments.length)
   return Array.from({ length: placeholderCount }, (_, index) => `placeholder-${index}`)
 })
+
+/** 资料题组预览每页 2 题，为下方文档预览卡片留出可视高度 */
+const materialPreviewPageSize = 2
+const materialPreviewPageIndex = ref(0)
+
+const materialPreviewPageCount = computed(() => {
+  const total = props.materialPreviewItems.length
+  if (!total) return 0
+  return Math.ceil(total / materialPreviewPageSize)
+})
+
+const materialPreviewPagedItems = computed(() => {
+  const start = materialPreviewPageIndex.value * materialPreviewPageSize
+  return props.materialPreviewItems.slice(start, start + materialPreviewPageSize)
+})
+
+const materialPreviewHasNextPage = computed(() => (
+  materialPreviewPageIndex.value < materialPreviewPageCount.value - 1
+))
+
+const materialPreviewHasPrevPage = computed(() => materialPreviewPageIndex.value > 0)
+
+const resolveMaterialPreviewItemOrder = (indexOnPage: number) => (
+  materialPreviewPageIndex.value * materialPreviewPageSize + indexOnPage + 1
+)
+
+const goToNextMaterialPreviewPage = () => {
+  if (!materialPreviewHasNextPage.value) return
+  materialPreviewPageIndex.value += 1
+}
+
+const goToPrevMaterialPreviewPage = () => {
+  if (!materialPreviewHasPrevPage.value) return
+  materialPreviewPageIndex.value -= 1
+}
+
+watch(
+  () => [
+    props.selectedDocumentId,
+    props.materialCompileCount,
+    props.materialOrderMode,
+    props.materialPreviewSignature
+  ].join('::'),
+  () => {
+    materialPreviewPageIndex.value = 0
+  }
+)
 
 const sceneShellRef = ref<HTMLElement | null>(null)
 const stickyMotion = ref('translate3d(0, 0, 0)')
@@ -279,29 +441,6 @@ onBeforeUnmount(() => {
         </div>
         </div>
 
-        <div class="overview-action-row">
-          <button
-            type="button"
-            class="overview-action primary"
-            @click="emit('openMock')"
-          >
-            直接模拟面试
-          </button>
-          <button
-            type="button"
-            class="overview-action"
-            @click="emit('openPractice')"
-          >
-            去专项刷题页面选题
-          </button>
-          <button
-            type="button"
-            class="overview-action"
-            @click="emit('backOverview')"
-          >
-            返回总览
-          </button>
-        </div>
       </main>
 
       <aside class="library-sticky-column">
@@ -315,12 +454,164 @@ onBeforeUnmount(() => {
           >
             <article
               v-if="selectedDocument"
-              :key="`current-${selectedDocument.id}`"
-              class="library-current-stat-card"
+              :key="`material-${selectedDocument.id}`"
+              class="library-material-card"
             >
-              <div class="stat-label">当前训练资料</div>
-              <strong>{{ selectedDocument.name }}</strong>
-              <p>去模拟面试时，会直接承接这份资料作为当前训练上下文。</p>
+              <div class="material-card-head">
+                <div class="stat-label">资料练习题</div>
+                <div class="material-pool-badge">{{ materialPoolStatusLabel }}</div>
+              </div>
+              <div class="material-action-row">
+                <button
+                  type="button"
+                  class="overview-action primary"
+                  :disabled="materialIsPreparing"
+                  @click="handlePrepareMaterialClick"
+                >
+                  {{ materialIsPreparing ? '生成中…' : '生成练习题' }}
+                </button>
+                <button
+                  type="button"
+                  class="overview-action"
+                  :disabled="!canStartMaterialMockNow"
+                  @click="emit('startMaterialMock')"
+                >
+                  预览并开始模拟面试
+                </button>
+              </div>
+              <label class="material-count-field">
+                <span class="material-count-field-head">
+                  <span>{{ materialCountFieldLabel }}</span>
+                  <button
+                    type="button"
+                    class="material-count-all-button"
+                    :disabled="!canShuffleMaterialGroup"
+                    @click="selectAllMaterialCount"
+                  >
+                    练全部
+                  </button>
+                </span>
+                <input
+                  v-model.number="localMaterialCompileCount"
+                  type="number"
+                  :min="materialCountMin"
+                  :max="materialPoolQuestionTotal > 0 ? materialCountMaxLimit : undefined"
+                >
+              </label>
+              <div class="material-order-mode-row">
+                <button
+                  type="button"
+                  class="material-order-mode-button"
+                  :class="{ 'is-active': localMaterialOrderMode === 'chapter' }"
+                  @click="handleMaterialOrderModeSelect('chapter')"
+                >
+                  <span class="material-order-mode-button__label">顺序组卷</span>
+                  <span class="material-order-mode-button__desc">按资料章节</span>
+                </button>
+                <button
+                  type="button"
+                  class="material-order-mode-button"
+                  :class="{ 'is-active': localMaterialOrderMode === 'random' }"
+                  @click="handleMaterialOrderModeSelect('random')"
+                >
+                  <span class="material-order-mode-button__label">随机组卷</span>
+                  <span class="material-order-mode-button__desc">打乱顺序</span>
+                </button>
+              </div>
+              <p
+                v-if="hasMaterialPreview"
+                class="material-draft-hint"
+                :class="{ 'is-idle': !materialPreviewPendingHint }"
+                aria-live="polite"
+              >
+                组卷设置已变更，点击「生成练习题」更新预览。
+              </p>
+              <p
+                v-if="hasMaterialPreview && materialGroupShortfallText"
+                class="material-shortfall-note"
+              >
+                {{ materialGroupShortfallText }}
+              </p>
+              <div
+                v-if="hasMaterialPreview"
+                class="material-preview-body"
+              >
+                <div class="material-preview-body__content">
+                  <Transition
+                    name="material-preview-page-fade"
+                    mode="out-in"
+                  >
+                    <ol
+                      :key="`${materialPreviewPageIndex}-${materialPreviewSignature}`"
+                      class="material-group-preview"
+                    >
+                      <li
+                        v-for="(item, index) in materialPreviewPagedItems"
+                        :key="item.questionId"
+                      >
+                        <span>{{ resolveMaterialPreviewItemOrder(index) }}.</span>
+                        <strong>{{ item.title }}</strong>
+                        <em>{{ item.difficulty }} · {{ item.matchReason }}</em>
+                      </li>
+                    </ol>
+                  </Transition>
+                </div>
+                <div
+                  v-if="materialPreviewPageCount > 1"
+                  class="material-preview-page-nav-stack"
+                >
+                  <button
+                    type="button"
+                    class="material-preview-page-nav"
+                    aria-label="预览下一页"
+                    :disabled="!materialPreviewHasNextPage"
+                    @click="goToNextMaterialPreviewPage"
+                  >
+                    <svg
+                      class="material-preview-page-nav__icon"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M10 7l5 5-5 5"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="material-preview-page-nav"
+                    aria-label="预览上一页"
+                    :disabled="!materialPreviewHasPrevPage"
+                    @click="goToPrevMaterialPreviewPage"
+                  >
+                    <svg
+                      class="material-preview-page-nav__icon is-back"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M10 7l5 5-5 5"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <p
+                v-else
+                class="material-empty-note"
+              >
+                选好题数和组卷方式后，点击「生成练习题」预览本轮题目。
+              </p>
             </article>
           </Transition>
 
@@ -335,7 +626,9 @@ onBeforeUnmount(() => {
             >
               <DocumentPreviewPanel
                 dark
-                :preview-line-count="5"
+                hide-summary
+                compact-meta
+                :preview-line-count="2"
                 :name="selectedDocument.name"
                 :type="selectedDocument.type"
                 :imported-at="selectedDocument.importedAt"
@@ -365,12 +658,6 @@ onBeforeUnmount(() => {
   display: block;
   color: rgb(220 232 255 / 0.62);
   font-size: 15px;
-}
-
-.overview-action-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
 }
 
 .overview-action {
@@ -454,7 +741,7 @@ onBeforeUnmount(() => {
 
 .library-right-height-keeper::before {
   display: block;
-  min-height: 920px;
+  min-height: 760px;
   content: '';
 }
 
@@ -508,32 +795,6 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-}
-
-.library-current-stat-card {
-  width: 100%;
-  min-height: 0;
-  padding: 20px 24px 18px;
-  border: 1px solid rgb(255 255 255 / 0.18);
-  border-radius: 24px;
-  background: rgb(255 255 255 / 0.035);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
-}
-
-.library-current-stat-card strong {
-  display: block;
-  margin-top: 10px;
-  color: #fff;
-  font-size: clamp(24px, 2.6vw, 34px);
-  font-weight: 800;
-  line-height: 1.08;
-}
-
-.library-current-stat-card p {
-  margin: 12px 0 0;
-  color: rgb(228 238 255 / 0.72);
-  font-size: 17px;
-  line-height: 1.5;
 }
 
 .library-filter-shell {
@@ -605,7 +866,9 @@ onBeforeUnmount(() => {
 
 .library-scene-shell :deep(.import-card),
 .library-scene-shell :deep(.stat-card),
-.library-document-list :deep(.doc-item) {
+.library-document-list :deep(.doc-item),
+.library-material-card,
+.library-preview-panel {
   border-color: rgb(255 255 255 / 0.18);
   background: rgb(255 255 255 / 0.035);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
@@ -626,15 +889,23 @@ onBeforeUnmount(() => {
   min-height: 156px;
 }
 
+.library-material-card,
 .library-preview-panel {
-  padding: 20px;
   border: 1px solid rgb(255 255 255 / 0.18);
   border-radius: 24px;
-  background: rgb(255 255 255 / 0.035);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
 }
 
-.library-preview-panel :deep(.preview-card) {
+.library-material-card {
+  padding: 8px 20px;
+}
+
+.library-preview-panel {
+  padding: 18px 20px;
+}
+
+.library-preview-panel :deep(.preview-card),
+.library-preview-panel :deep(.preview-card.is-dark),
+.library-preview-panel :deep(.preview-card.is-compact) {
   padding: 0;
   border: 0;
   background: transparent;
@@ -642,7 +913,6 @@ onBeforeUnmount(() => {
 }
 
 .library-preview-panel :deep(.preview-text) {
-  max-height: 280px;
   overflow: auto;
   border: 1px solid rgb(255 255 255 / 0.12);
   background: rgb(255 255 255 / 0.045);
@@ -792,6 +1062,280 @@ onBeforeUnmount(() => {
   border-color: rgb(203 230 255 / 0.34);
   background: rgb(191 224 255 / 0.16);
   color: #fff;
+}
+
+.library-material-card {
+  display: grid;
+  gap: 12px;
+}
+
+.material-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.material-pool-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgb(186 245 255 / 0.12);
+  color: #baf5ff;
+  font-size: 13px;
+}
+
+.material-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.material-count-field {
+  display: grid;
+  gap: 6px;
+  color: rgb(220 232 255 / 0.72);
+  font-size: 14px;
+}
+
+.material-count-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.material-count-all-button {
+  padding: 2px 10px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.06);
+  color: rgb(228 236 255 / 0.9);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.material-count-all-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.material-order-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.material-order-mode-button {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 0;
+  min-width: 108px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.04);
+  color: rgb(229 236 255 / 0.86);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 120ms ease,
+    box-shadow 160ms ease;
+}
+
+.material-order-mode-button__label {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.material-order-mode-button__desc {
+  color: rgb(223 231 252 / 0.68);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.material-order-mode-button:hover:not(:disabled) {
+  border-color: rgb(168 154 255 / 0.34);
+  background: rgb(112 94 219 / 0.14);
+  transform: translateY(-1px);
+}
+
+.material-order-mode-button:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+.material-order-mode-button.is-active {
+  border-color: rgb(186 168 255 / 0.72);
+  background: linear-gradient(180deg, rgb(132 108 255 / 0.38) 0%, rgb(96 74 228 / 0.32) 100%);
+  box-shadow:
+    0 0 0 1px rgb(186 168 255 / 0.28),
+    0 8px 20px rgb(72 52 168 / 0.28);
+  color: rgb(247 249 255 / 0.98);
+}
+
+.material-order-mode-button.is-active .material-order-mode-button__desc {
+  color: rgb(236 242 255 / 0.88);
+}
+
+.material-order-mode-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.material-count-all-button:hover:not(:disabled) {
+  border-color: rgb(168 154 255 / 0.34);
+  background: rgb(112 94 219 / 0.18);
+}
+
+.material-count-all-button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.material-count-field input {
+  width: 88px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.04);
+  color: #fff;
+  font: inherit;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.material-count-field input::-webkit-outer-spin-button,
+.material-count-field input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.material-draft-hint,
+.material-shortfall-note,
+.material-empty-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.material-draft-hint {
+  min-height: calc(13px * 1.5);
+  color: rgb(186 245 255 / 0.82);
+  transition: opacity 0.2s ease;
+}
+
+.material-draft-hint.is-idle {
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.material-shortfall-note,
+.material-empty-note {
+  color: rgb(255 214 153 / 0.92);
+}
+
+.material-preview-body {
+  position: relative;
+  min-height: 132px;
+}
+
+.material-preview-body__content {
+  min-height: inherit;
+  padding-right: 52px;
+}
+
+.material-preview-page-nav-stack {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transform: translateY(-50%);
+}
+
+.material-preview-page-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 50%;
+  background: rgb(255 255 255 / 10%);
+  color: rgb(244 250 255 / 92%);
+  cursor: pointer;
+  transition: background 0.22s ease, border-color 0.22s ease, transform 0.22s ease, opacity 0.22s ease;
+}
+
+.material-preview-page-nav:hover:not(:disabled) {
+  border-color: rgb(186 245 255 / 48%);
+  background: rgb(186 245 255 / 16%);
+  transform: scale(1.04);
+}
+
+.material-preview-page-nav:disabled {
+  cursor: not-allowed;
+  opacity: 0.34;
+}
+
+.material-preview-page-nav__icon {
+  width: 20px;
+  height: 20px;
+  transition: transform 0.28s ease;
+}
+
+.material-preview-page-nav__icon.is-back {
+  transform: rotate(180deg);
+}
+
+.material-preview-page-fade-enter-active,
+.material-preview-page-fade-leave-active {
+  transition: opacity 0.28s ease;
+}
+
+.material-preview-page-fade-enter-from,
+.material-preview-page-fade-leave-to {
+  opacity: 0;
+}
+
+.material-group-preview {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  color: rgb(235 244 255 / 0.88);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.material-group-preview li {
+  display: grid;
+  gap: 2px;
+}
+
+.material-group-preview strong {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-weight: 600;
+}
+
+.material-group-preview em {
+  overflow: hidden;
+  color: rgb(186 245 255 / 0.72);
+  font-style: normal;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (prefers-reduced-motion: reduce) {

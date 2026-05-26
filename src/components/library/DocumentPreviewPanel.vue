@@ -14,6 +14,10 @@ interface Props {
   rawText?: string
   previewLineCount?: number
   dark?: boolean
+  /** 隐藏摘要区块（宇宙资料库右侧预览用） */
+  hideSummary?: boolean
+  /** 导入时间/状态放到类型徽章左侧（宇宙资料库右侧预览用） */
+  compactMeta?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -22,7 +26,9 @@ const props = withDefaults(defineProps<Props>(), {
   recommendedReason: '',
   rawText: '',
   previewLineCount: 14,
-  dark: false
+  dark: false,
+  hideSummary: false,
+  compactMeta: false
 })
 
 const statusMap = {
@@ -56,12 +62,24 @@ const hasMorePreview = computed(() => previewLines.value.length > props.previewL
 <template>
   <section
     class="preview-card"
-    :class="{ 'is-dark': dark }"
+    :class="{
+      'is-dark': dark,
+      'is-compact': compactMeta || hideSummary
+    }"
   >
     <div class="preview-head">
       <div class="preview-head-top">
         <div class="eyebrow">文档预览</div>
-        <span class="preview-type">{{ type.toUpperCase() }}</span>
+        <div class="preview-head-end">
+          <div
+            v-if="compactMeta"
+            class="preview-meta preview-meta--inline"
+          >
+            <span>导入时间：{{ importedAt }}</span>
+            <span>状态：{{ statusMap[status] }}</span>
+          </div>
+          <span class="preview-type">{{ type.toUpperCase() }}</span>
+        </div>
       </div>
 
       <div class="preview-title-row">
@@ -81,17 +99,23 @@ const hasMorePreview = computed(() => previewLines.value.length > props.previewL
       </div>
     </div>
 
-    <div class="preview-meta">
+    <div
+      v-if="!compactMeta"
+      class="preview-meta"
+    >
       <div>导入时间：{{ importedAt }}</div>
       <div>状态：{{ statusMap[status] }}</div>
     </div>
 
-    <div class="preview-section">
+    <div
+      v-if="!hideSummary"
+      class="preview-section"
+    >
       <div class="section-label">摘要</div>
       <p class="preview-summary">{{ summary }}</p>
     </div>
 
-    <div class="preview-section">
+    <div class="preview-section preview-section--text">
       <div class="preview-section-head">
         <div class="section-label">文本预览</div>
         <button
@@ -182,6 +206,27 @@ const hasMorePreview = computed(() => previewLines.value.length > props.previewL
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.preview-head-end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.preview-meta--inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--preview-muted);
+  text-align: right;
 }
 
 .preview-title-row {
@@ -322,6 +367,40 @@ p {
   color: var(--preview-muted);
   font-size: 12px;
   line-height: 1.6;
+}
+
+.preview-card.is-compact {
+  padding: 14px 16px 16px;
+}
+
+.preview-card.is-compact .preview-head {
+  gap: 8px;
+}
+
+.preview-card.is-compact h3 {
+  font-size: 17px;
+  line-height: 1.35;
+}
+
+.preview-card.is-compact .preview-section {
+  margin-top: 10px;
+}
+
+.preview-card.is-compact .preview-section--text {
+  margin-top: 8px;
+}
+
+.preview-card.is-compact .preview-text {
+  margin-top: 8px;
+  padding: 10px 12px;
+  max-height: calc(1.65em * 2 + 20px);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.preview-card.is-compact .preview-more {
+  margin-top: 6px;
+  font-size: 11px;
 }
 
 .preview-modal :deep(.n-card) {

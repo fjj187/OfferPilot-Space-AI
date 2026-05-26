@@ -27,7 +27,18 @@ import { useMockInterviewSpaceReportScene } from '@/composables/showcase/useMock
 import { useMockInterviewSpaceScroll } from '@/composables/showcase/useMockInterviewSpaceScroll'
 import { useOverviewLaunchState } from '@/composables/useOverviewLaunchState'
 import { useWorkbenchPersistence } from '@/composables/useWorkbenchPersistence'
-import { buildPracticeQuestionGroup } from '@/services/practice/practice-question-group-builder'
+import type { MaterialGroupCompileOptions } from '@/types/material'
+import { useMaterialQuestionPoolState } from '@/composables/showcase/useMaterialQuestionPoolState'
+import {
+  buildMaterialQuestionGroup,
+  defaultMaterialGroupCompileOptions
+} from '@/services/material/material-question-group-builder'
+import type { PracticeGroupCompileOptions } from '@/types/practice-pool'
+import { usePracticeQuestionPoolState } from '@/composables/showcase/usePracticeQuestionPoolState'
+import {
+  buildPracticeQuestionGroup,
+  defaultPracticeGroupCompileOptions
+} from '@/services/practice/practice-question-group-builder'
 import { interviewTopics } from '@/views/workbench/mock-interview.data'
 
 interface OrbitSlot {
@@ -155,6 +166,84 @@ const {
 })
 
 const currentTrainingDocument = computed(() => selectedDocument.value || activeDocument.value)
+
+const materialCompileOptions = ref<MaterialGroupCompileOptions>(defaultMaterialGroupCompileOptions())
+const {
+  poolVersion: materialPoolVersion,
+  resolvePoolForDocument,
+  getPoolStatusLabel,
+  prepareMaterialQuestions,
+  touchPoolVersion: touchMaterialPoolVersion
+} = useMaterialQuestionPoolState((documentId) => (
+  libraryDocumentList.value.find(item => item.id === documentId) || null
+))
+
+const selectedMaterialPool = computed(() => {
+  void materialPoolVersion.value
+  return resolvePoolForDocument(currentTrainingDocument.value)
+})
+
+const materialPreviewCompileOptions = computed(() => ({
+  count: materialCompileOptions.value.count,
+  orderMode: materialCompileOptions.value.orderMode,
+  shuffleSeed: materialCompileOptions.value.shuffleSeed ?? 0,
+  difficultyFilter: materialCompileOptions.value.difficultyFilter,
+  singleDifficulty: materialCompileOptions.value.singleDifficulty
+}))
+
+const materialGroupPreview = computed(() => {
+  const pool = selectedMaterialPool.value
+  const document = currentTrainingDocument.value
+  const compileOptions = materialPreviewCompileOptions.value
+  if (!pool || pool.status !== 'ready' || !document) return null
+  return buildMaterialQuestionGroup(pool, compileOptions, document.name)
+})
+
+const materialPoolStatusLabel = computed(() => getPoolStatusLabel(selectedMaterialPool.value))
+const materialIsPreparing = computed(() => selectedMaterialPool.value?.status === 'preparing')
+const canStartMaterialMock = computed(() => selectedMaterialPool.value?.status === 'ready'
+  && Boolean(materialGroupPreview.value?.group.items.length))
+
+const materialPreviewItems = computed(() => (
+  materialGroupPreview.value?.group.items.map((item, index) => ({
+    order: index + 1,
+    questionId: item.questionId,
+    title: item.title,
+    difficulty: item.difficulty || 'medium',
+    matchReason: typeof item.matchReason === 'string' ? item.matchReason : String(item.matchReason)
+  })) || []
+))
+
+const materialPreviewSignature = computed(() => {
+  const compileOptions = materialPreviewCompileOptions.value
+  const itemSignature = materialPreviewItems.value
+    .map(item => `${ item.order }:${ item.questionId }`)
+    .join('|')
+  return `${ compileOptions.count }:${ compileOptions.orderMode }:${ compileOptions.shuffleSeed }|${ itemSignature }`
+})
+
+const materialPoolQuestionTotal = computed(() => (
+  selectedMaterialPool.value?.status === 'ready'
+    ? selectedMaterialPool.value.questions.length
+    : 0
+))
+
+const materialPreviewCount = computed(() => materialPreviewItems.value.length)
+
+const materialCompileCountMax = computed(() => {
+  const poolSize = selectedMaterialPool.value?.status === 'ready'
+    ? selectedMaterialPool.value.questions.length
+    : 0
+  return Math.max(1, poolSize)
+})
+
+const materialOrderMode = computed(() => materialCompileOptions.value.orderMode)
+
+const materialGroupShortfallText = computed(() => {
+  if (!materialGroupPreview.value?.isShortfall) return ''
+  return `题库不足，仅找到 ${ materialGroupPreview.value.actualCount } / ${ materialGroupPreview.value.requestedCount } 题。`
+})
+
 const currentContextDocument = computed(() => {
   const activeDocumentId = currentWorkbenchContext.value?.activeDocumentId || ''
   if (!activeDocumentId) return null
@@ -177,9 +266,15 @@ const {
   mockAnswerDraft,
   mockSessionStatusText,
   totalCount: mockTotalCount,
+  generatedThreadCount,
   mockPanelMeta,
   questionThreads: mockQuestionThreads,
+  allQuestionThreads: mockAllQuestionThreads,
   activeQuestionThread,
+  activeQuestionInstruction,
+  activeMockHintLabel,
+  activeMockHintText,
+  activeQuestionReference,
   activeQuestionThreadId,
   primaryQuestion,
   clearMockAnswer,
@@ -263,6 +358,10 @@ watch(libraryCurrentPage, () => {
   syncDisplayedLibraryDocuments(pagedLibraryDocuments.value)
 })
 
+watch(selectedDocumentId, () => {
+  touchMaterialPoolVersion()
+})
+
 const activeInterviewDocumentMeta = computed(() => {
   const document = currentContextDocument.value
   if (!document) return []
@@ -273,8 +372,19 @@ const activeInterviewDocumentMeta = computed(() => {
   ]
 })
 
-const mockQuestionPrompt = computed(() => isMockAwaitingSetup.value ? '' : (activeQuestionThread.value?.prompt || primaryQuestion.value?.prompt || ''))
-const mockHintText = computed(() => isMockAwaitingSetup.value ? '' : (primaryQuestion.value?.hint || currentGuide.value?.desc || ''))
+const mockQuestionPrompt = computed(() => {
+  if (isMockAwaitingSetup.value) return ''
+  if (activeQuestionInstruction.value) return activeQuestionInstruction.value
+  return activeQuestionThread.value?.prompt || primaryQuestion.value?.prompt || ''
+})
+const mockHintText = computed(() => {
+  if (isMockAwaitingSetup.value) return ''
+  return activeMockHintText.value
+})
+const mockHintLabel = computed(() => {
+  if (isMockAwaitingSetup.value) return '作答建议'
+  return activeMockHintLabel.value
+})
 
 const getLocalReportSummaryBySessionId = (sessionId: string) => {
   return mergeReportSummaries().find(item => item.sessionId === sessionId)
@@ -303,7 +413,6 @@ const handleMockOpenHistory = () => {
 }
 const handleClearMockHistory = async () => {
   await clearAllMockHistory()
-  remoteReportSummaries.value = []
   await loadRemoteReportSummaries()
   window.$ModalMessage?.success?.('对话历史已清空', {
     duration: 2200,
@@ -312,6 +421,7 @@ const handleClearMockHistory = async () => {
 }
 const {
   reportAnswerSnapshot,
+  reportQuestionReviews,
   reportFocusAreas,
   reportHeaderMeta,
   reportLatestHistory,
@@ -334,6 +444,182 @@ const {
   getReportSummaryBySessionId: getMergedReportSummaryBySessionId,
   loadReportSummaries: mergeReportSummaries,
   reportAnswerSnapshotFromRemote
+})
+
+const practiceCompileOptions = ref<PracticeGroupCompileOptions>(defaultPracticeGroupCompileOptions())
+
+const {
+  poolVersion: practicePoolVersion,
+  resolvePoolForSession,
+  getPoolStatusLabel: getPracticePoolStatusLabel,
+  isPracticePoolStale,
+  preparePracticeQuestions
+} = usePracticeQuestionPoolState()
+
+const selectedPracticePool = computed(() => {
+  void practicePoolVersion.value
+  const sessionId = reportSceneSummary.value?.sessionId || ''
+  if (!sessionId) return null
+  return resolvePoolForSession(sessionId, reportSceneSummary.value)
+})
+
+const practicePoolStaleText = computed(() => (
+  isPracticePoolStale(selectedPracticePool.value)
+    ? selectedPracticePool.value?.errorMessage || ''
+    : ''
+))
+
+const practicePreviewCompileOptions = computed(() => ({
+  count: practiceCompileOptions.value.count,
+  orderMode: practiceCompileOptions.value.orderMode,
+  shuffleSeed: practiceCompileOptions.value.shuffleSeed ?? 0
+}))
+
+const resolvePracticePlanForPool = (
+  pool: ReturnType<typeof resolvePoolForSession>,
+  report: typeof reportSceneSummary.value
+) => report?.practicePlan || pool?.planSnapshot || null
+
+const practiceGroupPreview = computed(() => {
+  const pool = selectedPracticePool.value
+  const plan = resolvePracticePlanForPool(pool, reportSceneSummary.value)
+  if (!pool || pool.status !== 'ready' || !plan) return null
+
+  const compileOptions = {
+    ...practicePreviewCompileOptions.value,
+    count: Math.max(
+      1,
+      practicePreviewCompileOptions.value.count || pool.questions.length || plan.questionCount || 1
+    )
+  }
+
+  return buildPracticeQuestionGroup(plan, {
+    reportSummary: reportSceneSummary.value,
+    pool,
+    compileOptions,
+    sourceSessionId: reportSceneSummary.value?.sessionId || pool.sessionId
+  })
+})
+
+const practicePoolStatusLabel = computed(() => getPracticePoolStatusLabel(selectedPracticePool.value))
+const practiceIsPreparing = computed(() => selectedPracticePool.value?.status === 'preparing')
+const canStartPractice = computed(() => selectedPracticePool.value?.status === 'ready'
+  && Boolean(practiceGroupPreview.value?.group.items.length))
+
+const practicePreviewItems = computed(() => (
+  practiceGroupPreview.value?.group.items.map((item, index) => ({
+    order: index + 1,
+    questionId: item.questionId,
+    title: item.title,
+    focusArea: item.focusArea,
+    matchReason: typeof item.matchReason === 'string' ? item.matchReason : String(item.matchReason)
+  })) || []
+))
+
+const practicePreviewSignature = computed(() => {
+  const compileOptions = practicePreviewCompileOptions.value
+  const itemSignature = practicePreviewItems.value
+    .map(item => `${ item.order }:${ item.questionId }`)
+    .join('|')
+  return `${ compileOptions.count }:${ compileOptions.orderMode }:${ compileOptions.shuffleSeed }|${ itemSignature }`
+})
+
+const practicePoolQuestionTotal = computed(() => (
+  selectedPracticePool.value?.status === 'ready'
+    ? selectedPracticePool.value.questions.length
+    : 0
+))
+
+const practicePoolPlanSnapshot = computed(() => {
+  const pool = selectedPracticePool.value
+  if (!pool || pool.status !== 'ready') return null
+  return pool.planSnapshot
+})
+
+const practiceCompileCountMax = computed(() => Math.max(1, practicePoolQuestionTotal.value))
+
+const practiceGroupShortfallText = computed(() => {
+  if (!practiceGroupPreview.value?.isShortfall) return ''
+  return `题池不足，仅找到 ${ practiceGroupPreview.value.actualCount } / ${ practiceGroupPreview.value.requestedCount } 题。`
+})
+
+const clampPracticeCompileCount = (value: number) => {
+  const max = practiceCompileCountMax.value
+  return Math.min(max, Math.max(1, value))
+}
+
+const handlePracticeCompileCountChange = (value: number) => {
+  practiceCompileOptions.value = {
+    ...practiceCompileOptions.value,
+    count: clampPracticeCompileCount(value)
+  }
+}
+
+watch(practiceCompileCountMax, (max) => {
+  // 题池生成中 total 为 0，勿把用户刚选的出题数压回 1
+  if (practicePoolQuestionTotal.value === 0) return
+  if (practiceCompileOptions.value.count > max) {
+    practiceCompileOptions.value = {
+      ...practiceCompileOptions.value,
+      count: max
+    }
+  }
+})
+
+const handlePreparePracticeQuestions = async (plan: PersistedPracticePlan) => {
+  const report = reportSceneSummary.value
+  if (!report?.sessionId) {
+    window.$ModalMessage?.warning?.('请先完成一轮模拟面试并生成报告', { duration: 3200 })
+    return
+  }
+
+  const generateCount = Math.max(1, plan.questionCount || practiceCompileOptions.value.count)
+  practiceCompileOptions.value = {
+    ...practiceCompileOptions.value,
+    count: generateCount
+  }
+  const result = await preparePracticeQuestions(
+    report,
+    plan,
+    generateCount
+  )
+  if (!result.ok) {
+    window.$ModalMessage?.warning?.(result.message, { duration: 3200 })
+    return
+  }
+
+  const poolSize = result.pool.questions.length
+  if (!poolSize) return
+
+  if (result.isShortfall) {
+    window.$ModalMessage?.warning?.(
+      `题池不足，仅生成 ${ result.actualCount } / ${ result.requestedCount } 题`,
+      { duration: 3200 }
+    )
+  }
+
+  practiceCompileOptions.value = {
+    ...practiceCompileOptions.value,
+    count: clampPracticeCompileCount(
+      practiceCompileOptions.value.count > poolSize ? poolSize : practiceCompileOptions.value.count
+    ),
+    orderMode: 'random',
+    shuffleSeed: Date.now()
+  }
+  if (result.isShortfall) {
+    window.$ModalMessage?.info?.(
+      `已生成 ${ result.pool.questions.length } 题，少于请求的 ${ practiceCompileOptions.value.count } 题`,
+      { duration: 3200 }
+    )
+  }
+}
+
+const overviewPracticeRouteNote = computed(() => {
+  const plan = reportSceneSummary.value?.practicePlan
+  if (!plan?.weaknessTag) {
+    return '完成一轮模拟面试并生成报告后，专项训练会按弱项自动推荐题目。'
+  }
+  return `最近一轮已识别弱项「${ plan.weaknessTag }」，专项训练会按报告配置从题库中自动选题。`
 })
 
 const {
@@ -626,6 +912,17 @@ const buildPracticeMockSessionConfig = (
   difficulty: plan.difficulty
 })
 
+const buildMaterialMockSessionConfig = (
+  activeDocumentId: string,
+  questionCount: number,
+  feedbackStyle: PersistedInterviewFeedbackStyle = currentFeedbackStyle.value
+): PersistedMockSessionConfig => ({
+  entryMode: 'material',
+  activeDocumentId,
+  feedbackStyle,
+  questionCount
+})
+
 const resolveInitialSceneId = () => {
   const sceneIdBySourcePage: Record<string, string> = {
     overview: 'overview',
@@ -652,6 +949,122 @@ const openSceneContent = (sceneId: string) => {
     pauseAutoplay: true,
     scrollToContent: true
   })
+}
+
+const clampMaterialCompileCount = (value: number) => {
+  const max = materialCompileCountMax.value
+  return Math.max(1, Math.min(max, value || 1))
+}
+
+const handleMaterialCompileCountChange = (value: number) => {
+  materialCompileOptions.value = {
+    ...materialCompileOptions.value,
+    count: clampMaterialCompileCount(value)
+  }
+}
+
+const handleMaterialOrderModeChange = (orderMode: 'chapter' | 'random') => {
+  materialCompileOptions.value = {
+    ...materialCompileOptions.value,
+    orderMode,
+    shuffleSeed: orderMode === 'random' ? Date.now() : 0
+  }
+}
+
+watch(materialCompileCountMax, (max) => {
+  if (materialCompileOptions.value.count > max) {
+    materialCompileOptions.value = {
+      ...materialCompileOptions.value,
+      count: max
+    }
+  }
+})
+
+const handlePrepareMaterialQuestions = async () => {
+  const document = currentTrainingDocument.value
+  if (!document) {
+    window.$ModalMessage?.warning?.('请先选择一份资料', { duration: 2600 })
+    return
+  }
+
+  const result = await prepareMaterialQuestions(document.id)
+  if (!result.ok) {
+    window.$ModalMessage?.warning?.(result.message, { duration: 3200 })
+    return
+  }
+
+  const poolSize = result.pool.questions.length
+  if (!poolSize) return
+
+  materialCompileOptions.value = {
+    ...materialCompileOptions.value,
+    count: clampMaterialCompileCount(
+      materialCompileOptions.value.count > poolSize ? poolSize : materialCompileOptions.value.count
+    ),
+  }
+  if (materialCompileOptions.value.orderMode === 'random') {
+    materialCompileOptions.value = {
+      ...materialCompileOptions.value,
+      shuffleSeed: Date.now()
+    }
+  }
+}
+
+const handleStartMaterialMockFromLibrary = () => {
+  const document = currentTrainingDocument.value
+  const pool = selectedMaterialPool.value
+  if (!document) {
+    window.$ModalMessage?.warning?.('请先选择一份资料', { duration: 2600 })
+    return
+  }
+  if (!pool || pool.status !== 'ready') {
+    window.$ModalMessage?.warning?.('请先生成练习题', { duration: 2600 })
+    return
+  }
+
+  const buildResult = buildMaterialQuestionGroup(pool, materialCompileOptions.value, document.name)
+  if (!buildResult.group.items.length) {
+    window.$ModalMessage?.warning?.('当前筛选条件下没有可用题目', { duration: 3200 })
+    return
+  }
+
+  const practiceQuestionGroup = {
+    ...buildResult.group,
+    status: 'in_progress' as const
+  }
+  const activeDocumentId = document.id
+  const activeTopicKey = document.topicKeys[0] || activeTopic.value
+
+  startMockRound({
+    activeDocumentId,
+    activeTopic: activeTopicKey,
+    currentMode: 'standard',
+    mockEntryMode: 'material',
+    practicePlan: null,
+    mockSessionConfig: buildMaterialMockSessionConfig(activeDocumentId, buildResult.actualCount),
+    sourcePage: 'mock-interview-space'
+  })
+  saveWorkbenchContext({
+    activeTopic: activeTopicKey,
+    activeDocumentId,
+    currentMode: 'standard',
+    sourcePage: 'mock-interview-space',
+    practicePlan: null,
+    practiceQuestionGroup,
+    mockEntryMode: 'material',
+    mockSessionConfig: buildMaterialMockSessionConfig(activeDocumentId, buildResult.actualCount)
+  })
+  requestSceneChange(findSceneIndexById('mock'), {
+    pauseAutoplay: true,
+    scrollToContent: true
+  })
+
+  if (buildResult.isShortfall) {
+    window.$ModalMessage?.info?.(
+      `题库不足，本轮将练 ${ buildResult.actualCount } / ${ buildResult.requestedCount } 题。`,
+      { duration: 3200 }
+    )
+  }
 }
 
 const openMockSceneFromLibrary = () => {
@@ -726,9 +1139,23 @@ const practiceTopicByZone: Record<PersistedPracticePlan['zone'], keyof typeof to
 }
 
 const handlePracticeStart = (plan: PersistedPracticePlan) => {
-  const buildResult = buildPracticeQuestionGroup(plan, {
-    reportSummary: reportSceneSummary.value
+  const pool = selectedPracticePool.value
+  if (!pool || pool.status !== 'ready') {
+    window.$ModalMessage?.warning?.('请先生成补练题', { duration: 2600 })
+    return
+  }
+
+  const effectivePlan = resolvePracticePlanForPool(pool, reportSceneSummary.value) || plan
+  const buildResult = buildPracticeQuestionGroup(effectivePlan, {
+    reportSummary: reportSceneSummary.value,
+    pool,
+    compileOptions: practiceCompileOptions.value,
+    sourceSessionId: reportSceneSummary.value?.sessionId
   })
+  if (!buildResult.group.items.length) {
+    window.$ModalMessage?.warning?.('当前题池没有可用题目', { duration: 3200 })
+    return
+  }
   const practiceQuestionGroup = {
     ...buildResult.group,
     status: 'in_progress' as const
@@ -736,22 +1163,22 @@ const handlePracticeStart = (plan: PersistedPracticePlan) => {
 
   startMockRound({
     activeDocumentId: currentTrainingDocument.value?.id || currentWorkbenchContext.value?.activeDocumentId || '',
-    activeTopic: practiceTopicByZone[plan.zone] || activeTopic.value,
+    activeTopic: practiceTopicByZone[effectivePlan.zone] || activeTopic.value,
     currentMode: 'standard',
     mockEntryMode: 'practice',
-    practicePlan: plan,
-    mockSessionConfig: buildPracticeMockSessionConfig(plan),
+    practicePlan: effectivePlan,
+    mockSessionConfig: buildPracticeMockSessionConfig(effectivePlan),
     sourcePage: 'mock-interview-space'
   })
   saveWorkbenchContext({
-    activeTopic: practiceTopicByZone[plan.zone] || activeTopic.value,
+    activeTopic: practiceTopicByZone[effectivePlan.zone] || activeTopic.value,
     activeDocumentId: currentTrainingDocument.value?.id || currentWorkbenchContext.value?.activeDocumentId || '',
     currentMode: 'standard',
     sourcePage: 'mock-interview-space',
-    practicePlan: plan,
+    practicePlan: effectivePlan,
     practiceQuestionGroup,
     mockEntryMode: 'practice',
-    mockSessionConfig: buildPracticeMockSessionConfig(plan)
+    mockSessionConfig: buildPracticeMockSessionConfig(effectivePlan)
   })
   requestSceneChange(findSceneIndexById('mock'), {
     pauseAutoplay: true,
@@ -760,12 +1187,21 @@ const handlePracticeStart = (plan: PersistedPracticePlan) => {
 }
 
 const handleReportContinuePractice = () => {
-  const summaryPlan = reportSceneSummary.value?.practicePlan
-  if (summaryPlan) {
+  const sessionId = reportSceneSummary.value?.sessionId
+  const pool = sessionId
+    ? resolvePoolForSession(sessionId, reportSceneSummary.value)
+    : null
+  const summaryPlan = resolvePracticePlanForPool(pool, reportSceneSummary.value)
+
+  if (summaryPlan && pool?.status === 'ready' && pool.questions.length) {
     handlePracticeStart(summaryPlan)
     return
   }
+
   openSceneContent('feedback')
+  if (summaryPlan) {
+    window.$ModalMessage?.info?.('请先在专项训练页点击「生成补练题」', { duration: 3200 })
+  }
 }
 
 const handleReportBackToLibrary = () => {
@@ -1064,10 +1500,12 @@ onBeforeUnmount(() => {
       :mock-answer-draft="mockAnswerDraft"
       :mock-all-messages="displayAllMessages"
       :mock-hint-text="mockHintText"
+      :mock-hint-label="mockHintLabel"
+      :mock-question-reference="activeQuestionReference"
       :mock-messages="displayMessages"
       :mock-panel-meta="mockPanelMeta"
       :mock-feedback-style="currentFeedbackStyle"
-      :mock-question-threads="mockQuestionThreads"
+      :mock-question-threads="mockAllQuestionThreads"
       :mock-active-question-thread-id="activeQuestionThreadId"
       :mock-practice-plan="currentPracticePlan"
       :mock-has-next-question="hasNextMockFollowUp"
@@ -1077,6 +1515,7 @@ onBeforeUnmount(() => {
       :mock-answered-count="mockAnsweredCount"
       :mock-current-question-position="mockCurrentQuestionPosition"
       :mock-total-count="mockTotalCount"
+      :mock-generated-thread-count="generatedThreadCount"
       :mock-is-viewing-history-preview="flowMode === 'history_preview'"
       :mock-scene-reset-version="mockSceneResetVersion"
       :mock-question-prompt="mockQuestionPrompt"
@@ -1088,8 +1527,10 @@ onBeforeUnmount(() => {
       :overview-progress-percent="overviewProgressPercent"
       :overview-status-label="overviewStatusLabel"
       :overview-summary-items="overviewSummaryItems"
+      :overview-practice-route-note="overviewPracticeRouteNote"
       :report-header-meta="reportHeaderMeta"
       :report-answer-snapshot="reportAnswerSnapshot"
+      :report-question-reviews="reportQuestionReviews"
       :report-focus-areas="reportFocusAreas"
       :report-latest-history="reportLatestHistory"
       :report-overview-stats="reportOverviewStats"
@@ -1104,6 +1545,27 @@ onBeforeUnmount(() => {
       :selected-document-id="selectedDocumentId"
       :show-import-feedback="showImportFeedback"
       :topic-label-map="topicLabelMap"
+      :material-compile-count="materialCompileOptions.count"
+      :material-compile-count-max="materialCompileCountMax"
+      :material-order-mode="materialOrderMode"
+      :material-pool-question-total="materialPoolQuestionTotal"
+      :material-preview-count="materialPreviewCount"
+      :material-preview-signature="materialPreviewSignature"
+      :material-group-shortfall-text="materialGroupShortfallText"
+      :material-is-preparing="materialIsPreparing"
+      :material-pool-status-label="materialPoolStatusLabel"
+      :material-preview-items="materialPreviewItems"
+      :can-start-material-mock="canStartMaterialMock"
+      :practice-compile-count="practiceCompileOptions.count"
+      :practice-pool-plan-snapshot="practicePoolPlanSnapshot"
+      :practice-pool-question-total="practicePoolQuestionTotal"
+      :practice-preview-signature="practicePreviewSignature"
+      :practice-group-shortfall-text="practiceGroupShortfallText"
+      :practice-is-preparing="practiceIsPreparing"
+      :practice-pool-status-label="practicePoolStatusLabel"
+      :practice-pool-stale-text="practicePoolStaleText"
+      :practice-preview-items="practicePreviewItems"
+      :can-start-practice="canStartPractice"
       @back-library="handleReportBackToLibrary"
       @back-overview="openSceneContent('overview')"
       @clear-mock-answer="clearMockAnswer"
@@ -1134,6 +1596,12 @@ onBeforeUnmount(() => {
       @update-mock-feedback-style="handleMockFeedbackStyleChange"
       @update-active-filter="libraryActiveFilter = $event"
       @update-library-page="libraryCurrentPage = $event"
+      @update-material-compile-count="handleMaterialCompileCountChange"
+      @update-material-order-mode="handleMaterialOrderModeChange"
+      @prepare-material="handlePrepareMaterialQuestions"
+      @start-material-mock="handleStartMaterialMockFromLibrary"
+      @prepare-practice="handlePreparePracticeQuestions"
+      @update-practice-compile-count="handlePracticeCompileCountChange"
       @update-mock-answer-draft="mockAnswerDraft = $event"
     />
 
@@ -1146,6 +1614,7 @@ onBeforeUnmount(() => {
       :focus-areas="reportFocusAreas"
       :weakness-tags="reportWeaknessTags"
       :answer-snapshot="reportAnswerSnapshot"
+      :question-reviews="reportQuestionReviews"
       :suggestion-list="reportSuggestionList"
       :snapshot-items="reportSnapshotItems"
       @continue-practice="handleReportPreviewContinuePractice"

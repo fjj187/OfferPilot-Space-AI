@@ -7,6 +7,11 @@ const feedbackStyleInstructionMap = {
   guided: '反馈风格：引导型。请先提示资料里应该抓住哪些点，再继续往下追问。'
 } as const
 
+const interviewNavigationInstruction = [
+  '切题规则：你只能讨论当前题目，禁止在回复中展示或切换到其他题。',
+  '候选人须点击页面底部「下一题」按钮才能进入下一题；若对方问第几题或想换题，只说明仍在本题并提示点击「下一题」。'
+].join('\n')
+
 const createId = () => `msg-${ Date.now() }-${ Math.random().toString(36).slice(2, 8) }`
 const createStreamError = (message: string, code = 'INTERVIEW_STREAM_ERROR'): InterviewApiError => ({
   code,
@@ -35,6 +40,10 @@ const normalizeInterviewStreamRequest = (request: InterviewStreamRequest): Inter
 
   const compactPrompt = [
     request.questionTitle,
+    request.questionIndex && request.questionCount
+      ? `本轮题序：第 ${ request.questionIndex } / ${ request.questionCount } 题（仅本题）`
+      : '',
+    interviewNavigationInstruction,
     request.feedbackStyle ? feedbackStyleInstructionMap[request.feedbackStyle] : '',
     structuredSourceContext || request.sourceContext,
     request.answer
@@ -76,6 +85,20 @@ const splitTextToReader = (
 }
 
 const buildMockInterviewReply = (request: InterviewStreamRequest) => {
+  const forceReveal = request.forceRevealReferenceAnswer || (request.unknownAnswerStreak ?? 0) >= 2
+  if (forceReveal) {
+    const reference = request.referenceAnswerHint || request.sourceDocumentExcerpt || '（暂无资料摘录，请结合题面说明要点。）'
+    return [
+      `### ${ request.questionTitle }`,
+      '',
+      '#### 参考答案',
+      reference,
+      '',
+      '#### 简要说明',
+      '你已连续两次表示不知道，这里直接给出本题应对齐的要点。理解后请点击页面底部 **下一题**。'
+    ].join('\n')
+  }
+
   const answerLengthLabel =
     request.answer.trim().length >= 90 ? '回答展开度不错' : '回答还可以再展开一点'
   const sourceContextText = request.sourceDocumentName
@@ -144,7 +167,12 @@ const buildMockInterviewReply = (request: InterviewStreamRequest) => {
     ...(sourceTagsText ? ['', sourceTagsText] : []),
     ...(sourceExcerptText ? ['', sourceExcerptText] : []),
     '',
-    ...feedbackSection
+    ...feedbackSection,
+    '',
+    '若本题已答完，请点击页面底部 **下一题** 进入下一题；不要在此直接展示其他题目。',
+    request.unknownAnswerStreak === 1
+      ? '如果你实在想不起来或者不知道，可以直接告诉我，我会给出本题参考答案。'
+      : ''
   ].join('\n')
 }
 

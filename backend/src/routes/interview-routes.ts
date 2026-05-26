@@ -12,6 +12,7 @@ import {
   getInterviewReportBySessionIdController,
   listInterviewReportsController
 } from '../controllers/report-controller.js'
+import { generatePracticePoolController } from '../controllers/practice-pool-controller.js'
 
 export const interviewRouter = Router()
 
@@ -22,3 +23,4 @@ interviewRouter.post('/stream', streamInterviewController)
 interviewRouter.get('/reports', listInterviewReportsController)
 interviewRouter.get('/reports/:sessionId', getInterviewReportBySessionIdController)
 interviewRouter.post('/reports/generate', generateInterviewReportController)
+interviewRouter.post('/practice-pool/generate', generatePracticePoolController)

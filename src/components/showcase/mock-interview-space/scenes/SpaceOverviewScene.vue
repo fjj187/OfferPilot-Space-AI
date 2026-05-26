@@ -14,11 +14,14 @@ defineProps<{
   statusLabel: string
   summaryItems: OverviewSummaryItem[]
   primaryActionLabel: string
+  /** 有报告弱项时补充说明专项训练如何承接 */
+  practiceRouteNote?: string
 }>()
 
 const emit = defineEmits<{
   primaryAction: []
   openLibrary: []
+  openPractice: []
   openReport: []
 }>()
 </script>
@@ -59,6 +62,20 @@ const emit = defineEmits<{
       </div>
     </div>
 
+    <div class="overview-route-card overview-summary-card">
+      <span>训练路径</span>
+      <strong>按资料练，或按弱项补练</strong>
+      <small>
+        想按资料练，请使用下方「查看资料」；想按弱项补练，请使用下方「去专项训练」。
+      </small>
+      <small
+        v-if="practiceRouteNote"
+        class="overview-route-card__note"
+      >
+        {{ practiceRouteNote }}
+      </small>
+    </div>
+
     <div class="overview-action-row">
       <button
         type="button"
@@ -73,6 +90,13 @@ const emit = defineEmits<{
         @click="emit('openLibrary')"
       >
         查看资料
+      </button>
+      <button
+        type="button"
+        class="overview-action"
+        @click="emit('openPractice')"
+      >
+        去专项训练
       </button>
       <button
         type="button"
@@ -157,6 +181,19 @@ const emit = defineEmits<{
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+.overview-route-card strong {
+  display: block;
+  margin-top: 6px;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.overview-route-card__note {
+  display: block;
+  margin-top: 8px;
 }
 
 .overview-action-row {

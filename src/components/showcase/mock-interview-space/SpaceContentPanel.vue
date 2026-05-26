@@ -32,6 +32,8 @@ defineProps<{
   mockAnswerDraft: string
   mockAllMessages: any[]
   mockHintText: string
+  mockHintLabel: string
+  mockQuestionReference: string
   mockMessages: any[]
   mockAnsweredCount: number
   mockCurrentQuestionPosition: number
@@ -51,13 +53,16 @@ defineProps<{
   mockScrollVersion?: string
   mockStreamError?: string
   mockTotalCount: number
+  mockGeneratedThreadCount: number
   mockSceneResetVersion: number
   overviewPrimaryActionLabel: string
   overviewProgressPercent: number
   overviewStatusLabel: string
   overviewSummaryItems: any[]
+  overviewPracticeRouteNote: string
   reportHeaderMeta: string[]
   reportAnswerSnapshot: string[]
+  reportQuestionReviews: any[]
   reportFocusAreas: string[]
   reportLatestHistory: any
   reportOverviewStats: any[]
@@ -72,6 +77,38 @@ defineProps<{
   selectedDocumentId: string
   showImportFeedback: boolean
   topicLabelMap: Record<string, string>
+  materialCompileCount: number
+  materialCompileCountMax: number
+  materialOrderMode: 'chapter' | 'random'
+  materialPoolQuestionTotal: number
+  materialPreviewCount: number
+  materialPreviewSignature: string
+  materialGroupShortfallText: string
+  materialIsPreparing: boolean
+  materialPoolStatusLabel: string
+  materialPreviewItems: Array<{
+    order: number
+    title: string
+    difficulty: string
+    matchReason: string
+  }>
+  canStartMaterialMock: boolean
+  practiceCompileCount: number
+  practicePoolPlanSnapshot: PersistedPracticePlan | null
+  practicePoolQuestionTotal: number
+  practicePreviewSignature: string
+  practiceGroupShortfallText: string
+  practiceIsPreparing: boolean
+  practicePoolStatusLabel: string
+  practicePoolStaleText: string
+  practicePreviewItems: Array<{
+    order: number
+    questionId: string
+    title: string
+    matchReason: string
+    focusArea?: string
+  }>
+  canStartPractice: boolean
 }>()
 
 const emit = defineEmits<{
@@ -86,6 +123,8 @@ const emit = defineEmits<{
   openMock: []
   openPractice: []
   startPractice: [plan: any]
+  preparePractice: [plan: any]
+  updatePracticeCompileCount: [value: number]
   openHistory: []
   openLibrary: []
   openReport: []
@@ -105,7 +144,11 @@ const emit = defineEmits<{
   updateMockFeedbackStyle: [value: PersistedInterviewFeedbackStyle]
   updateActiveFilter: [value: string]
   updateLibraryPage: [value: number]
+  updateMaterialCompileCount: [value: number]
+  updateMaterialOrderMode: [value: 'chapter' | 'random']
   updateMockAnswerDraft: [value: string]
+  prepareMaterial: []
+  startMaterialMock: []
 }>()
 
 const contentSectionEl = ref<HTMLElement | null>(null)
@@ -163,6 +206,7 @@ onBeforeUnmount(() => {
                 :section-body="displayScene.sectionBody"
                 :header-meta="reportHeaderMeta"
                 :answer-snapshot="reportAnswerSnapshot"
+                :question-reviews="reportQuestionReviews"
                 :focus-areas="reportFocusAreas"
                 :overview-stats="reportOverviewStats"
                 :primary-weakness="reportPrimaryWeakness"
@@ -199,6 +243,8 @@ onBeforeUnmount(() => {
                 :active-question-thread-id="mockActiveQuestionThreadId"
                 :question-prompt="mockQuestionPrompt"
                 :hint-text="mockHintText"
+                :hint-label="mockHintLabel"
+                :question-reference="mockQuestionReference"
                 :messages="mockMessages"
                 :answered-count="mockAnsweredCount"
                 :current-question-position="mockCurrentQuestionPosition"
@@ -216,6 +262,7 @@ onBeforeUnmount(() => {
                 :stream-error="mockStreamError"
                 :session-status-text="mockSessionStatusText"
                 :total-count="mockTotalCount"
+                :generated-thread-count="mockGeneratedThreadCount"
                 @update:answer-draft="$emit('updateMockAnswerDraft', $event)"
                 @submit="$emit('submitMockAnswer')"
                 @finish="$emit('finishMockSession')"
@@ -237,8 +284,20 @@ onBeforeUnmount(() => {
                 :primary-weakness="reportPrimaryWeakness"
                 :report-summary="reportSceneSummary"
                 :weakness-tags="reportWeaknessTags"
+                :practice-compile-count="practiceCompileCount"
+                :practice-pool-plan-snapshot="practicePoolPlanSnapshot"
+                :practice-pool-question-total="practicePoolQuestionTotal"
+                :practice-preview-signature="practicePreviewSignature"
+                :practice-group-shortfall-text="practiceGroupShortfallText"
+                :practice-is-preparing="practiceIsPreparing"
+                :practice-pool-status-label="practicePoolStatusLabel"
+                :practice-pool-stale-text="practicePoolStaleText"
+                :practice-preview-items="practicePreviewItems"
+                :can-start-practice="canStartPractice"
                 @start-practice="$emit('startPractice', $event)"
                 @open-report="$emit('openReport')"
+                @prepare-practice="$emit('preparePractice', $event)"
+                @update-practice-compile-count="$emit('updatePracticeCompileCount', $event)"
               />
               <SpaceGeneralScenePanel
                 v-else
@@ -263,9 +322,21 @@ onBeforeUnmount(() => {
                 :overview-progress-percent="overviewProgressPercent"
                 :overview-status-label="overviewStatusLabel"
                 :overview-summary-items="overviewSummaryItems"
+                :overview-practice-route-note="overviewPracticeRouteNote"
                 :selected-document="selectedDocument"
                 :selected-document-id="selectedDocumentId"
                 :show-import-feedback="showImportFeedback"
+                :material-compile-count="materialCompileCount"
+                :material-compile-count-max="materialCompileCountMax"
+                :material-order-mode="materialOrderMode"
+                :material-pool-question-total="materialPoolQuestionTotal"
+                :material-preview-count="materialPreviewCount"
+                :material-preview-signature="materialPreviewSignature"
+                :material-group-shortfall-text="materialGroupShortfallText"
+                :material-is-preparing="materialIsPreparing"
+                :material-pool-status-label="materialPoolStatusLabel"
+                :material-preview-items="materialPreviewItems"
+                :can-start-material-mock="canStartMaterialMock"
                 @pick-files="$emit('pickFiles')"
                 @pick-folder="$emit('pickFolder')"
                 @update-active-filter="$emit('updateActiveFilter', $event)"
@@ -277,6 +348,10 @@ onBeforeUnmount(() => {
                 @open-library="$emit('openLibrary')"
                 @open-report="$emit('openReport')"
                 @primary-action="$emit('primaryAction')"
+                @prepare-material="$emit('prepareMaterial')"
+                @start-material-mock="$emit('startMaterialMock')"
+                @update-material-compile-count="$emit('updateMaterialCompileCount', $event)"
+                @update-material-order-mode="$emit('updateMaterialOrderMode', $event)"
               />
             </template>
           </div>

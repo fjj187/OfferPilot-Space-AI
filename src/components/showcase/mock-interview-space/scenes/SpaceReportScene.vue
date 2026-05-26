@@ -1,5 +1,10 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import ReportReviewMarkdown from '@/components/report/ReportReviewMarkdown.vue'
 import SpaceSceneHeader from '@/components/showcase/mock-interview-space/SpaceSceneHeader.vue'
+import { cleanReportQuestionTitle } from '@/utils/report/clean-report-question-title'
+import { isReportQuestionUnanswered } from '@/utils/report/format-report-thread-dialogue'
+import { formatReportDialogueText, formatReportPlainText } from '@/utils/report/format-report-plain-text'
 
 interface ReportOverviewStatItem {
   label: string
@@ -19,7 +24,15 @@ interface ReportHistoryItem {
   weaknessTags: string[]
 }
 
-defineProps<{
+interface ReportQuestionReviewItem {
+  questionId: string
+  questionTitle: string
+  userAnswer: string
+  referenceAnswer?: string
+  aiFeedback?: string
+}
+
+const props = defineProps<{
   navLabel: string
   sectionTitle: string
   sectionBody: string
@@ -27,6 +40,7 @@ defineProps<{
   summaryHeadline: string
   summaryBody: string
   answerSnapshot: string[]
+  questionReviews: ReportQuestionReviewItem[]
   focusAreas: string[]
   overviewStats: ReportOverviewStatItem[]
   primaryWeakness: string
@@ -38,6 +52,19 @@ defineProps<{
   topicLabelMap: Record<string, string>
   hasSummary: boolean
 }>()
+
+const isUnanswered = (userAnswer: string) => isReportQuestionUnanswered(userAnswer)
+
+const materialReferenceList = computed(() => (
+  props.questionReviews
+    .map((item, index) => ({
+      order: index + 1,
+      questionId: item.questionId,
+      title: cleanReportQuestionTitle(item.questionTitle),
+      referenceAnswer: item.referenceAnswer?.trim() || ''
+    }))
+    .filter(item => item.referenceAnswer)
+))
 
 const emit = defineEmits<{
   continueMock: []
@@ -100,6 +127,95 @@ const emit = defineEmits<{
             >
               再来一轮模拟
             </button>
+          </div>
+        </section>
+
+        <section
+          v-if="questionReviews.length"
+          class="report-scene-section"
+        >
+          <div class="report-scene-card-label">逐题复盘</div>
+          <p class="report-scene-section-desc">
+            每题固定为三部分：我的答案、正确答案、缺点和改进方向。
+          </p>
+          <div class="report-scene-review-list">
+            <article
+              v-for="(item, index) in questionReviews"
+              :key="item.questionId"
+              class="report-scene-review-card"
+            >
+              <header class="report-scene-review-head">
+                <span class="report-scene-review-index">第 {{ index + 1 }} 题</span>
+                <strong>{{ cleanReportQuestionTitle(item.questionTitle) }}</strong>
+              </header>
+
+              <div class="report-scene-review-block">
+                <span>我的答案</span>
+                <p class="report-scene-dialogue-text">{{ formatReportDialogueText(item.userAnswer, 2400) || '未作答' }}</p>
+              </div>
+
+              <div class="report-scene-review-block reference">
+                <span>正确答案</span>
+                <ReportReviewMarkdown
+                  v-if="item.referenceAnswer"
+                  :content="item.referenceAnswer"
+                  variant="dark"
+                />
+                <p
+                  v-else
+                  class="report-scene-empty-note"
+                >
+                  本题暂无收录参考答案，请查看下方「资料参考答案」或回到资料库核对原文。
+                </p>
+              </div>
+
+              <div
+                v-if="item.aiFeedback"
+                class="report-scene-review-block feedback"
+              >
+                <span>缺点和改进方向</span>
+                <ReportReviewMarkdown
+                  :content="item.aiFeedback"
+                  variant="dark"
+                />
+              </div>
+              <div
+                v-else-if="isUnanswered(item.userAnswer)"
+                class="report-scene-review-block muted"
+              >
+                <span>缺点和改进方向</span>
+                <p>本题未作答，请先对照正确答案理解要点后再补练。</p>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section
+          v-if="materialReferenceList.length"
+          class="report-scene-section"
+        >
+          <div class="report-scene-card-label">资料参考答案</div>
+          <p class="report-scene-section-desc">
+            来自本轮训练资料的原文要点，便于对照，不重复逐题复盘内容。
+          </p>
+          <div class="report-scene-review-list">
+            <article
+              v-for="item in materialReferenceList"
+              :key="`ref-${ item.questionId }`"
+              class="report-scene-review-card is-material-reference"
+            >
+              <header class="report-scene-review-head">
+                <span class="report-scene-review-index">第 {{ item.order }} 题</span>
+                <strong>{{ item.title }}</strong>
+              </header>
+              <div class="report-scene-review-block reference">
+                <span>资料原文要点</span>
+                <ReportReviewMarkdown
+                  :content="item.referenceAnswer"
+                  variant="dark"
+                />
+              </div>
+            </article>
           </div>
         </section>
 
@@ -175,9 +291,9 @@ const emit = defineEmits<{
 .report-scene-kicker,
 .report-scene-card-label {
   color: var(--scene-primary);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -200,6 +316,84 @@ const emit = defineEmits<{
   color: rgb(248 250 255 / 0.98);
   font-size: clamp(24px, 2.2vw, 32px);
   line-height: 1.2;
+}
+
+.report-scene-section-desc {
+  margin-top: 10px;
+  color: rgb(226 236 255 / 0.72);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.report-scene-review-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.report-scene-review-card {
+  padding: 16px 18px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 16px;
+  background: rgb(255 255 255 / 0.03);
+}
+
+.report-scene-review-head {
+  display: grid;
+  gap: 8px;
+}
+
+.report-scene-review-index {
+  color: rgb(139 246 220 / 0.88);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.report-scene-review-head strong {
+  color: rgb(248 250 255 / 0.98);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.report-scene-review-block {
+  margin-top: 14px;
+}
+
+.report-scene-review-block span {
+  display: block;
+  color: rgb(226 236 255 / 0.72);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.report-scene-review-block p {
+  margin-top: 8px;
+  color: rgb(233 241 255 / 0.9);
+  font-size: 16px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+.report-scene-review-block.muted p,
+.report-scene-empty-note {
+  color: rgb(226 236 255 / 0.68);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.report-scene-review-block :deep(.report-review-markdown) {
+  margin-top: 8px;
+}
+
+.report-scene-review-block.reference span {
+  color: rgb(178 220 255 / 0.78);
+}
+
+.report-scene-review-block.feedback span {
+  color: rgb(255 214 170 / 0.82);
 }
 
 .report-scene-hero p,

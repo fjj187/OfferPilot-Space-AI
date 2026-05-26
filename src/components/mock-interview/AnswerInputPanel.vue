@@ -20,11 +20,19 @@ const emit = defineEmits<{
 
 const isSpaceVariant = computed(() => props.variant === 'space')
 const isDraftFocused = ref(false)
+const canSubmit = computed(() => Boolean(props.value.trim()) && !props.streaming)
 const statusText = computed(() => {
   if (props.streaming) return 'AI 生成中'
   if (props.submitted) return '本题已提交'
   return '等待输入'
 })
+
+const handleDraftKeydown = (event: KeyboardEvent) => {
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
+  if (!canSubmit.value) return
+  event.preventDefault()
+  emit('submit')
+}
 </script>
 
 <template>
@@ -69,6 +77,7 @@ const statusText = computed(() => {
           placeholder=""
           @focus="isDraftFocused = true"
           @blur="isDraftFocused = false"
+          @keydown="handleDraftKeydown"
           @update:value="emit('update:value', $event)"
         />
       </div>
@@ -81,13 +90,14 @@ const statusText = computed(() => {
       type="textarea"
       :autosize="{ minRows: 3, maxRows: 3 }"
       placeholder="先写你的回答提纲，例如：场景是什么、你怎么拆、为什么这样做、结果如何。"
+      @keydown="handleDraftKeydown"
       @update:value="emit('update:value', $event)"
     />
 
     <div class="panel-actions">
       <n-button
         type="primary"
-        :disabled="!value.trim() || streaming"
+        :disabled="!canSubmit"
         @click="emit('submit')"
       >
         提交回答并继续追问
@@ -107,6 +117,12 @@ const statusText = computed(() => {
       >
         停止生成
       </n-button>
+      <span
+        v-if="isSpaceVariant"
+        class="draft-shortcut-hint"
+      >
+        Enter 发送，Shift + Enter 换行
+      </span>
     </div>
   </section>
 </template>
@@ -185,7 +201,7 @@ const statusText = computed(() => {
 
 .draft-placeholder {
   position: absolute;
-  top: 2px;
+  top: -8px;
   left: 0;
   right: 0;
   pointer-events: none;
@@ -269,6 +285,7 @@ const statusText = computed(() => {
 .is-space .panel-actions {
   align-items: center;
   justify-content: flex-start;
+  flex-wrap: nowrap;
 }
 
 .is-space .panel-actions :deep(.n-button--primary-type) {
@@ -285,11 +302,24 @@ const statusText = computed(() => {
   color: rgb(228 236 255 / 0.88);
 }
 
+.draft-shortcut-hint {
+  margin-left: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgb(225 231 248 / 0.58);
+  white-space: nowrap;
+}
+
 @media (max-width: 720px) {
   .panel-head,
   .panel-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .draft-shortcut-hint {
+    margin-left: 0;
+    align-self: flex-end;
   }
 }
 </style>

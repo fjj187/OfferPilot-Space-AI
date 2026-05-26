@@ -3,8 +3,15 @@ import type { ComputedRef } from 'vue'
 import type {
   PersistedInterviewSession,
   PersistedPracticeFocusArea,
+  PersistedReportQuestionReviewItem,
   PersistedReportSummary
 } from '@/types/workbench'
+import type { InterviewMessage } from '@/types/message'
+import {
+  formatReportThreadLatestAiFeedback,
+  formatReportThreadUserAnswer
+} from '@/utils/report/format-report-thread-dialogue'
+import { enrichReportQuestionReview } from '@/utils/report/resolve-report-reference-answer'
 
 interface ReportSourceDocument {
   id?: string
@@ -129,6 +136,44 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
     return options.reportAnswerSnapshotFromRemote?.value || []
   })
 
+  const buildReviewsFromSessionSnapshot = (
+    session: PersistedInterviewSession
+  ): PersistedReportQuestionReviewItem[] => {
+    const threads = session.questionThreadsSnapshot || []
+    const messages = (session.messagesSnapshot || []) as InterviewMessage[]
+    if (!threads.length) return []
+
+    return threads.map((thread) => {
+      const userAnswer = formatReportThreadUserAnswer(messages, thread.id)
+      const aiFeedback = formatReportThreadLatestAiFeedback(messages, thread.id)
+
+      return {
+        questionId: thread.questionId || thread.id,
+        questionTitle: thread.title,
+        userAnswer: userAnswer || '未作答',
+        aiFeedback: aiFeedback || undefined
+      }
+    })
+  }
+
+  const reportQuestionReviews = computed<PersistedReportQuestionReviewItem[]>(() => {
+    const sourceDocumentId = reportSceneSummary.value?.sourceDocumentId
+    const enrich = (reviews: PersistedReportQuestionReviewItem[]) => (
+      reviews.map(review => enrichReportQuestionReview(review, sourceDocumentId))
+    )
+
+    if (reportSceneSummary.value?.questionReviews?.length) {
+      return enrich(reportSceneSummary.value.questionReviews)
+    }
+
+    const session = reportSceneSession.value
+    if (session) {
+      return enrich(buildReviewsFromSessionSnapshot(session))
+    }
+
+    return []
+  })
+
   const reportOverviewStats = computed(() => [
     {
       label: '已答题数',
@@ -181,7 +226,7 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
     const summary = reportSceneSummary.value
 
     if (session && session.answeredCount < session.questionCount) {
-      list.push('本轮训练还没有答完整，建议先回到模拟面试，把剩余题目补完后再看完整复盘。')
+      list.push('本轮有未作答题，可在逐题复盘中查看参考答案；也可直接进入专项补练。')
     }
 
     if (reportWeaknessTags.value.length >= 3) {
@@ -229,6 +274,7 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
 
   return {
     reportAnswerSnapshot,
+    reportQuestionReviews,
     reportHeaderMeta,
     reportLatestHistory,
     reportOverviewStats,

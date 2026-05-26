@@ -9,7 +9,9 @@ export const WORKBENCH_STORAGE_KEYS = {
   libraryDocuments: 'offerpilot.library.documents',
   workbenchContext: 'offerpilot.workbench.context',
   interviewSessions: 'offerpilot.interview.sessions',
-  reportSummaries: 'offerpilot.report.summaries'
+  reportSummaries: 'offerpilot.report.summaries',
+  materialQuestionPools: 'offerpilot.material.questionPools',
+  practiceQuestionPools: 'offerpilot.practice.questionPools'
 } as const
 
 const canUseStorage = () => typeof window !== 'undefined' && !!window.localStorage

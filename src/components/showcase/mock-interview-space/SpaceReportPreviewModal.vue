@@ -1,7 +1,20 @@
 <script setup lang="ts">
+import ReportReviewMarkdown from '@/components/report/ReportReviewMarkdown.vue'
+import { cleanReportQuestionTitle } from '@/utils/report/clean-report-question-title'
+import { isReportQuestionUnanswered } from '@/utils/report/format-report-thread-dialogue'
+import { formatReportDialogueText, formatReportPlainText } from '@/utils/report/format-report-plain-text'
+
 interface ReportSnapshotItem {
   label: string
   value: string
+}
+
+interface ReportQuestionReviewItem {
+  questionId: string
+  questionTitle: string
+  userAnswer: string
+  referenceAnswer?: string
+  aiFeedback?: string
 }
 
 const props = defineProps<{
@@ -13,6 +26,7 @@ const props = defineProps<{
   focusAreas: string[]
   weaknessTags: string[]
   answerSnapshot: string[]
+  questionReviews: ReportQuestionReviewItem[]
   suggestionList: string[]
   snapshotItems: ReportSnapshotItem[]
 }>()
@@ -41,22 +55,36 @@ const documentConclusions = computed(() => {
   ]
 })
 
-const evidenceList = computed(() => {
-  return [
-    {
-      title: '题目摘录',
-      body: props.answerSnapshot[0] || '当前题目的回答已经开始覆盖主题，但还没有稳定展开。'
-    },
-    {
-      title: '回答片段',
-      body: props.answerSnapshot[1] || '当前回答偏短，结论、过程和结果之间的衔接还不完整。'
-    },
-    {
-      title: '复盘依据',
-      body: props.answerSnapshot[2] || documentSummary.value
-    }
-  ]
-})
+const hasQuestionReviews = computed(() => props.questionReviews.length > 0)
+
+const isUnanswered = (userAnswer: string) => isReportQuestionUnanswered(userAnswer)
+
+/** 资料参考答案：只展示资料原文要点，不再重复逐题复盘 */
+const materialReferenceList = computed(() => (
+  props.questionReviews
+    .map((item, index) => ({
+      order: index + 1,
+      questionId: item.questionId,
+      title: cleanReportQuestionTitle(item.questionTitle),
+      referenceAnswer: item.referenceAnswer?.trim() || ''
+    }))
+    .filter(item => item.referenceAnswer)
+))
+
+const legacyEvidenceList = computed(() => [
+  {
+    title: '题目摘录',
+    body: props.answerSnapshot[0] || '当前题目的回答已经开始覆盖主题，但还没有稳定展开。'
+  },
+  {
+    title: '回答片段',
+    body: props.answerSnapshot[1] || '当前回答偏短，结论、过程和结果之间的衔接还不完整。'
+  },
+  {
+    title: '复盘依据',
+    body: props.answerSnapshot[2] || documentSummary.value
+  }
+])
 
 const analysisList = computed(() => {
   const areas = props.focusAreas.length ? props.focusAreas : ['结构表达', '案例细节', '结果指标']
@@ -128,11 +156,94 @@ const closeModal = () => emit('update:show', false)
             </ul>
           </section>
 
-          <section class="report-preview-section">
+          <section
+            v-if="hasQuestionReviews"
+            class="report-preview-section"
+          >
+            <div class="report-preview-section-kicker">逐题复盘</div>
+            <p class="report-preview-section-desc">
+              每题固定为三部分：你的答案、正确答案、缺点和改进方向。
+            </p>
+            <div class="report-preview-evidence-list">
+              <article
+                v-for="(item, index) in questionReviews"
+                :key="item.questionId"
+                class="report-preview-evidence-item"
+              >
+                <strong>第 {{ index + 1 }} 题 · {{ cleanReportQuestionTitle(item.questionTitle) }}</strong>
+
+                <div class="report-preview-review-block">
+                  <span>我的答案</span>
+                  <p class="report-preview-dialogue-text">{{ formatReportDialogueText(item.userAnswer, 2400) || '未作答' }}</p>
+                </div>
+
+                <div class="report-preview-review-block is-reference">
+                  <span>正确答案</span>
+                  <ReportReviewMarkdown
+                    v-if="item.referenceAnswer"
+                    :content="item.referenceAnswer"
+                    variant="light"
+                  />
+                  <p
+                    v-else
+                    class="report-preview-empty-note"
+                  >
+                    本题暂无收录参考答案，请查看下方「资料参考答案」或回到资料库核对原文。
+                  </p>
+                </div>
+
+                <div
+                  v-if="item.aiFeedback"
+                  class="report-preview-review-block is-feedback"
+                >
+                  <span>缺点和改进方向</span>
+                  <ReportReviewMarkdown
+                    :content="item.aiFeedback"
+                    variant="light"
+                  />
+                </div>
+                <div
+                  v-else-if="isUnanswered(item.userAnswer)"
+                  class="report-preview-review-block is-muted"
+                >
+                  <span>缺点和改进方向</span>
+                  <p>本题未作答，请先对照正确答案理解要点后再补练。</p>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section
+            v-if="materialReferenceList.length"
+            class="report-preview-section"
+          >
+            <div class="report-preview-section-kicker">资料参考答案</div>
+            <p class="report-preview-section-desc">
+              来自本轮训练资料的原文要点，便于和逐题复盘对照，不再重复你的作答与 AI 反馈。
+            </p>
+            <div class="report-preview-evidence-list">
+              <article
+                v-for="item in materialReferenceList"
+                :key="`ref-${ item.questionId }`"
+                class="report-preview-evidence-item is-material-reference"
+              >
+                <strong>第 {{ item.order }} 题 · {{ item.title }}</strong>
+                <ReportReviewMarkdown
+                  :content="item.referenceAnswer"
+                  variant="light"
+                />
+              </article>
+            </div>
+          </section>
+
+          <section
+            v-else-if="!hasQuestionReviews"
+            class="report-preview-section"
+          >
             <div class="report-preview-section-kicker">关键证据</div>
             <div class="report-preview-evidence-list">
               <article
-                v-for="item in evidenceList"
+                v-for="item in legacyEvidenceList"
                 :key="item.title"
                 class="report-preview-evidence-item"
               >
@@ -253,10 +364,17 @@ const closeModal = () => emit('update:show', false)
 .report-preview-kicker,
 .report-preview-section-kicker {
   color: #5f72f5;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.report-preview-section-desc {
+  margin-top: 10px;
+  color: #64748b;
+  font-size: 15px;
+  line-height: 1.75;
 }
 
 .report-preview-head h2 {
@@ -377,8 +495,52 @@ const closeModal = () => emit('update:show', false)
 .report-preview-analysis-item strong,
 .report-preview-record-item strong {
   color: #1f2937;
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 700;
+  line-height: 1.45;
+}
+
+.report-preview-review-block {
+  margin-top: 14px;
+}
+
+.report-preview-review-block span {
+  display: block;
+  color: #64748b;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.report-preview-review-block p {
+  margin-top: 8px;
+  color: #334155;
+  font-size: 15px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+.report-preview-review-block.is-reference span {
+  color: #2563eb;
+}
+
+.report-preview-review-block.is-feedback span {
+  color: #b45309;
+}
+
+.report-preview-review-block.is-muted p,
+.report-preview-empty-note {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.report-preview-review-block :deep(.report-review-markdown) {
+  margin-top: 8px;
+}
+
+.report-preview-evidence-item.is-material-reference p {
+  margin-top: 10px;
 }
 
 .report-preview-analysis-item small {

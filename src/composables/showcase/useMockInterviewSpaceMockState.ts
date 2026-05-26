@@ -14,12 +14,38 @@ import type {
   PersistedPracticeQuestionGroup,
   PersistedPracticeQuestionType,
   PersistedPracticeZone,
+  PersistedReportQuestionReviewItem,
   PersistedReportSummary,
   PersistedTopicKey
 } from '@/types/workbench'
 import {
   practiceQuestionMatchReasonLabelMap
 } from '@/services/practice/practice-question-group-builder'
+import { getMaterialQuestionPool } from '@/utils/storage/material-pool-storage'
+import {
+  extractInterviewFeedbackHint,
+  extractLatestInterviewerPrompt
+} from '@/services/interview/extract-interview-feedback-hint'
+import {
+  buildMaterialAnswerHint,
+  extractMaterialReferenceAnswer,
+  formatMaterialReference,
+  looksLikeAnswerBody,
+  normalizeQuestionHeading,
+  resolveQuestionDisplayText,
+  splitMaterialPrompt
+} from '@/services/material/material-prompt'
+import { countTrailingUnknownAnswers, isReferenceAnswerRequest } from '@/utils/interview/is-unknown-answer'
+import {
+  formatReportThreadLatestAiFeedback,
+  formatReportThreadUserAnswer
+} from '@/utils/report/format-report-thread-dialogue'
+import {
+  resolveReportReferenceAnswer,
+  resolveReportQuestionReferenceAnswer
+} from '@/utils/report/resolve-report-reference-answer'
+import { buildMaterialPracticeExcerpt } from '@/utils/practice/build-material-practice-excerpt'
+import { resolveDominantPracticeQuestionType } from '@/utils/practice/resolve-dominant-practice-question-type'
 import { clearRemoteInterviewHistory } from '@/services/interview/interview-session-api'
 import {
   generateRemoteInterviewReport,
@@ -48,6 +74,11 @@ interface StartMockStreamPayload {
   sourceDocumentExcerpt?: string
   feedbackStyle?: PersistedInterviewFeedbackStyle
   format: 'markdown'
+  questionIndex?: number
+  questionCount?: number
+  unknownAnswerStreak?: number
+  forceRevealReferenceAnswer?: boolean
+  referenceAnswerHint?: string
 }
 
 interface UseMockInterviewSpaceMockStateOptions {
@@ -104,7 +135,7 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     completeInterviewSession,
     saveReportSummary,
     removeInterviewSession,
-    removeReportSummariesBySessionId
+    loadReportSummaries
   } = useWorkbenchPersistence()
   const topicLabelMap = interviewTopics.reduce<Record<string, string>>((map, item) => {
     map[item.key] = item.label
@@ -130,10 +161,28 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
   const currentPracticeQuestionGroup = computed<PersistedPracticeQuestionGroup | null>(() => (
     workbenchContext.value?.practiceQuestionGroup || null
   ))
-  const isPracticeGroupMode = computed(() => (
-    currentMockEntryMode.value === 'practice'
-    && Boolean(currentPracticeQuestionGroup.value?.items.length)
-  ))
+  const isMaterialGroupMode = computed(() => {
+    const group = currentPracticeQuestionGroup.value
+    return Boolean(
+      group?.source === 'material_document'
+      && group.items.length
+      && group.status !== 'completed'
+    )
+  })
+  const isPracticeGroupMode = computed(() => {
+    const group = currentPracticeQuestionGroup.value
+    return Boolean(
+      !isMaterialGroupMode.value
+      && currentMockEntryMode.value === 'practice'
+      && group?.items.length
+      && (
+        group?.source === 'practice_weakness'
+        || group?.source === 'practice_report_pool'
+        || !group?.source
+      )
+    )
+  })
+  const isTrainingGroupMode = computed(() => isMaterialGroupMode.value || isPracticeGroupMode.value)
   const currentMockEntryMode = computed(() => {
     if (workbenchContext.value?.mockEntryMode) return workbenchContext.value.mockEntryMode
     return currentPracticePlan.value ? 'practice' : 'direct'
@@ -187,7 +236,12 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     })
   }
   const hasMockSetup = computed(() => {
-    return Boolean(options.activeDocument.value || currentMockSessionConfig.value || currentPracticePlan.value)
+    return Boolean(
+      options.activeDocument.value
+      || currentMockSessionConfig.value
+      || currentPracticePlan.value
+      || isTrainingGroupMode.value
+    )
   })
   const currentReplayConfig = computed<MockInterviewReplayConfig>(() => ({
     topic: activeTopicKey.value,
@@ -329,23 +383,6 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       practicePlan ? `专项训练目标：围绕“${ practicePlan.weaknessTag }”进行 ${ practicePlan.questionCount } 题 ${ practicePlan.difficulty } 难度 ${ practicePlan.questionType } 训练。` : ''
     ].filter(Boolean).join('\n')
   })
-  const activeDocumentRequestContext = computed(() => {
-    const coreDocument = activeTrainingDocumentCore.value
-    if (!coreDocument) {
-      return {
-        summary: '',
-        tags: [] as string[],
-        excerpt: ''
-      }
-    }
-
-    return {
-      summary: coreDocument.summary.trim(),
-      tags: [...coreDocument.tags],
-      excerpt: coreDocument.rawText.slice(0, 320).replace(/\s+/g, ' ').trim()
-    }
-  })
-
   const mockAnswerDraft = ref('')
   const mockFollowUpIndex = ref(0)
   const mockSubmittedQuestionIds = ref<string[]>([])
@@ -361,6 +398,7 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
   const historyPreviewActiveThreadId = ref('')
 
   const currentSourceKey = computed(() => {
+    if (isMaterialGroupMode.value) return 'library-material'
     if (currentMockEntryMode.value === 'practice') return 'practice'
     return options.activeDocument.value?.sourceKey || loadWorkbenchContext()?.sourcePage || 'library'
   })
@@ -381,6 +419,109 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     return group.items.find(item => item.questionId === thread.questionId)
       || group.items[group.currentIndex]
       || null
+  })
+  const activeQuestionReference = computed(() => {
+    const thread = activeQuestionThread.value
+    if (!thread) return ''
+
+    if (!isMaterialGroupMode.value) {
+      return splitMaterialPrompt(thread.prompt).reference
+    }
+
+    const item = activePracticeGroupItem.value
+    if (item?.referenceAnswer?.trim()) {
+      const heading = item.title || normalizeQuestionHeading(item.prompt)
+      return formatMaterialReference(
+        heading,
+        extractMaterialReferenceAnswer(item.referenceAnswer, 400)
+      )
+    }
+
+    if (!item?.sourceChunkId || !item.sourceDocumentId) return ''
+
+    const pool = getMaterialQuestionPool(item.sourceDocumentId)
+    const chunk = pool?.chunks.find(entry => entry.id === item.sourceChunkId)
+    if (!chunk) return ''
+
+    const heading = normalizeQuestionHeading(chunk.heading)
+    if (!looksLikeAnswerBody(chunk.text)) return ''
+    return formatMaterialReference(heading, chunk.text)
+  })
+
+  const activeQuestionInstruction = computed(() => {
+    const thread = activeQuestionThread.value
+    if (!thread) return ''
+
+    if (isMaterialGroupMode.value) {
+      const item = activePracticeGroupItem.value
+      if (item?.title) return item.title
+    }
+
+    return resolveQuestionDisplayText(thread.prompt, thread.title)
+  })
+
+  const activeMaterialAnswerHint = computed(() => {
+    if (!isMaterialGroupMode.value) return ''
+    const item = activePracticeGroupItem.value
+    if (!item) return ''
+    return buildMaterialAnswerHint({
+      title: item.title,
+      questionType: item.questionType,
+      difficulty: item.difficulty
+    })
+  })
+
+  /** 本轮已提交后，从对话里的 AI 反馈摘出纠偏要点，供侧栏展示（不二次调模型） */
+  const activeInterviewFeedbackHint = computed(() => {
+    const threadId = activeQuestionThread.value?.id
+    if (!threadId) return ''
+
+    const hasUserAnswer = options.messages.value.some(
+      item => item.threadId === threadId && item.role === 'user'
+    )
+    if (!hasUserAnswer) return ''
+
+    const assistantMessage = [...options.messages.value]
+      .filter(item => item.threadId === threadId && (item.role === 'assistant' || item.role === 'system'))
+      .pop()
+    if (!assistantMessage?.displayContent?.trim()) return ''
+
+    return extractInterviewFeedbackHint(assistantMessage.displayContent)
+  })
+
+  const activeMockHintText = computed(() => {
+    if (activeInterviewFeedbackHint.value) return activeInterviewFeedbackHint.value
+    if (activeMaterialAnswerHint.value) return activeMaterialAnswerHint.value
+    return primaryQuestion.value?.hint || currentGuide.value?.desc || ''
+  })
+
+  const activeMockHintLabel = computed(() => (
+    activeInterviewFeedbackHint.value ? '本轮回馈' : '作答建议'
+  ))
+
+  const activeDocumentRequestContext = computed(() => {
+    const coreDocument = activeTrainingDocumentCore.value
+    if (!coreDocument) {
+      return {
+        summary: '',
+        tags: [] as string[],
+        excerpt: ''
+      }
+    }
+
+    const materialItem = activePracticeGroupItem.value
+    const materialChunkExcerpt = (() => {
+      if (!materialItem?.sourceChunkId || !materialItem.sourceDocumentId) return ''
+      const pool = getMaterialQuestionPool(materialItem.sourceDocumentId)
+      const chunk = pool?.chunks.find(item => item.id === materialItem.sourceChunkId)
+      return chunk?.text.slice(0, 400).replace(/\s+/g, ' ').trim() || ''
+    })()
+
+    return {
+      summary: coreDocument.summary.trim(),
+      tags: [...coreDocument.tags],
+      excerpt: materialChunkExcerpt || coreDocument.rawText.slice(0, 320).replace(/\s+/g, ' ').trim()
+    }
   })
 
   const activeQuestion = computed<InterviewQuestion | null>(() => {
@@ -405,8 +546,11 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     return questionThreads.value.slice(0, generatedThreadCount.value || 0)
   })
   const latestGeneratedQuestionThread = computed(() => visibleQuestionThreads.value[visibleQuestionThreads.value.length - 1] || null)
-  const nextPendingQuestionThread = computed(() => {
-    return visibleQuestionThreads.value.find(item => !mockSubmittedQuestionIds.value.includes(item.id)) || null
+  const nextSequentialQuestionThread = computed(() => {
+    const currentThread = activeQuestionThread.value
+    if (!currentThread) return null
+    const threads = isViewingHistoryPreview.value ? historyPreviewThreads.value : questionThreads.value
+    return threads.find(item => item.sequence === currentThread.sequence + 1) || null
   })
   const answeredCount = computed(() => {
     return isViewingHistoryPreview.value ? historyPreviewSubmittedQuestionIds.value.length : mockSubmittedQuestionIds.value.length
@@ -437,7 +581,11 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
   const mockPanelMeta = computed(() => {
     const question = activeQuestion.value || primaryQuestion.value
     if (!question || isMockAwaitingSetup.value) return []
-    const trainingModeLabel = currentMockEntryMode.value === 'practice' ? '专项刷题' : '模拟面试'
+    const trainingModeLabel = isMaterialGroupMode.value
+      ? '资料刷题'
+      : currentMockEntryMode.value === 'practice'
+        ? '专项刷题'
+        : '模拟面试'
     const practiceQuestionTypeLabelMap: Record<PersistedPracticeQuestionType, string> = {
       concept: '概念理解题',
       code: '代码分析题',
@@ -460,19 +608,27 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
 
     const practiceGroupItem = activePracticeGroupItem.value
 
+    const isPracticeEntry = currentMockEntryMode.value === 'practice'
+
     return [
       `模式: ${ trainingModeLabel }`,
-      ...(currentMockEntryMode.value === 'practice'
+      ...(isPracticeEntry && currentPracticePlan.value?.weaknessTag
+        ? [`专项: ${ currentPracticePlan.value.weaknessTag }`]
+        : []),
+      ...(!isPracticeEntry
         ? [`难度: ${ difficultyLabelMap[practiceConfig?.difficulty || question.difficulty] }`]
         : []),
-      ...(isPracticeGroupMode.value && practiceGroupItem
-        ? [`选题: ${ practiceQuestionMatchReasonLabelMap[practiceGroupItem.matchReason] }`]
+      ...(isTrainingGroupMode.value && practiceGroupItem
+        ? [`选题: ${ resolveGroupMatchReasonLabel(practiceGroupItem.matchReason) }`]
         : []),
-      ...(!isPracticeGroupMode.value && options.activeDocument.value ? [`命中: ${ matchReasonLabelMap[matchReason.type] }`] : []),
+      ...(isMaterialGroupMode.value && currentPracticeQuestionGroup.value?.documentSnapshot
+        ? [`资料: ${ currentPracticeQuestionGroup.value.documentSnapshot.name }`]
+        : []),
+      ...(!isTrainingGroupMode.value && options.activeDocument.value ? [`命中: ${ matchReasonLabelMap[matchReason.type] }`] : []),
       ...(matchReason.matchedTags.length ? [`命中标签: ${ matchReason.matchedTags.join(' / ') }`] : []),
-      ...(currentMockEntryMode.value === 'practice' && practiceConfig?.zone ? [`专项专区: ${ practiceZoneLabelMap[practiceConfig.zone] }`] : []),
-      ...(currentMockEntryMode.value === 'practice' && practiceConfig?.questionType ? [`题型: ${ practiceQuestionTypeLabelMap[practiceConfig.questionType] }`] : []),
-      ...(options.activeDocument.value ? [`资料: ${ options.activeDocument.value.name }`] : [])
+      ...(!isPracticeEntry && practiceConfig?.zone ? [`专项专区: ${ practiceZoneLabelMap[practiceConfig.zone] }`] : []),
+      ...(!isPracticeEntry && practiceConfig?.questionType ? [`题型: ${ practiceQuestionTypeLabelMap[practiceConfig.questionType] }`] : []),
+      ...(options.activeDocument.value && !isPracticeEntry ? [`资料: ${ options.activeDocument.value.name }`] : [])
     ]
   })
 
@@ -484,7 +640,8 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
   const hasNextMockFollowUp = computed(() => {
     if (isMockAwaitingSetup.value) return false
     if (isViewingHistoryPreview.value) return false
-    return generatedThreadCount.value < questionThreads.value.length || answeredCount.value < totalCount.value
+    if (generatedThreadCount.value < questionThreads.value.length) return true
+    return Boolean(nextSequentialQuestionThread.value)
   })
 
   const isMockCurrentSubmitted = computed(() => {
@@ -560,17 +717,24 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     }))
   }
 
+  const resolveGroupMatchReasonLabel = (reason: PersistedPracticeQuestionGroup['items'][number]['matchReason']) => {
+    if (typeof reason === 'string' && !(reason in practiceQuestionMatchReasonLabelMap)) {
+      return reason
+    }
+    return practiceQuestionMatchReasonLabelMap[reason as keyof typeof practiceQuestionMatchReasonLabelMap] || String(reason)
+  }
+
   const buildConfiguredQuestionThreads = (question: InterviewQuestion): MockInterviewQuestionThread[] => {
+    const trainingGroup = currentPracticeQuestionGroup.value
+    if (isTrainingGroupMode.value && trainingGroup?.items.length) {
+      return buildPracticeGroupQuestionThreads(trainingGroup)
+    }
+
     if (currentMockEntryMode.value !== 'practice') {
       return buildQuestionThreads(question).map(item => ({
         ...item,
         questionId: item.questionId || question.id
       }))
-    }
-
-    const practiceGroup = currentPracticeQuestionGroup.value
-    if (practiceGroup?.items.length) {
-      return buildPracticeGroupQuestionThreads(practiceGroup)
     }
 
     const configuredCount = currentMockSessionConfig.value?.questionCount || currentPracticePlan.value?.questionCount || 1
@@ -616,7 +780,7 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
 
     const nextThreads = buildConfiguredQuestionThreads(question)
     questionThreads.value = nextThreads
-    generatedThreadCount.value = isPracticeGroupMode.value
+    generatedThreadCount.value = isTrainingGroupMode.value
       ? resolvePracticeGroupVisibleCount()
       : (nextThreads.length ? 1 : 0)
     if (!nextThreads.some(item => item.id === activeQuestionThreadId.value)) {
@@ -629,7 +793,15 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
   }
 
   const selectQuestionThread = (threadId: string) => {
-    if (!visibleQuestionThreads.value.some(item => item.id === threadId)) return
+    const targetThread = questionThreads.value.find(item => item.id === threadId)
+    if (!targetThread) return
+
+    const canSelectThread = isTrainingGroupMode.value
+      ? targetThread.order < generatedThreadCount.value
+        || mockSubmittedQuestionIds.value.includes(threadId)
+      : visibleQuestionThreads.value.some(item => item.id === threadId)
+
+    if (!canSelectThread) return
     if (isViewingHistoryPreview.value) {
       historyPreviewActiveThreadId.value = threadId
       options.setActiveThreadId(threadId)
@@ -645,12 +817,29 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     return normalized.length > maxLength ? `${ normalized.slice(0, maxLength) }...` : normalized
   }
 
-  const resolvePracticeQuestionType = (weakness: string): PersistedPracticeQuestionType => {
+  const resolvePracticeQuestionTypeFromWeakness = (weakness: string): PersistedPracticeQuestionType => {
     if (/追问|场景|项目|案例|沟通|表达/.test(weakness))
       return 'scenario'
     if (/代码|实现|语法|类型|泛型|响应式|性能/.test(weakness))
       return 'code'
     return 'concept'
+  }
+
+  const collectRoundQuestionTypes = (): PersistedPracticeQuestionType[] => {
+    const group = currentPracticeQuestionGroup.value
+    if (isTrainingGroupMode.value && group?.items.length) {
+      return group.items
+        .map(item => item.questionType)
+        .filter((type): type is PersistedPracticeQuestionType => Boolean(type))
+    }
+
+    return questionThreads.value
+      .map((thread) => {
+        const questionId = thread.questionId
+        if (!questionId) return undefined
+        return questionBank.find(item => item.id === questionId)?.questionType
+      })
+      .filter((type): type is PersistedPracticeQuestionType => Boolean(type))
   }
 
   const resolvePracticeDifficulty = (answerLength: number, weaknessCount: number): PersistedPracticeDifficulty => {
@@ -696,6 +885,37 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     principle_depth: '原理追问'
   }
 
+  const buildQuestionReviews = (): PersistedReportQuestionReviewItem[] => {
+    const groupItems = currentPracticeQuestionGroup.value?.items || []
+    const groupItemByQuestionId = new Map(
+      groupItems.map(item => [item.questionId, item])
+    )
+
+    return questionThreads.value.map((thread) => {
+      const questionId = thread.questionId || thread.id
+      const groupItem = groupItemByQuestionId.get(questionId)
+        || groupItems[thread.order]
+        || groupItems.find(item => item.order === thread.order)
+      const userAnswer = formatReportThreadUserAnswer(options.messages.value, thread.id)
+      const aiFeedback = formatReportThreadLatestAiFeedback(options.messages.value, thread.id)
+      const hasUserAnswer = Boolean(userAnswer)
+
+      const referenceAnswer = resolveReportQuestionReferenceAnswer(
+        groupItem,
+        options.messages.value,
+        thread.id
+      )
+
+      return {
+        questionId,
+        questionTitle: resolveQuestionDisplayText(thread.prompt, thread.title) || groupItem?.title || thread.title,
+        userAnswer: hasUserAnswer ? userAnswer : '未作答',
+        referenceAnswer: referenceAnswer || undefined,
+        aiFeedback: hasUserAnswer ? (aiFeedback || undefined) : undefined
+      }
+    })
+  }
+
   const buildReportSummary = (): PersistedReportSummary | null => {
     if (!currentSessionId.value) return null
 
@@ -710,16 +930,16 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     const answeredSummary = `${ answeredCount.value } / ${ totalCount.value || 1 }`
     const sourceDocumentName = options.activeDocument.value?.name || ''
     const sourceLabel = sourceDocumentName || '当前训练上下文'
-    const questionAnswerSnapshot = visibleQuestionThreads.value.map((thread) => {
-      const answerMessage = [...options.messages.value]
-        .filter(item => item.threadId === thread.id && item.role === 'user')
-        .pop()
-      const answerText = normalizeSnippet(answerMessage?.displayContent || '', 88)
+    const questionAnswerSnapshot = questionThreads.value.map((thread) => {
+      const answerText = normalizeSnippet(
+        formatReportThreadUserAnswer(options.messages.value, thread.id),
+        120
+      )
       return `${ thread.title }: ${ answerText || '未作答' }`
     })
     const summaryHeadline = `围绕 ${ sourceLabel } 的 ${ topicLabel } 训练已形成阶段性结果`
     const summaryBody = [
-      `本轮围绕“${ question?.title || topicLabel }”共展开 ${ visibleQuestionThreads.value.length } 题，当前已完成 ${ answeredSummary }。`,
+      `本轮共 ${ totalCount.value } 题，已完成 ${ answeredSummary }。`,
       latestAnswer
         ? `最近一次作答摘录为“${ normalizeSnippet(latestAnswer, 90) }”，当前最明显的短板是“${ primaryWeakness }”。`
         : `本轮已经浏览完题目，但还有未作答内容，当前最明显的短板先记为“${ primaryWeakness }”。`
@@ -728,9 +948,20 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       answerLength < 80 ? '下一轮回答尽量按“结论 -> 拆分 -> 结果”三段式展开，避免答案过短。' : '',
       latestFeedback ? `优先处理最近一次反馈暴露的问题：${ normalizeSnippet(latestFeedback, 72) }` : '',
       sourceDocumentName ? `下一轮继续围绕《${ sourceDocumentName }》补练，把资料上下文真正转成可表达内容。` : '',
-      answeredCount.value < totalCount.value ? '当前轮次还有未作答题目，这份报告会先按已展开题目生成阶段性结果。' : ''
+      answeredCount.value < totalCount.value ? '未作答题已在逐题复盘中附上参考答案，可先复盘再决定是否专项补练。' : ''
     ].filter(Boolean)
-    const practiceQuestionType = resolvePracticeQuestionType(primaryWeakness)
+    const practiceQuestionType = resolveDominantPracticeQuestionType(
+      collectRoundQuestionTypes(),
+      resolvePracticeQuestionTypeFromWeakness(primaryWeakness)
+    )
+    const sourceDocumentId = options.activeDocument.value?.id || ''
+    const sourceDocumentExcerpt = sourceDocumentId && isMaterialGroupMode.value
+      ? buildMaterialPracticeExcerpt(
+        sourceDocumentId,
+        currentPracticeQuestionGroup.value?.items || [],
+        { fallbackRawText: options.activeDocument.value?.rawText }
+      )
+      : ''
     const practiceDifficulty = resolvePracticeDifficulty(answerLength, mockWeaknessSignals.value.length)
     const weaknessFocusAreas = resolvePracticeFocusAreas(latestAnswer, latestFeedback, primaryWeakness)
     const focusArea = weaknessFocusAreas[0]
@@ -741,8 +972,9 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       sessionId: currentSessionId.value,
       topic: activeTopicKey.value,
       source: currentSourceKey.value,
-      sourceDocumentId: options.activeDocument.value?.id || '',
+      sourceDocumentId,
       sourceDocumentName,
+      sourceDocumentExcerpt: sourceDocumentExcerpt || undefined,
       weaknessTags: [...mockWeaknessSignals.value],
       weaknessFocusAreas,
       primaryWeakness,
@@ -754,17 +986,19 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
         ...questionAnswerSnapshot,
         latestFeedback ? `系统反馈: ${ normalizeSnippet(latestFeedback, 72) }` : ''
       ].filter(Boolean),
+      questionReviews: buildQuestionReviews(),
       suggestedFocus,
       practicePlan: {
         weaknessTag: primaryWeakness,
         focusArea,
         zone: practiceZoneByTopic[activeTopicKey.value] || 'vue',
         questionType: practiceQuestionType,
+        // questionCount 仅作报告推荐题数；专项页组卷题数以用户选择为准
         questionCount: mockWeaknessSignals.value.length >= 3 ? 15 : answerLength < 80 ? 5 : 10,
         difficulty: practiceDifficulty,
         reason: sourceDocumentName
-          ? `基于《${ sourceDocumentName }》这轮训练暴露的“${ focusAreaText } / ${ primaryWeakness }”生成定向补练计划。`
-          : `基于当前 ${ topicLabel } 训练暴露的“${ focusAreaText } / ${ primaryWeakness }”生成定向补练计划。`
+          ? `基于《${ sourceDocumentName }》这轮训练暴露的“${ focusAreaText } / ${ primaryWeakness }”生成定向补练建议（推荐题数见下，与专项页实际组卷题数可不同）。`
+          : `基于当前 ${ topicLabel } 训练暴露的“${ focusAreaText } / ${ primaryWeakness }”生成定向补练建议（推荐题数见下，与专项页实际组卷题数可不同）。`
       },
       createdAt: new Date().toISOString()
     }
@@ -777,7 +1011,7 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       answeredCount: answeredCount.value,
       currentQuestionIndex: Math.max(0, currentQuestionPosition.value - 1),
       submittedQuestionIds: [...mockSubmittedQuestionIds.value],
-      questionThreadsSnapshot: visibleQuestionThreads.value.map(thread => ({
+      questionThreadsSnapshot: (status === 'completed' ? questionThreads.value : visibleQuestionThreads.value).map(thread => ({
         id: thread.id,
         questionId: thread.questionId,
         order: thread.order,
@@ -831,14 +1065,14 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       const submittedQuestionIds = matchedSession.submittedQuestionIds.filter(threadId => (
         questionThreads.value.some(item => item.id === threadId)
       ))
-      const restoredGeneratedCount = isPracticeGroupMode.value
+      const restoredGeneratedCount = isTrainingGroupMode.value
         ? resolvePracticeGroupVisibleCount()
         : Math.min(
           questionThreads.value.length,
           Math.max(1, submittedQuestionIds.length + 1)
         )
 
-      if (isPracticeGroupMode.value && currentPracticeQuestionGroup.value) {
+      if (isTrainingGroupMode.value && currentPracticeQuestionGroup.value) {
         const nextIndex = Math.min(
           currentPracticeQuestionGroup.value.items.length - 1,
           Math.max(currentPracticeQuestionGroup.value.currentIndex, submittedQuestionIds.length)
@@ -867,11 +1101,11 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       mockFollowUpIndex.value = 0
       mockSubmittedQuestionIds.value = []
       mockWeaknessSignals.value = []
-      generatedThreadCount.value = isPracticeGroupMode.value
+      generatedThreadCount.value = isTrainingGroupMode.value
         ? resolvePracticeGroupVisibleCount()
         : (questionThreads.value.length ? 1 : 0)
 
-      if (isPracticeGroupMode.value && currentPracticeQuestionGroup.value?.status === 'pending') {
+      if (isTrainingGroupMode.value && currentPracticeQuestionGroup.value?.status === 'pending') {
         persistPracticeQuestionGroup({ status: 'in_progress' })
       }
 
@@ -941,6 +1175,30 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       mockWeaknessSignals.value = [...new Set([question.weaknessSignal, ...mockWeaknessSignals.value])]
     }
 
+    const threadMessages = options.messages.value.filter(
+      item => item.threadId === thread.id && (item.role === 'user' || item.role === 'assistant')
+    )
+    const priorUserTurnCount = threadMessages.filter(item => item.role === 'user').length
+    const lastAssistantMessage = [...threadMessages]
+      .reverse()
+      .find(item => item.role === 'assistant' || item.role === 'system')
+    const followUpPrompt = lastAssistantMessage?.displayContent
+      ? extractLatestInterviewerPrompt(lastAssistantMessage.displayContent)
+      : ''
+    const baseQuestionPrompt = activeQuestionInstruction.value || thread.prompt
+    const streamQuestionPrompt = priorUserTurnCount > 0 && followUpPrompt
+      ? followUpPrompt
+      : baseQuestionPrompt
+
+    const priorUserAnswers = threadMessages
+      .filter(item => item.role === 'user')
+      .map(item => item.displayContent || item.content || '')
+    const unknownAnswerStreak = countTrailingUnknownAnswers([...priorUserAnswers, answer])
+    const forceRevealReferenceAnswer = unknownAnswerStreak >= 2 || isReferenceAnswerRequest(answer)
+    const referenceAnswerHint = resolveReportReferenceAnswer(activePracticeGroupItem.value)
+      || activeQuestionReference.value
+      || undefined
+
     options.setActiveThreadId(thread.id)
     options.appendUserMessage(answer, thread.id)
     options.startStream({
@@ -948,7 +1206,9 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       threadId: thread.id,
       topic: activeTopicKey.value,
       prompt: [
-        thread.prompt,
+        streamQuestionPrompt,
+        priorUserTurnCount > 0 ? `【原题】${ baseQuestionPrompt }` : '',
+        activeQuestionReference.value,
         currentPracticePlan.value
           ? `专项训练要求：围绕“${ currentPracticePlan.value.weaknessTag }”进行 ${ currentPracticePlan.value.difficulty } 难度 ${ currentPracticePlan.value.questionType } 强化。`
           : '',
@@ -957,7 +1217,7 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       ].filter(Boolean).join('\n\n'),
       topicLabel: topicLabelMap[activeTopicKey.value] || 'Vue 3',
       questionTitle: thread.title,
-      questionPrompt: thread.prompt,
+      questionPrompt: streamQuestionPrompt,
       answer,
       sourceContext: activeDocumentContext.value,
       sourceDocumentName: options.activeDocument.value?.name,
@@ -965,7 +1225,12 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       sourceDocumentTags: activeDocumentRequestContext.value.tags,
       sourceDocumentExcerpt: activeDocumentRequestContext.value.excerpt,
       feedbackStyle: currentFeedbackStyle.value,
-      format: 'markdown'
+      format: 'markdown',
+      questionIndex: currentQuestionPosition.value || undefined,
+      questionCount: totalCount.value || undefined,
+      unknownAnswerStreak,
+      forceRevealReferenceAnswer,
+      referenceAnswerHint
     })
     persistMockSession()
     mockAnswerDraft.value = ''
@@ -993,7 +1258,7 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
         mockFollowUpIndex.value = Math.max(0, nextThread.order - 1)
         options.setActiveThreadId(nextThread.id)
       }
-      if (isPracticeGroupMode.value && currentPracticeQuestionGroup.value) {
+      if (isTrainingGroupMode.value && currentPracticeQuestionGroup.value) {
         const nextIndex = Math.min(
           currentPracticeQuestionGroup.value.items.length - 1,
           generatedThreadCount.value - 1
@@ -1007,11 +1272,11 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       return
     }
 
-    const pendingThread = nextPendingQuestionThread.value
-    if (pendingThread && pendingThread.id !== currentThread?.id) {
-      activeQuestionThreadId.value = pendingThread.id
-      mockFollowUpIndex.value = Math.max(0, pendingThread.order - 1)
-      options.setActiveThreadId(pendingThread.id)
+    const sequentialThread = nextSequentialQuestionThread.value
+    if (sequentialThread && sequentialThread.id !== currentThread?.id) {
+      activeQuestionThreadId.value = sequentialThread.id
+      mockFollowUpIndex.value = Math.max(0, sequentialThread.order - 1)
+      options.setActiveThreadId(sequentialThread.id)
       persistMockSession()
     }
   }
@@ -1039,7 +1304,17 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
           weaknessTags: [...mockWeaknessSignals.value],
           primaryWeakness: mockWeaknessSignals.value[0] || localSummary.primaryWeakness
         })
-        summary = generated.report
+        summary = {
+          ...generated.report,
+          practicePlan: localSummary.practicePlan || generated.report.practicePlan,
+          questionReviews: localSummary.questionReviews?.length
+            ? localSummary.questionReviews
+            : generated.report.questionReviews,
+          sourceDocumentExcerpt: localSummary.sourceDocumentExcerpt || generated.report.sourceDocumentExcerpt,
+          weaknessFocusAreas: localSummary.weaknessFocusAreas?.length
+            ? localSummary.weaknessFocusAreas
+            : generated.report.weaknessFocusAreas
+        }
       } catch (error) {
         console.warn('[mock-interview-space] report generate fallback to local summary:', error)
       }
@@ -1126,6 +1401,12 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     }
   }
 
+  const resolveLatestPersistedReportSummary = () => {
+    return [...loadReportSummaries()].sort((prev, next) => {
+      return new Date(next.createdAt).getTime() - new Date(prev.createdAt).getTime()
+    })[0] || null
+  }
+
   const clearMockHistory = async () => {
     try {
       await clearRemoteInterviewHistory()
@@ -1134,10 +1415,9 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     }
 
     const context = loadWorkbenchContext()
-    const allSessionIds = loadInterviewSessions().map(item => item.id)
-    allSessionIds.forEach((sessionId) => {
-      removeInterviewSession(sessionId)
-      removeReportSummariesBySessionId(sessionId)
+    const latestReport = resolveLatestPersistedReportSummary()
+    loadInterviewSessions().forEach((session) => {
+      removeInterviewSession(session.id)
     })
 
     resetMockRoundState()
@@ -1147,8 +1427,8 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       activeDocumentId: '',
       currentMode: activeMode.value,
       sourcePage: context?.sourcePage || 'mock-interview-space',
-      practicePlan: null,
-      practiceQuestionGroup: null,
+      practicePlan: latestReport?.practicePlan || context?.practicePlan || null,
+      practiceQuestionGroup: context?.practiceQuestionGroup || null,
       mockEntryMode: 'direct',
       mockSessionConfig: null
     })
@@ -1224,6 +1504,8 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     currentPracticePlan,
     currentPracticeQuestionGroup,
     isPracticeGroupMode,
+    isMaterialGroupMode,
+    isTrainingGroupMode,
     activePracticeGroupItem,
     currentReplayConfig,
     currentMockSessionConfig,
@@ -1241,7 +1523,15 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     displayAllMessages,
     displayMessages,
     questionThreads: visibleQuestionThreads,
+    allQuestionThreads: questionThreads,
+    generatedThreadCount,
     activeQuestionThread,
+    activeQuestionInstruction,
+    activeInterviewFeedbackHint,
+    activeMaterialAnswerHint,
+    activeMockHintLabel,
+    activeMockHintText,
+    activeQuestionReference,
     activeQuestionThreadId,
     primaryQuestion,
     clearMockAnswer,

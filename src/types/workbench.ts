@@ -1,4 +1,11 @@
 import type { InterviewMessage } from '@/types/message'
+import type { MaterialGroupCompileOptions } from '@/types/material'
+import type { PracticeGroupCompileOptions } from '@/types/practice-pool'
+
+export type TrainingQuestionGroupSource =
+  | 'practice_weakness'
+  | 'practice_report_pool'
+  | 'material_document'
 
 export type PersistedTopicKey =
   | 'vue3'
@@ -16,7 +23,7 @@ export type PersistedPracticeZone = 'vue' | 'javascript' | 'typescript' | 'engin
 export type PersistedPracticeQuestionType = 'concept' | 'code' | 'scenario'
 export type PersistedPracticeDifficulty = 'easy' | 'medium' | 'hard'
 export type PersistedPracticeFocusArea = 'structure' | 'case_detail' | 'result_metric' | 'principle_depth'
-export type PersistedMockEntryMode = 'direct' | 'practice'
+export type PersistedMockEntryMode = 'direct' | 'practice' | 'material'
 export type PersistedInterviewFeedbackStyle = 'followup' | 'corrective' | 'guided'
 
 export interface PersistedPracticePlan {
@@ -40,14 +47,26 @@ export interface PersistedPracticeQuestionGroupItem {
   order: number
   title: string
   prompt: string
+  difficulty?: PersistedPracticeDifficulty
+  questionType?: PersistedPracticeQuestionType
   focusArea?: PersistedPracticeFocusArea
-  matchReason: PersistedPracticeQuestionMatchReason
+  matchReason: PersistedPracticeQuestionMatchReason | string
+  sourceChunkId?: string
+  sourceDocumentId?: string
+  referenceAnswer?: string
 }
 
 export interface PersistedPracticeQuestionGroup {
   id: string
+  source?: TrainingQuestionGroupSource
   sourceSessionId?: string
-  planSnapshot: PersistedPracticePlan
+  planSnapshot?: PersistedPracticePlan
+  documentSnapshot?: {
+    documentId: string
+    name: string
+  }
+  compileOptions?: MaterialGroupCompileOptions
+  practiceCompileOptions?: PracticeGroupCompileOptions
   items: PersistedPracticeQuestionGroupItem[]
   currentIndex: number
   status: 'pending' | 'in_progress' | 'completed'
@@ -132,6 +151,14 @@ export interface PersistedInterviewSession {
   status: PersistedInterviewStatus
 }
 
+export interface PersistedReportQuestionReviewItem {
+  questionId: string
+  questionTitle: string
+  userAnswer: string
+  referenceAnswer?: string
+  aiFeedback?: string
+}
+
 export interface PersistedReportSummary {
   id: string
   sessionId: string
@@ -139,6 +166,8 @@ export interface PersistedReportSummary {
   source: string
   sourceDocumentId?: string
   sourceDocumentName?: string
+  /** 资料面试结束时冻结的章节片段，供弱项补练 LLM 使用 */
+  sourceDocumentExcerpt?: string
   weaknessTags: string[]
   weaknessFocusAreas?: PersistedPracticeFocusArea[]
   primaryWeakness?: string
@@ -147,6 +176,7 @@ export interface PersistedReportSummary {
   summaryHeadline?: string
   summaryBody?: string
   answerSnapshot?: string[]
+  questionReviews?: PersistedReportQuestionReviewItem[]
   suggestedFocus?: string[]
   practicePlan?: PersistedPracticePlan
   createdAt: string

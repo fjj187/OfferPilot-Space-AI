@@ -1,12 +1,14 @@
-import type { InterviewQuestion, InterviewTopicKey } from '@/views/workbench/mock-interview.data'
-import { questionBank } from '@/views/workbench/mock-interview.data'
+import type {
+  PracticeGroupCompileOptions,
+  PracticeQuestionItem,
+  PracticeQuestionPool
+} from '@/types/practice-pool'
+import { shufflePracticeQuestionsWithSeed } from '@/services/practice/practice-shuffle'
 import type {
   PersistedPracticeFocusArea,
   PersistedPracticePlan,
   PersistedPracticeQuestionGroup,
   PersistedPracticeQuestionGroupItem,
-  PersistedPracticeQuestionMatchReason,
-  PersistedPracticeQuestionType,
   PersistedPracticeZone,
   PersistedReportSummary,
   PersistedTopicKey
@@ -15,6 +17,8 @@ import type {
 export interface BuildPracticeQuestionGroupOptions {
   reportSummary?: PersistedReportSummary | null
   sourceSessionId?: string
+  pool?: PracticeQuestionPool | null
+  compileOptions?: PracticeGroupCompileOptions
 }
 
 export interface PracticeQuestionGroupBuildResult {
@@ -24,16 +28,7 @@ export interface PracticeQuestionGroupBuildResult {
   isShortfall: boolean
 }
 
-const practiceZoneByTopic: Record<InterviewTopicKey, PersistedPracticeZone> = {
-  vue3: 'vue',
-  typescript: 'typescript',
-  engineering: 'engineering',
-  browser: 'javascript',
-  performance: 'performance',
-  scenario: 'javascript'
-}
-
-const topicByPracticeZone: Record<PersistedPracticeZone, InterviewTopicKey> = {
+const topicByPracticeZone: Record<PersistedPracticeZone, PersistedTopicKey> = {
   vue: 'vue3',
   javascript: 'browser',
   typescript: 'typescript',
@@ -41,150 +36,86 @@ const topicByPracticeZone: Record<PersistedPracticeZone, InterviewTopicKey> = {
   performance: 'performance'
 }
 
-const difficultyRank: Record<InterviewQuestion['difficulty'], number> = {
-  easy: 0,
-  medium: 1,
-  hard: 2
-}
-
-const resolveQuestionTypeByHeuristic = (question: InterviewQuestion): PersistedPracticeQuestionType => {
-  if (question.questionType) return question.questionType
-  const subject = `${ question.stageLabel } ${ question.title } ${ question.prompt } ${ question.tags.join(' ') }`
-  if (/场景|项目|追问|表达|沟通/.test(subject)) return 'scenario'
-  if (/源码|代码|实现|类型|泛型|响应式|性能|缓存/.test(subject)) return 'code'
-  return 'concept'
-}
-
-const matchesPracticeQuestionType = (question: InterviewQuestion, type: PersistedPracticeQuestionType) => {
-  const resolvedType = resolveQuestionTypeByHeuristic(question)
-  return resolvedType === type
-}
-
-const matchesWeaknessTag = (question: InterviewQuestion, weaknessTag: string) => {
-  const normalizedTag = weaknessTag.trim().toLowerCase()
-  if (!normalizedTag) return false
-
-  const keywordPool = [
-    question.weaknessSignal,
-    question.title,
-    question.prompt,
-    ...(question.weaknessKeywords || []),
-    ...question.tags
-  ].join(' ').toLowerCase()
-
-  if (keywordPool.includes(normalizedTag)) return true
-
-  return normalizedTag.split(/[\s/、,，]+/).filter(Boolean).some(token => keywordPool.includes(token))
-}
-
-const resolveFocusArea = (
-  question: InterviewQuestion,
-  plan: PersistedPracticePlan
-): PersistedPracticeFocusArea | undefined => {
-  if (plan.focusArea && question.focusAreas?.includes(plan.focusArea)) {
-    return plan.focusArea
-  }
-  return question.focusAreas?.[0]
-}
-
-interface ScoredQuestion {
-  question: InterviewQuestion
-  score: number
-  matchReason: PersistedPracticeQuestionMatchReason
-  focusArea?: PersistedPracticeFocusArea
-}
-
-const scoreQuestion = (
-  question: InterviewQuestion,
-  plan: PersistedPracticePlan,
-  topicKey: InterviewTopicKey
-): ScoredQuestion => {
-  let score = 0
-  let matchReason: PersistedPracticeQuestionMatchReason = 'fallback'
-
-  if (question.topic === topicKey) {
-    score += 40
-    matchReason = 'type_zone'
-  }
-
-  if (plan.focusArea && question.focusAreas?.includes(plan.focusArea)) {
-    score += 120
-    matchReason = 'focus_area'
-  }
-
-  if (matchesPracticeQuestionType(question, plan.questionType)) {
-    score += 60
-    if (matchReason === 'type_zone') matchReason = 'type_zone'
-  }
-
-  if (question.difficulty === plan.difficulty) {
-    score += 30
-  } else {
-    score -= Math.abs(difficultyRank[question.difficulty] - difficultyRank[plan.difficulty]) * 8
-  }
-
-  if (matchesWeaknessTag(question, plan.weaknessTag)) {
-    score += 90
-    if (matchReason !== 'focus_area') matchReason = 'weakness_tag'
-  }
-
-  if (question.practiceZones?.includes(plan.zone)) {
-    score += 20
-  } else if (practiceZoneByTopic[question.topic] === plan.zone) {
-    score += 10
-  }
-
-  return {
-    question,
-    score,
-    matchReason,
-    focusArea: resolveFocusArea(question, plan)
-  }
-}
-
-const toGroupItem = (entry: ScoredQuestion, order: number): PersistedPracticeQuestionGroupItem => ({
-  questionId: entry.question.id,
-  order,
-  title: entry.question.title,
-  prompt: entry.question.prompt,
-  focusArea: entry.focusArea,
-  matchReason: entry.matchReason
+export const defaultPracticeGroupCompileOptions = (): PracticeGroupCompileOptions => ({
+  count: 5,
+  orderMode: 'random',
+  shuffleSeed: Date.now()
 })
 
-export function buildPracticeQuestionGroup(
+const toGroupItemFromPool = (question: PracticeQuestionItem, order: number): PersistedPracticeQuestionGroupItem => ({
+  questionId: question.id,
+  order,
+  title: question.title,
+  prompt: question.prompt,
+  difficulty: question.difficulty,
+  questionType: question.questionType,
+  focusArea: question.focusAreas?.[0],
+  matchReason: question.generatedBy === 'llm' ? '报告题池' : '报告题池（复盘规则）',
+  referenceAnswer: question.referenceAnswer
+})
+
+const sortPoolQuestions = (questions: PracticeQuestionItem[]) => (
+  [...questions].sort((prev, next) => prev.order - next.order || prev.id.localeCompare(next.id))
+)
+
+const buildEmptyGroup = (
   plan: PersistedPracticePlan,
-  options: BuildPracticeQuestionGroupOptions = {}
-): PracticeQuestionGroupBuildResult {
-  const topicKey = topicByPracticeZone[plan.zone] || 'vue3'
-  const topicMatched = questionBank.filter(item => item.topic === topicKey)
-  const candidatePool = topicMatched.length ? topicMatched : questionBank
+  options: BuildPracticeQuestionGroupOptions,
+  requestedCount: number
+): PracticeQuestionGroupBuildResult => {
+  const now = new Date().toISOString()
+  return {
+    group: {
+      id: `practice-group-${ Date.now() }`,
+      source: 'practice_report_pool',
+      sourceSessionId: options.sourceSessionId || options.reportSummary?.sessionId,
+      planSnapshot: { ...plan },
+      practiceCompileOptions: options.compileOptions
+        ? { ...options.compileOptions }
+        : defaultPracticeGroupCompileOptions(),
+      items: [],
+      currentIndex: 0,
+      status: 'completed',
+      createdAt: now,
+      updatedAt: now
+    },
+    requestedCount,
+    actualCount: 0,
+    isShortfall: true
+  }
+}
 
-  const ranked = candidatePool
-    .map(question => scoreQuestion(question, plan, topicKey))
-    .sort((prev, next) => {
-      if (next.score !== prev.score) return next.score - prev.score
-      if (prev.question.difficulty !== next.question.difficulty) {
-        return difficultyRank[prev.question.difficulty] - difficultyRank[next.question.difficulty]
-      }
-      return prev.question.id.localeCompare(next.question.id)
-    })
+const buildFromReportPool = (
+  plan: PersistedPracticePlan,
+  pool: PracticeQuestionPool,
+  options: BuildPracticeQuestionGroupOptions
+): PracticeQuestionGroupBuildResult => {
+  const compileOptions = options.compileOptions || defaultPracticeGroupCompileOptions()
+  const ranked = sortPoolQuestions(pool.questions)
+  // 报告题池由 LLM 按弱项生成，无章节顺序；组卷时固定洗牌
+  const ordered = shufflePracticeQuestionsWithSeed(
+    ranked,
+    compileOptions.shuffleSeed ?? Date.now()
+  )
 
-  const selected: ScoredQuestion[] = []
+  const selected: PracticeQuestionItem[] = []
   const usedIds = new Set<string>()
 
-  for (const entry of ranked) {
-    if (selected.length >= plan.questionCount) break
-    if (usedIds.has(entry.question.id)) continue
-    usedIds.add(entry.question.id)
-    selected.push(entry)
+  for (const question of ordered) {
+    if (selected.length >= compileOptions.count) break
+    if (usedIds.has(question.id)) continue
+    usedIds.add(question.id)
+    selected.push(question)
   }
 
   const now = new Date().toISOString()
-  const items = selected.map((entry, index) => toGroupItem(entry, index))
+  const items = selected.map((question, index) => toGroupItemFromPool(question, index))
   const group: PersistedPracticeQuestionGroup = {
     id: `practice-group-${ Date.now() }`,
-    sourceSessionId: options.sourceSessionId || options.reportSummary?.sessionId,
+    source: 'practice_report_pool',
+    sourceSessionId: options.sourceSessionId || pool.sessionId,
     planSnapshot: { ...plan },
+    practiceCompileOptions: { ...compileOptions },
     items,
     currentIndex: 0,
     status: items.length ? 'pending' : 'completed',
@@ -194,17 +125,25 @@ export function buildPracticeQuestionGroup(
 
   return {
     group,
-    requestedCount: plan.questionCount,
+    requestedCount: compileOptions.count,
     actualCount: items.length,
-    isShortfall: items.length < plan.questionCount
+    isShortfall: items.length < compileOptions.count
   }
 }
 
-export const practiceQuestionMatchReasonLabelMap: Record<PersistedPracticeQuestionMatchReason, string> = {
-  focus_area: '弱项维度命中',
-  weakness_tag: '弱项标签命中',
-  type_zone: '题型专区命中',
-  fallback: '规则兜底'
+/** 专项补练仅允许从报告题池组卷；无题池时返回空组 */
+export function buildPracticeQuestionGroup(
+  plan: PersistedPracticePlan,
+  options: BuildPracticeQuestionGroupOptions = {}
+): PracticeQuestionGroupBuildResult {
+  const pool = options.pool
+  const requestedCount = options.compileOptions?.count || plan.questionCount
+
+  if (pool?.status === 'ready' && pool.questions.length > 0) {
+    return buildFromReportPool(plan, pool, options)
+  }
+
+  return buildEmptyGroup(plan, options, requestedCount)
 }
 
 export const practiceFocusAreaLabelMap: Record<PersistedPracticeFocusArea, string> = {
@@ -212,6 +151,15 @@ export const practiceFocusAreaLabelMap: Record<PersistedPracticeFocusArea, strin
   case_detail: '案例细节',
   result_metric: '结果指标',
   principle_depth: '原理追问'
+}
+
+export const practiceQuestionMatchReasonLabelMap: Record<string, string> = {
+  focus_area: '弱项维度命中',
+  weakness_tag: '弱项标签命中',
+  type_zone: '题型专区命中',
+  fallback: '规则兜底',
+  '报告题池': '报告题池',
+  '报告题池（复盘规则）': '报告题池（复盘规则）'
 }
 
 export function resolveTopicKeyForPracticeZone(zone: PersistedPracticeZone): PersistedTopicKey {

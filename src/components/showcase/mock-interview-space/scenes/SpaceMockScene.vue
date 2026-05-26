@@ -5,6 +5,7 @@ import {
   type MockInterviewQuestionThread,
   feedbackStyleLabelMap
 } from '@/composables/showcase/useMockInterviewSpaceMockState'
+import { MATERIAL_BASIS_MARKER, resolveThreadDisplayPrompt } from '@/services/material/material-prompt'
 import Pagination from '@/components/Pagination/index.vue'
 import MessageList from '@/components/message/MessageList.vue'
 import AnswerInputPanel from '@/components/mock-interview/AnswerInputPanel.vue'
@@ -24,6 +25,8 @@ const props = defineProps<{
   isViewingHistoryPreview: boolean
   questionPrompt: string
   hintText: string
+  hintLabel: string
+  questionReference: string
   messages: InterviewMessage[]
   answeredCount: number
   currentQuestionPosition: number
@@ -37,6 +40,7 @@ const props = defineProps<{
   answerDraft: string
   submitted: boolean
   totalCount: number
+  generatedThreadCount: number
   streaming: boolean
   streamError?: string
   sessionStatusText: string
@@ -92,6 +96,7 @@ interface MetaDetailState {
 
 const metaPriorityMap: Record<string, number> = {
   资料: 10,
+  专项: 15,
   模式: 20,
   难度: 35,
   阶段: 40,
@@ -119,7 +124,7 @@ const metaLabelValue = (label: string) => label.split(':').slice(1).join(':').tr
 const metaValueMaxLengthMap: Partial<Record<string, number>> = {
   资料: 16,
   题源: 14,
-  专项: 10,
+  专项: 14,
   命中标签: 18
 }
 
@@ -345,26 +350,6 @@ const handleTopicKnowledgeDocumentPointerDown = (event: Event) => {
   closeMetaDetail()
 }
 
-const practiceQuestionTypeLabelMap: Record<PersistedPracticePlan['questionType'], string> = {
-  concept: '概念理解题',
-  code: '代码实现题',
-  scenario: '场景表达题'
-}
-
-const practiceDifficultyLabelMap: Record<PersistedPracticePlan['difficulty'], string> = {
-  easy: '基础',
-  medium: '进阶',
-  hard: '高阶'
-}
-
-const practiceZoneLabelMap: Record<PersistedPracticePlan['zone'], string> = {
-  vue: 'Vue',
-  javascript: 'JavaScript',
-  typescript: 'TypeScript',
-  engineering: '工程化',
-  performance: '性能优化'
-}
-
 const feedbackStyleOptions: FeedbackStyleOption[] = [
   {
     value: 'followup',
@@ -409,6 +394,7 @@ const finishSnapshot = ref<null | {
   answerDraft: string
   submitted: boolean
   totalCount: number
+  generatedThreadCount: number
   streaming: boolean
   streamError?: string
   sessionStatusText: string
@@ -434,6 +420,7 @@ const viewState = computed(() => {
     answerDraft: props.answerDraft,
     submitted: props.submitted,
     totalCount: props.totalCount,
+    generatedThreadCount: props.generatedThreadCount,
     streaming: props.streaming,
     streamError: props.streamError,
     sessionStatusText: props.sessionStatusText
@@ -448,10 +435,20 @@ const questionThreadCards = computed(() => {
   return viewState.value.questionThreads.map((item) => {
     const threadMessages = viewState.value.allMessages.filter(message => message.threadId === item.id)
     const hasReply = threadMessages.some(message => message.role === 'user')
+    const isLocked = item.order >= viewState.value.generatedThreadCount
+      && item.id !== viewState.value.activeQuestionThreadId
+      && !hasReply
     return {
       ...item,
-      statusLabel: item.id === viewState.value.activeQuestionThreadId ? '当前作答' : hasReply ? '已回答' : '未回答',
-      preview: item.prompt
+      statusLabel: item.id === viewState.value.activeQuestionThreadId
+        ? '当前作答'
+        : hasReply
+          ? '已回答'
+          : isLocked
+            ? '待解锁'
+            : '未回答',
+      preview: resolveThreadDisplayPrompt(item),
+      isLocked
     }
   })
 })
@@ -475,9 +472,61 @@ const historyPlaceholderItems = computed(() => {
 })
 
 const openQuestionThread = (threadId: string) => {
+  const target = questionThreadCards.value.find(item => item.id === threadId)
+  if (target?.isLocked) return
   emit('selectQuestionThread', threadId)
   isQuestionHistoryView.value = false
 }
+
+const displayQuestionInstruction = computed(() => {
+  const thread = activeQuestionThread.value
+  const instruction = thread
+    ? resolveThreadDisplayPrompt(thread)
+    : viewState.value.questionPrompt
+  if (!instruction) return ''
+  return instruction.replace(/\n{3,}/g, '\n\n').trim()
+})
+
+interface QuestionSideCard {
+  label: string
+  body: string
+  kind: 'reference' | 'hint'
+}
+
+/** 专项补练入口与资料刷题一致：侧栏只保留作答建议 + 面试风格，资料依据仅在资料刷题展示 */
+const showQuestionReferenceCard = computed(() => (
+  !props.practicePlan
+  && Boolean(props.questionReference.replace(MATERIAL_BASIS_MARKER, '').trim())
+))
+
+const questionSideCards = computed(() => {
+  const cards: QuestionSideCard[] = []
+  const reference = props.questionReference.replace(MATERIAL_BASIS_MARKER, '').trim()
+  const hint = viewState.value.hintText.trim()
+  const instruction = displayQuestionInstruction.value
+
+  if (showQuestionReferenceCard.value) {
+    cards.push({
+      label: '资料依据',
+      body: reference,
+      kind: 'reference'
+    })
+  }
+  if (hint && hint !== instruction) {
+    cards.push({
+      label: props.hintLabel || '作答建议',
+      body: hint,
+      kind: 'hint'
+    })
+  }
+  return cards
+})
+
+const showStandaloneHint = computed(() => {
+  const hint = viewState.value.hintText.trim()
+  if (!hint) return false
+  return !questionSideCards.value.some(card => card.body === hint)
+})
 
 const syncSessionFullscreenLock = (active: boolean) => {
   document.documentElement.classList.toggle('mock-session-is-fullscreen', active)
@@ -574,6 +623,7 @@ const handleFinish = () => {
     answerDraft: props.answerDraft,
     submitted: props.submitted,
     totalCount: props.totalCount,
+    generatedThreadCount: props.generatedThreadCount,
     streaming: props.streaming,
     streamError: props.streamError,
     sessionStatusText: props.sessionStatusText
@@ -669,92 +719,92 @@ onBeforeUnmount(() => {
         :body="sectionBody"
         aside-min-width="560px"
       >
-      <template #aside>
-        <div class="mock-meta-row">
-          <span
-            v-for="item in visibleMetaChips"
-            :key="item.key"
-            :ref="(el) => setMetaChipTriggerRef(item.key, el)"
-            class="mock-meta-chip"
-            :class="{
-              'is-expandable': isMetaChipExpandable(item),
-              'is-open': activeMetaDetail?.key === item.key,
-              'is-source': item.tone === 'source',
-              'is-document': item.tone === 'document',
-              'is-topic': item.tone === 'topic',
-              'is-knowledge': item.tone === 'knowledge'
-            }"
-            :title="isMetaChipExpandable(item) ? item.label : undefined"
-            @click="toggleMetaDetail(item)"
-          >
-            <span class="mock-meta-chip-text">{{ item.displayLabel }}</span>
+        <template #aside>
+          <div class="mock-meta-row">
             <span
-              v-if="isMetaChipExpandable(item)"
-              class="mock-meta-chip-expand"
-              :class="{ 'is-open': activeMetaDetail?.key === item.key }"
-              aria-hidden="true"
-            >+</span>
-          </span>
-          <div
-            v-if="!isAwaitingSetup && topicKnowledgeEntries.length"
-            ref="topicKnowledgeShellRef"
-            class="mock-meta-popover-shell"
-          >
-            <button
-              ref="topicKnowledgeTriggerRef"
-              type="button"
-              class="mock-meta-chip mock-meta-trigger"
-              :class="{ 'is-open': isTopicKnowledgeOpen }"
-              @click="toggleTopicKnowledge"
+              v-for="item in visibleMetaChips"
+              :key="item.key"
+              :ref="(el) => setMetaChipTriggerRef(item.key, el)"
+              class="mock-meta-chip"
+              :class="{
+                'is-expandable': isMetaChipExpandable(item),
+                'is-open': activeMetaDetail?.key === item.key,
+                'is-source': item.tone === 'source',
+                'is-document': item.tone === 'document',
+                'is-topic': item.tone === 'topic',
+                'is-knowledge': item.tone === 'knowledge'
+              }"
+              :title="isMetaChipExpandable(item) ? item.label : undefined"
+              @click="toggleMetaDetail(item)"
             >
-              <span class="mock-meta-chip-text">{{ topicKnowledgeChipLabel }}</span>
+              <span class="mock-meta-chip-text">{{ item.displayLabel }}</span>
               <span
-                class="mock-meta-trigger-arrow"
-                :class="{ 'is-open': isTopicKnowledgeOpen }"
+                v-if="isMetaChipExpandable(item)"
+                class="mock-meta-chip-expand"
+                :class="{ 'is-open': activeMetaDetail?.key === item.key }"
                 aria-hidden="true"
               >+</span>
-            </button>
-            <Teleport to="body">
-              <Transition name="mock-meta-popover-fade">
-                <div
-                  v-if="isTopicKnowledgeOpen"
-                  ref="topicKnowledgePopoverRef"
-                  class="mock-meta-popover"
-                  :style="topicKnowledgePopoverStyle"
-                >
-                  <div class="mock-meta-popover-title">主题与知识点</div>
-                  <div class="mock-meta-popover-list">
-                    <span
-                      v-for="item in topicKnowledgeEntries"
-                      :key="item.key"
-                      class="mock-meta-popover-item"
-                      :class="{
-                        'is-topic': item.tone === 'topic',
-                        'is-knowledge': item.tone === 'knowledge'
-                      }"
-                    >
-                      {{ item.label }}: {{ item.value }}
-                    </span>
-                  </div>
-                </div>
-              </Transition>
-            </Teleport>
-          </div>
-        </div>
-        <Teleport to="body">
-          <Transition name="mock-meta-popover-fade">
+            </span>
             <div
-              v-if="activeMetaDetail"
-              ref="metaDetailPopoverRef"
-              class="mock-meta-popover"
-              :style="metaDetailPopoverStyle"
+              v-if="!isAwaitingSetup && topicKnowledgeEntries.length"
+              ref="topicKnowledgeShellRef"
+              class="mock-meta-popover-shell"
             >
-              <div class="mock-meta-popover-title">{{ activeMetaDetail.title }}</div>
-              <div class="mock-meta-detail-copy">{{ activeMetaDetail.label }}</div>
+              <button
+                ref="topicKnowledgeTriggerRef"
+                type="button"
+                class="mock-meta-chip mock-meta-trigger"
+                :class="{ 'is-open': isTopicKnowledgeOpen }"
+                @click="toggleTopicKnowledge"
+              >
+                <span class="mock-meta-chip-text">{{ topicKnowledgeChipLabel }}</span>
+                <span
+                  class="mock-meta-trigger-arrow"
+                  :class="{ 'is-open': isTopicKnowledgeOpen }"
+                  aria-hidden="true"
+                >+</span>
+              </button>
+              <Teleport to="body">
+                <Transition name="mock-meta-popover-fade">
+                  <div
+                    v-if="isTopicKnowledgeOpen"
+                    ref="topicKnowledgePopoverRef"
+                    class="mock-meta-popover"
+                    :style="topicKnowledgePopoverStyle"
+                  >
+                    <div class="mock-meta-popover-title">主题与知识点</div>
+                    <div class="mock-meta-popover-list">
+                      <span
+                        v-for="item in topicKnowledgeEntries"
+                        :key="item.key"
+                        class="mock-meta-popover-item"
+                        :class="{
+                          'is-topic': item.tone === 'topic',
+                          'is-knowledge': item.tone === 'knowledge'
+                        }"
+                      >
+                        {{ item.label }}: {{ item.value }}
+                      </span>
+                    </div>
+                  </div>
+                </Transition>
+              </Teleport>
             </div>
-          </Transition>
-        </Teleport>
-      </template>
+          </div>
+          <Teleport to="body">
+            <Transition name="mock-meta-popover-fade">
+              <div
+                v-if="activeMetaDetail"
+                ref="metaDetailPopoverRef"
+                class="mock-meta-popover"
+                :style="metaDetailPopoverStyle"
+              >
+                <div class="mock-meta-popover-title">{{ activeMetaDetail.title }}</div>
+                <div class="mock-meta-detail-copy">{{ activeMetaDetail.label }}</div>
+              </div>
+            </Transition>
+          </Teleport>
+        </template>
       </SpaceSceneHeader>
     </div>
 
@@ -818,7 +868,7 @@ onBeforeUnmount(() => {
                     </svg>
                   </button>
                   <button
-                    v-if="!isQuestionHistoryView && viewState.questionThreads.length > 1"
+                    v-if="!isQuestionHistoryView && viewState.totalCount > 1"
                     type="button"
                     class="mock-history-back-button"
                     @click="isQuestionHistoryView = true"
@@ -887,6 +937,8 @@ onBeforeUnmount(() => {
                   :key="item.id"
                   type="button"
                   class="mock-thread-card"
+                  :class="{ 'is-locked': item.isLocked }"
+                  :disabled="item.isLocked"
                   @click="openQuestionThread(item.id)"
                 >
                   <div class="mock-thread-card-head">
@@ -934,81 +986,96 @@ onBeforeUnmount(() => {
           </div>
 
           <aside class="mock-side-column">
-            <section
-              v-if="viewState.practicePlan"
-              class="mock-practice-card"
-            >
-              <div class="mock-side-label">本轮专项训练</div>
-              <div class="mock-practice-grid">
-                <div class="mock-practice-item">
-                  <span>专项目标</span>
-                  <strong>{{ viewState.practicePlan?.weaknessTag }}</strong>
-                </div>
-                <div class="mock-practice-item">
-                  <span>题型</span>
-                  <strong>{{ viewState.practicePlan ? practiceQuestionTypeLabelMap[viewState.practicePlan.questionType] : '' }}</strong>
-                </div>
-                <div class="mock-practice-item">
-                  <span>难度</span>
-                  <strong>{{ viewState.practicePlan ? practiceDifficultyLabelMap[viewState.practicePlan.difficulty] : '' }}</strong>
-                </div>
-                <div class="mock-practice-item">
-                  <span>训练专区</span>
-                  <strong>{{ viewState.practicePlan ? practiceZoneLabelMap[viewState.practicePlan.zone] : '' }}</strong>
-                </div>
-              </div>
-            </section>
-
-            <template v-if="viewState.isAwaitingSetup">
-              <section class="mock-question-info is-empty">
-                <div class="mock-side-label">提示</div>
-                <p>完成资料或题型选择后，系统会在左侧对话区展示题目并开放作答。</p>
-              </section>
-
-              <div class="mock-draft-empty">
-                <strong>你的回答草稿</strong>
-                <p>当前未开始面试，暂不开放回答输入。</p>
-              </div>
-            </template>
-            <template v-else>
-              <section
-                v-if="viewState.hintText"
-                class="mock-question-info"
+            <div class="mock-side-top-stack">
+              <div
+                class="mock-side-guide-panel"
+                :class="{
+                  'is-empty': viewState.isAwaitingSetup,
+                  'is-practice-entry': Boolean(viewState.practicePlan && !viewState.isAwaitingSetup)
+                }"
               >
-                <div class="mock-side-label">提示</div>
-                <p>{{ viewState.hintText }}</p>
-              </section>
-
-              <div class="mock-draft-shell">
-                <div class="mock-feedback-style-card">
-                  <div class="mock-side-label">面试风格</div>
-                  <div class="mock-feedback-style-group">
-                    <button
-                      v-for="option in feedbackStyleOptions"
-                      :key="option.value"
-                      type="button"
-                      class="mock-feedback-style-button"
-                      :class="{ 'is-active': props.feedbackStyle === option.value }"
-                      :disabled="viewState.streaming"
-                      @click="$emit('update:feedbackStyle', option.value)"
+                <template v-if="viewState.isAwaitingSetup">
+                  <section class="mock-side-guide-section mock-question-info is-empty">
+                    <div class="mock-side-label">提示</div>
+                    <p>完成资料或题型选择后，系统会在左侧对话区展示题目并开放作答。</p>
+                  </section>
+                </template>
+                <template v-else>
+                  <div class="mock-side-guide-scroll">
+                    <section
+                      v-for="card in questionSideCards"
+                      :key="card.label"
+                      class="mock-side-guide-section mock-question-requirement-card"
+                      :class="{
+                        'is-reference-card': card.kind === 'reference',
+                        'is-hint-card': card.kind === 'hint',
+                        'is-feedback-card': card.label === '本轮回馈'
+                      }"
                     >
-                      <strong>{{ option.label }}</strong>
-                      <span>{{ option.description }}</span>
-                    </button>
+                      <div class="mock-side-label">{{ card.label }}</div>
+                      <p
+                        class="mock-prompt-body"
+                        :class="{
+                          'is-reference-clamp': card.kind === 'reference',
+                          'is-hint-clamp': card.kind === 'hint'
+                        }"
+                      >
+                        {{ card.body }}
+                      </p>
+                    </section>
+
+                    <section
+                      v-if="showStandaloneHint"
+                      class="mock-side-guide-section mock-question-info"
+                    >
+                      <div class="mock-side-label">提示</div>
+                      <p>{{ viewState.hintText }}</p>
+                    </section>
                   </div>
-                </div>
-                <AnswerInputPanel
-                  :value="viewState.answerDraft"
-                  :submitted="viewState.submitted"
-                  :streaming="viewState.streaming"
-                  variant="space"
-                  @update:value="emit('update:answerDraft', $event)"
-                  @submit="emit('submit')"
-                  @clear="emit('clear')"
-                  @stop="emit('stop')"
-                />
+
+                  <section class="mock-side-guide-section mock-feedback-style-section">
+                    <div class="mock-side-label">面试风格</div>
+                    <div class="mock-feedback-style-group">
+                      <button
+                        v-for="option in feedbackStyleOptions"
+                        :key="option.value"
+                        type="button"
+                        class="mock-feedback-style-button"
+                        :class="{ 'is-active': props.feedbackStyle === option.value }"
+                        :disabled="viewState.streaming"
+                        @click="$emit('update:feedbackStyle', option.value)"
+                      >
+                        <strong>{{ option.label }}</strong>
+                        <span>{{ option.description }}</span>
+                      </button>
+                    </div>
+                  </section>
+                </template>
               </div>
-            </template>
+            </div>
+
+            <div
+              v-if="viewState.isAwaitingSetup"
+              class="mock-draft-empty mock-draft-slot"
+            >
+              <strong>你的回答草稿</strong>
+              <p>当前未开始面试，暂不开放回答输入。</p>
+            </div>
+            <div
+              v-else
+              class="mock-draft-shell mock-draft-slot"
+            >
+              <AnswerInputPanel
+                :value="viewState.answerDraft"
+                :submitted="viewState.submitted"
+                :streaming="viewState.streaming"
+                variant="space"
+                @update:value="emit('update:answerDraft', $event)"
+                @submit="emit('submit')"
+                @clear="emit('clear')"
+                @stop="emit('stop')"
+              />
+            </div>
           </aside>
         </div>
 
@@ -1020,7 +1087,7 @@ onBeforeUnmount(() => {
           >
             <div class="mock-confirm-dialog">
               <div class="mock-confirm-title">确认清空对话历史？</div>
-              <p>清空后会删除当前对话、进度状态和关联摘要，刷新页面后也不会恢复。</p>
+              <p>清空后会删除当前对话与进行中的面试进度；已生成的复盘报告和专项训练入口会保留。</p>
               <div class="mock-confirm-actions">
                 <button
                   type="button"
@@ -1053,7 +1120,7 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="mock-finish-button"
-            :disabled="props.isViewingHistoryPreview || viewState.streaming || (!viewState.answeredCount && viewState.questionThreads.length < viewState.totalCount) || viewState.isAwaitingSetup"
+            :disabled="props.isViewingHistoryPreview || viewState.streaming || !viewState.answeredCount || viewState.isAwaitingSetup"
             @click="handleFinish"
           >
             结束本轮并查看报告
@@ -1410,18 +1477,118 @@ onBeforeUnmount(() => {
   gap: 20px;
   align-items: stretch;
   min-height: 0;
+  height: 100%;
 }
 
 .mock-side-column {
+  --mock-draft-slot-height: 200px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) var(--mock-draft-slot-height);
+  gap: 12px;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.mock-side-top-stack {
   display: flex;
   flex-direction: column;
   gap: 12px;
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.mock-side-guide-panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 14px;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 20px;
+  background: rgb(255 255 255 / 0.04);
+}
+
+.mock-side-guide-scroll {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  overflow: hidden auto;
+}
+
+.mock-side-guide-scroll .mock-side-guide-section + .mock-side-guide-section {
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.mock-side-guide-section {
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow: visible;
+}
+
+.mock-side-guide-section + .mock-side-guide-section {
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.mock-side-guide-panel .mock-feedback-style-section {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 10px;
+  padding-top: 12px;
+  padding-bottom: 2px;
+  margin-top: auto;
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.mock-side-guide-panel .mock-side-label {
+  flex: 0 0 auto;
+  line-height: 1.35;
+}
+
+.mock-side-guide-panel .mock-question-info {
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* 未选资料/题型时：只加高内侧「提示」小卡片，外层 guide 面板仍占满侧栏 */
+.mock-side-guide-panel.is-empty .mock-question-info.is-empty {
+  min-height: 128px;
+  padding: 14px 16px 20px;
+  max-height: none;
+  overflow: visible;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 20px;
+  background: rgb(255 255 255 / 0.04);
+  box-sizing: border-box;
+}
+
+.mock-side-guide-panel.is-empty .mock-question-info.is-empty p {
+  margin-top: 8px;
+  margin-bottom: 0;
+  line-height: 1.65;
+}
+
+.mock-draft-slot {
+  height: var(--mock-draft-slot-height);
+  min-height: var(--mock-draft-slot-height);
+  max-height: var(--mock-draft-slot-height);
   overflow: hidden;
 }
 
 .mock-question-card,
-.mock-practice-card,
 .mock-question-info,
 .mock-draft-shell {
   padding: 12px 14px;
@@ -1430,49 +1597,119 @@ onBeforeUnmount(() => {
   background: rgb(255 255 255 / 0.04);
 }
 
-.mock-practice-card {
-  display: grid;
-  gap: 8px;
-  min-height: 172px;
-}
-
-.mock-practice-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.mock-practice-item {
-  display: grid;
-  gap: 2px;
-  min-height: 62px;
-  padding: 8px 12px;
-  border: 1px solid rgb(255 255 255 / 0.08);
-  border-radius: 14px;
-  background: rgb(255 255 255 / 0.04);
-}
-
-.mock-practice-item span {
-  color: rgb(229 236 255 / 0.72);
-  font-size: 14px;
-  line-height: 1.4;
-}
-
-.mock-practice-item strong {
-  color: rgb(246 249 255 / 0.96);
-  font-size: 16px;
-  line-height: 1.45;
-  font-weight: 400;
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
 .mock-question-info {
   min-height: 0;
   max-height: 112px;
   overflow: hidden;
+}
+
+.mock-side-guide-panel .mock-question-info,
+.mock-side-guide-panel .mock-question-info.is-empty {
+  max-height: none;
+  overflow: visible;
+}
+
+.mock-conversation-body .mock-question-card {
+  min-height: 0;
+  max-height: none;
+  margin-bottom: 10px;
+  overflow: visible;
+}
+
+.mock-conversation-body .mock-prompt-body {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.mock-side-guide-panel .mock-question-requirement-card {
+  flex: 0 0 auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.mock-side-guide-panel .mock-question-requirement-card .mock-prompt-body:not(.is-reference-clamp, .is-hint-clamp) {
+  max-height: none;
+  overflow: hidden;
+}
+
+.mock-side-guide-panel .mock-question-requirement-card.is-reference-card {
+  --mock-reference-line-count: 2;
+}
+
+.mock-side-guide-panel .mock-question-requirement-card.is-reference-card + .mock-question-requirement-card.is-hint-card {
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+.mock-side-guide-panel .mock-question-requirement-card.is-reference-card .mock-prompt-body.is-reference-clamp {
+  --mock-reference-line-count: 2;
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 8px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--mock-reference-line-count);
+  line-clamp: var(--mock-reference-line-count);
+  max-height: calc(1em * 1.48 * var(--mock-reference-line-count));
+  text-overflow: ellipsis;
+}
+
+.mock-side-guide-panel .mock-question-requirement-card.is-hint-card {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+}
+
+.mock-side-guide-panel.is-practice-entry .mock-question-requirement-card.is-hint-card:first-child:not(.is-feedback-card) {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.mock-side-guide-panel.is-practice-entry .mock-question-requirement-card.is-hint-card:first-child:not(.is-feedback-card) .mock-prompt-body.is-hint-clamp {
+  flex: 1 1 auto;
+  display: block;
+  overflow-y: auto;
+  max-height: none;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+}
+
+.mock-side-guide-panel .mock-question-requirement-card.is-feedback-card .mock-prompt-body.is-hint-clamp {
+  --mock-hint-line-count: 10;
+}
+
+.mock-side-guide-panel.is-practice-entry .mock-question-requirement-card.is-feedback-card .mock-prompt-body.is-hint-clamp {
+  flex: 0 0 auto;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 10;
+  line-clamp: 10;
+  max-height: calc(1em * 1.48 * 10);
+}
+
+.mock-side-guide-panel .mock-question-requirement-card.is-hint-card .mock-prompt-body.is-hint-clamp {
+  --mock-hint-line-count: 5;
+  flex: 0 0 auto;
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 8px;
+  white-space: pre-line;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--mock-hint-line-count);
+  line-clamp: var(--mock-hint-line-count);
+  max-height: calc(1em * 1.48 * var(--mock-hint-line-count));
+  text-overflow: ellipsis;
+}
+
+.mock-thread-card.is-locked,
+.mock-thread-card:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
 }
 
 .mock-question-card {
@@ -1488,6 +1725,7 @@ onBeforeUnmount(() => {
   font-weight: 400;
   line-height: 1.48;
 }
+
 
 .mock-question-info p {
   margin-top: 6px;
@@ -1519,6 +1757,7 @@ onBeforeUnmount(() => {
   background: rgb(255 255 255 / 0.04);
   color: rgb(229 236 255 / 0.8);
   text-align: left;
+  cursor: pointer;
   transition:
     border-color 160ms ease,
     background 160ms ease,
@@ -2025,11 +2264,63 @@ onBeforeUnmount(() => {
 }
 
 .mock-draft-shell {
-  flex: 1 1 auto;
-  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   overflow: hidden;
+  padding: 10px 12px;
+}
+
+.mock-draft-shell :deep(.answer-panel) {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.mock-draft-shell :deep(.panel-head) {
+  gap: 8px;
+}
+
+.mock-draft-shell :deep(.panel-title) {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgb(248 250 255 / 0.96);
+}
+
+.mock-draft-shell :deep(.panel-note) {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: rgb(229 236 255 / 0.78);
+}
+
+.mock-draft-shell :deep(.answer-status) {
+  min-height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 400;
+  background: rgb(255 255 255 / 0.08);
+  color: rgb(235 241 255 / 0.86);
+}
+
+.mock-draft-shell :deep(.answer-input .n-input-wrapper) {
+  min-height: 48px !important;
+}
+
+.mock-draft-shell :deep(.panel-actions) {
+  gap: 8px;
+}
+
+.mock-draft-shell :deep(.panel-actions .n-button) {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
 }
 
 .mock-session-footer {
@@ -2190,11 +2481,30 @@ onBeforeUnmount(() => {
   color: rgb(247 249 255 / 0.96);
 }
 
-.mock-live-shell :deep(.markdown-message pre) {
+.mock-live-shell :deep(.markdown-message .markdown-code-wrapper) {
   margin: 12px 0;
-  padding: 14px 16px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.1);
   border-radius: 12px;
-  background: rgb(8 12 28 / 0.55);
+  background: rgb(255 255 255 / 0.04);
+}
+
+.mock-live-shell :deep(.markdown-message .markdown-code-header) {
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  background: rgb(255 255 255 / 0.03);
+}
+
+.mock-live-shell :deep(.markdown-message .markdown-code-lang),
+.mock-live-shell :deep(.markdown-message .markdown-code-copy) {
+  color: rgb(232 236 255 / 0.72);
+  background: transparent;
+}
+
+.mock-live-shell :deep(.markdown-message pre) {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 0;
+  background: transparent;
   overflow-x: auto;
 }
 
@@ -2207,6 +2517,12 @@ onBeforeUnmount(() => {
   line-height: 1.85;
   background: transparent;
   padding: 0;
+  color: rgb(247 249 255 / 0.94);
+}
+
+/* highlight.js 默认配色偏深/偏灰，在深色页面上统一提亮，避免「灰底 + 浅蓝字」看不清 */
+.mock-live-shell :deep(.markdown-message pre .hljs *) {
+  color: rgb(247 249 255 / 0.94);
 }
 
 .mock-live-shell :deep(.markdown-message strong) {
@@ -2229,41 +2545,10 @@ onBeforeUnmount(() => {
   transform: translateY(15px);
 }
 
-.mock-draft-shell :deep(.answer-panel) {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  height: 100%;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
 .mock-draft-shell :deep(.draft-bubble),
 .mock-draft-shell :deep(.bubble-body),
 .mock-draft-shell :deep(.answer-input) {
   min-height: 0;
-}
-
-.mock-draft-shell :deep(.panel-title) {
-  font-size: 20px;
-  font-weight: 600;
-  color: rgb(248 250 255 / 0.96);
-}
-
-.mock-draft-shell :deep(.panel-note) {
-  font-size: 15px;
-  font-weight: 400;
-  line-height: 1.75;
-  color: rgb(229 236 255 / 0.78);
-}
-
-.mock-draft-shell :deep(.answer-status) {
-  font-size: 15px;
-  font-weight: 400;
-  background: rgb(255 255 255 / 0.08);
-  color: rgb(235 241 255 / 0.86);
 }
 
 .mock-draft-shell :deep(.answer-status.is-submitted) {
@@ -2282,10 +2567,10 @@ onBeforeUnmount(() => {
 .mock-draft-shell :deep(.n-input .n-input__textarea-el),
 .mock-draft-shell :deep(.n-input .n-input__input-el),
 .mock-draft-shell :deep(.n-input .n-input__textarea-mirror) {
-  font-size: 16px;
+  font-size: 14px;
   color: #fff !important;
   -webkit-text-fill-color: #fff !important;
-  line-height: 1.8;
+  line-height: 1.5;
   caret-color: #fff !important;
   background: transparent !important;
   opacity: 1 !important;
@@ -2302,7 +2587,7 @@ onBeforeUnmount(() => {
 .mock-draft-shell :deep(.n-input .n-input-wrapper),
 .mock-draft-shell :deep(.n-input .n-input__border),
 .mock-draft-shell :deep(.n-input .n-input__state-border) {
-  min-height: auto;
+  min-height: 48px !important;
   background: transparent !important;
   box-shadow: none !important;
   border-color: transparent !important;
@@ -2317,7 +2602,9 @@ onBeforeUnmount(() => {
 }
 
 .mock-draft-shell :deep(.n-button) {
-  font-size: 15px;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 
@@ -2390,15 +2677,12 @@ onBeforeUnmount(() => {
   }
 
   .mock-side-column {
-    grid-template-rows: auto auto auto;
+    --mock-draft-slot-height: 200px;
+    grid-template-rows: minmax(0, 1fr) var(--mock-draft-slot-height);
   }
 
   .mock-conversation-shell {
     min-height: 420px;
-  }
-
-  .mock-practice-grid {
-    grid-template-columns: 1fr;
   }
 
   .mock-feedback-style-group {

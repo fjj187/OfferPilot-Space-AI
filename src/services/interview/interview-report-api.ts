@@ -76,7 +76,7 @@ const toPracticePlan = (report: RemoteInterviewReportSummary): PersistedPractice
     focusArea,
     zone: report.practicePlan.zone as PersistedPracticeZone,
     questionType: report.practicePlan.questionType as PersistedPracticeQuestionType,
-    questionCount: report.answeredCount < report.totalCount ? 10 : 15,
+    questionCount: 10,
     difficulty: report.practicePlan.difficulty as PersistedPracticeDifficulty,
     reason: report.summaryHeadline
   }

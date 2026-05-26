@@ -37,6 +37,11 @@ export interface InterviewStreamRequest {
   sourceDocumentExcerpt?: string
   feedbackStyle?: PersistedInterviewFeedbackStyle
   format?: InterviewMessageFormat
+  questionIndex?: number
+  questionCount?: number
+  unknownAnswerStreak?: number
+  forceRevealReferenceAnswer?: boolean
+  referenceAnswerHint?: string
 }
 
 export interface InterviewStreamHandlers {

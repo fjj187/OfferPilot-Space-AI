@@ -25,9 +25,26 @@ defineProps<{
   overviewProgressPercent: number
   overviewStatusLabel: string
   overviewSummaryItems: any[]
+  overviewPracticeRouteNote: string
   selectedDocument: any
   selectedDocumentId: string
   showImportFeedback: boolean
+  materialCompileCount: number
+  materialCompileCountMax: number
+  materialOrderMode: 'chapter' | 'random'
+  materialPoolQuestionTotal: number
+  materialPreviewCount: number
+  materialPreviewSignature: string
+  materialGroupShortfallText: string
+  materialIsPreparing: boolean
+  materialPoolStatusLabel: string
+  materialPreviewItems: Array<{
+    order: number
+    title: string
+    difficulty: string
+    matchReason: string
+  }>
+  canStartMaterialMock: boolean
 }>()
 
 defineEmits<{
@@ -42,6 +59,10 @@ defineEmits<{
   selectDocument: [value: string]
   updateActiveFilter: [value: string]
   updateLibraryPage: [value: number]
+  updateMaterialCompileCount: [value: number]
+  updateMaterialOrderMode: [value: 'chapter' | 'random']
+  prepareMaterial: []
+  startMaterialMock: []
 }>()
 </script>
 
@@ -59,8 +80,10 @@ defineEmits<{
         :status-label="overviewStatusLabel"
         :summary-items="overviewSummaryItems"
         :primary-action-label="overviewPrimaryActionLabel"
+        :practice-route-note="overviewPracticeRouteNote"
         @primary-action="$emit('primaryAction')"
         @open-library="$emit('openLibrary')"
+        @open-practice="$emit('openPractice')"
         @open-report="$emit('openReport')"
       />
 
@@ -87,15 +110,26 @@ defineEmits<{
         :show-import-feedback="showImportFeedback"
         :import-feedback-text="importFeedbackText"
         :format-bytes="formatLibraryBytes"
+        :material-compile-count="materialCompileCount"
+        :material-compile-count-max="materialCompileCountMax"
+        :material-order-mode="materialOrderMode"
+        :material-pool-question-total="materialPoolQuestionTotal"
+        :material-preview-count="materialPreviewCount"
+        :material-preview-signature="materialPreviewSignature"
+        :material-group-shortfall-text="materialGroupShortfallText"
+        :material-is-preparing="materialIsPreparing"
+        :material-pool-status-label="materialPoolStatusLabel"
+        :material-preview-items="materialPreviewItems"
+        :can-start-material-mock="canStartMaterialMock"
         @pick-files="$emit('pickFiles')"
         @pick-folder="$emit('pickFolder')"
         @update:active-filter="$emit('updateActiveFilter', $event)"
         @update:page="$emit('updateLibraryPage', $event)"
         @select-document="$emit('selectDocument', $event)"
-        @open-mock="$emit('openMock')"
-        @open-practice="$emit('openPractice')"
-        @back-overview="$emit('backOverview')"
-        @open-report="$emit('openReport')"
+        @prepare-material="$emit('prepareMaterial')"
+        @start-material-mock="$emit('startMaterialMock')"
+        @update:material-compile-count="$emit('updateMaterialCompileCount', $event)"
+        @update:material-order-mode="$emit('updateMaterialOrderMode', $event)"
       />
     </div>
 

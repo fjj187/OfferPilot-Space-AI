@@ -17,6 +17,16 @@ export interface InterviewStreamRequest {
   sourceDocumentExcerpt?: string
   feedbackStyle?: InterviewFeedbackStyle
   format?: 'plain' | 'markdown'
+  /** 当前题序号（从 1 开始），用于约束模型勿在对话中切题 */
+  questionIndex?: number
+  /** 本轮总题数 */
+  questionCount?: number
+  /** 本题内连续「不知道」次数（含当前回答） */
+  unknownAnswerStreak?: number
+  /** 连续不知道达阈值后，强制揭晓参考答案 */
+  forceRevealReferenceAnswer?: boolean
+  /** 揭晓时优先参照的资料参考答案摘要 */
+  referenceAnswerHint?: string
 }
 
 export interface InterviewStreamChunkEvent {
