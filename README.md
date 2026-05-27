@@ -7,7 +7,8 @@
 
 # chatgpt-vue3-light-mvp
 
-> 使用者快速上手可查看：[使用者阅读文档](./docs/使用者阅读文档.md)
+> 使用者快速上手可查看：[使用者阅读文档](./docs/使用者阅读文档.md)  
+> 开发者目录与治理：[目录说明](./docs/目录说明.md) · [项目整理方向](./docs/项目整理方向.md)
 
 [![Deploy](https://img.shields.io/badge/passing-black?style=flat&logo=Netlify&label=Netlify&color=3bb92c&labelColor=black)](https://github.com/pdsuwwz/chatgpt-vue3-light-mvp/deployments)
 [![GitHub Workflow Status (branch)](https://img.shields.io/badge/passing-black?style=flat&label=build&color=3bb92c)](https://github.com/pdsuwwz/chatgpt-vue3-light-mvp/deployments/Production)
@@ -101,10 +102,10 @@ pnpm dev
 
 1. 执行以下命令，自动创建环境变量模板文件 `.env` 文件：
     ```sh
-    cp .env.template .env
+    cp frontend/.env.template frontend/.env
     ```
 
-2. 编辑 `.env` 文件，填入你的 API 密钥
+2. 编辑 `frontend/.env` 文件，填入你的 API 密钥
 
   ```sh
   VITE_SPARK_KEY=你的_星火_API_Key # 需要用冒号拼接key和secret，格式如 `key123456:secret123456`
