@@ -12,6 +12,7 @@ import {
 } from '@/services/interview/interview-report-api'
 import SpaceContentPanel from '@/components/showcase/mock-interview-space/SpaceContentPanel.vue'
 import SpaceHeader from '@/components/showcase/mock-interview-space/SpaceHeader.vue'
+import SpaceCosmosBigBang from '@/components/showcase/mock-interview-space/SpaceCosmosBigBang.vue'
 import SpaceLoginHero from '@/components/showcase/mock-interview-space/SpaceLoginHero.vue'
 import { useAuth } from '@/composables/useAuth'
 import SpaceOrbitNav from '@/components/showcase/mock-interview-space/SpaceOrbitNav.vue'
@@ -61,16 +62,11 @@ onMounted(() => {
 /** 登录门控 UI：与 isLoggedIn 解耦，便于先淡出登录再淡入宇宙内容 */
 const showLoginGate = ref(!isLoggedIn.value)
 const isGateTransitioning = ref(false)
+const isCosmosBigBangPending = ref(false)
+const isCosmosBigBangPlaying = ref(false)
+const isCosmosContentRevealed = ref(isLoggedIn.value)
 
-const handleLoginGateSuccess = async () => {
-  // 先挂载宇宙内容完成布局，再淡出登录遮罩，避免切换瞬间高度塌陷
-  isGateTransitioning.value = true
-  await nextTick()
-  await nextTick()
-  showLoginGate.value = false
-  await nextTick()
-  void scheduleVisualStageBootstrap()
-}
+let bigBangOverlayResolver: (() => void) | null = null
 
 const handleLoginOverlayAfterLeave = () => {
   isGateTransitioning.value = false
@@ -78,7 +74,7 @@ const handleLoginOverlayAfterLeave = () => {
 
 /** 登录遮罩仍在时保持门控顶栏样式，避免 header 变量切换引发布局抖动 */
 const isCosmosChromeReady = computed(
-  () => isLoggedIn.value && !showLoginGate.value && !isGateTransitioning.value
+  () => isLoggedIn.value && !showLoginGate.value && !isGateTransitioning.value && !isCosmosBigBangPending.value
 )
 
 const {
@@ -822,7 +818,7 @@ const scheduleVisualStageBootstrap = async () => {
 }
 
 watch(visualStageRef, (stage) => {
-  if (stage && isLoggedIn.value && !showLoginGate.value) {
+  if (stage && isLoggedIn.value && !showLoginGate.value && !isCosmosBigBangPending.value) {
     void scheduleVisualStageBootstrap()
   }
 })
@@ -831,6 +827,13 @@ watch(isLoggedIn, (loggedIn) => {
   if (!loggedIn) {
     showLoginGate.value = true
     isGateTransitioning.value = false
+    persistSceneContext('overview')
+    nextTick(() => {
+      if (pageRef.value) {
+        pageRef.value.scrollTop = 0
+      }
+      updateHeaderFade()
+    })
     return
   }
   if (visualStageRef.value && !isGateTransitioning.value && !showLoginGate.value) {
@@ -1035,6 +1038,81 @@ const openSceneContent = (sceneId: string) => {
     pauseAutoplay: true,
     scrollToContent: true
   })
+}
+
+const resetCosmosToOverviewHome = (options?: { startAutoplay?: boolean }) => {
+  const overviewIndex = findSceneIndexById('overview')
+  if (overviewIndex < 0) return
+
+  persistSceneContext('overview')
+  requestSceneChange(overviewIndex, {
+    pauseAutoplay: false,
+    scrollToContent: false
+  })
+
+  nextTick(() => {
+    if (pageRef.value) {
+      pageRef.value.scrollTop = 0
+    }
+    refreshScrollMetrics()
+    updateHeaderFade()
+    releaseScrollCapsuleReveal()
+    scrollCapsuleHideLock.value = false
+    isScrollCapsuleVisible.value = true
+    updateScrollCapsuleVisibility()
+    if (options?.startAutoplay !== false) {
+      startAutoplay()
+    }
+  })
+}
+
+const handleBigBangOverlayComplete = () => {
+  bigBangOverlayResolver?.()
+  bigBangOverlayResolver = null
+  isCosmosBigBangPlaying.value = false
+}
+
+const runCosmosBigBangEntrance = async () => {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    isCosmosContentRevealed.value = true
+    bootstrapVisualStage()
+    return
+  }
+
+  isCosmosContentRevealed.value = false
+  isCosmosBigBangPlaying.value = true
+
+  await nextTick()
+  await nextTick()
+
+  const overlayPromise = new Promise<void>((resolve) => {
+    bigBangOverlayResolver = resolve
+  })
+  const planetsPromise = visualStageRef.value?.playBigBangReveal() ?? Promise.resolve()
+
+  await Promise.all([overlayPromise, planetsPromise])
+
+  isCosmosContentRevealed.value = true
+  refreshScrollMetrics()
+  updateHeaderFade()
+  releaseScrollCapsuleReveal()
+  scrollCapsuleHideLock.value = false
+  isScrollCapsuleVisible.value = true
+  updateScrollCapsuleVisibility()
+}
+
+const handleLoginGateSuccess = async () => {
+  isCosmosBigBangPending.value = true
+  resetCosmosToOverviewHome({ startAutoplay: false })
+  // 先挂载宇宙内容完成布局，再淡出登录遮罩，最后播大爆炸入场
+  isGateTransitioning.value = true
+  await nextTick()
+  await nextTick()
+  showLoginGate.value = false
+  await nextTick()
+  await runCosmosBigBangEntrance()
+  isCosmosBigBangPending.value = false
+  startAutoplay()
 }
 
 const clampMaterialCompileCount = (value: number) => {
@@ -1528,9 +1606,18 @@ onBeforeUnmount(() => {
       class="showcase-body"
       :class="{ 'is-gate-transitioning': isGateTransitioning }"
     >
+      <SpaceCosmosBigBang
+        v-if="isCosmosBigBangPlaying"
+        @complete="handleBigBangOverlayComplete"
+      />
+
       <div
         v-if="isLoggedIn"
         class="cosmos-gate-root"
+        :class="{
+          'is-big-bang-active': isCosmosBigBangPending,
+          'is-content-revealed': isCosmosContentRevealed
+        }"
       >
       <SpaceScrollCapsule
         :is-user-scrolling="isUserScrolling"
@@ -1817,6 +1904,47 @@ onBeforeUnmount(() => {
   flex-direction: column;
   width: 100%;
   min-height: 0;
+}
+
+.cosmos-gate-root.is-big-bang-active:not(.is-content-revealed) {
+  .copy-column,
+  .orbit-rail,
+  .content-stack,
+  .scroll-capsule {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+    pointer-events: none;
+  }
+}
+
+.cosmos-gate-root.is-content-revealed {
+  .copy-column {
+    animation: cosmos-content-reveal 0.72s var(--ease-orbit) forwards;
+  }
+
+  .orbit-rail {
+    animation: cosmos-content-reveal 0.82s var(--ease-orbit) 0.08s forwards;
+  }
+
+  .content-stack {
+    animation: cosmos-content-reveal 0.88s var(--ease-orbit) 0.14s forwards;
+  }
+
+  .scroll-capsule {
+    animation: cosmos-content-reveal 0.62s var(--ease-orbit) 0.2s forwards;
+  }
+}
+
+@keyframes cosmos-content-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .showcase-body.is-gate-transitioning .cosmos-gate-root {

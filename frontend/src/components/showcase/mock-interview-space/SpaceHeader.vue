@@ -1,5 +1,6 @@
 <script lang="tsx" setup>
 import type { CSSProperties } from 'vue'
+import SpaceCosmosConfirm from '@/components/showcase/mock-interview-space/SpaceCosmosConfirm.vue'
 import { useAuth } from '@/composables/useAuth'
 
 defineProps<{
@@ -13,6 +14,20 @@ const emit = defineEmits<{
 }>()
 
 const { displayName, isLoggedIn, logout } = useAuth()
+
+const showLogoutConfirm = ref(false)
+
+const handleLogoutClick = () => {
+  showLogoutConfirm.value = true
+}
+
+const handleLogoutConfirm = () => {
+  logout()
+  window.$ModalMessage?.success?.('已退出登录', {
+    duration: 2000,
+    closable: false
+  })
+}
 
 const headerEl = ref<HTMLElement | null>(null)
 
@@ -69,17 +84,33 @@ onBeforeUnmount(() => {
       >
         Sign in
       </button>
-      <button
-        v-else
-        type="button"
-        class="back-link user-badge"
-        :title="`当前用户 ${ displayName }，点击退出登录`"
-        @click="logout"
-      >
-        {{ displayName }}
-      </button>
+      <template v-else>
+        <span
+          class="user-badge"
+          :title="`当前用户 ${ displayName }`"
+        >
+          {{ displayName }}
+        </span>
+        <button
+          type="button"
+          class="back-link logout-link"
+          @click="handleLogoutClick"
+        >
+          退出
+        </button>
+      </template>
     </div>
   </header>
+
+  <SpaceCosmosConfirm
+    v-model:show="showLogoutConfirm"
+    title="退出登录"
+    message="确定要退出当前账号吗？退出后将返回登录门控。"
+    confirm-text="退出"
+    cancel-text="取消"
+    confirm-primary
+    @confirm="handleLogoutConfirm"
+  />
 </template>
 
 <style lang="scss" scoped>
@@ -226,6 +257,25 @@ onBeforeUnmount(() => {
 
 .sign-in-link:hover {
   transform: none;
+}
+
+.user-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 16px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.06);
+  color: rgb(255 255 255 / 0.92);
+  font-size: inherit;
+  line-height: 1;
+  cursor: default;
+  user-select: none;
+}
+
+.logout-link {
+  flex-shrink: 0;
 }
 
 @media (max-width: 1100px) {

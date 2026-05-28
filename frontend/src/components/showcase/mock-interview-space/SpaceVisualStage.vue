@@ -294,6 +294,73 @@ const syncVisualLayers = (immediate = false) => {
   })
 }
 
+/** 登录大爆炸：星球从中心向轨道位爆发展开 */
+const playBigBangReveal = (): Promise<void> => {
+  return new Promise((resolve) => {
+    const host = visualColumnRef.value
+    if (!host) {
+      resolve()
+      return
+    }
+
+    props.scenes.forEach((_, sceneIndex) => {
+      const layer = visualLayerRefs.value[sceneIndex]
+      if (!layer) return
+
+      gsap.killTweensOf(layer)
+      gsap.set(layer, {
+        x: 0,
+        y: 0,
+        scale: 0.06,
+        opacity: 0,
+        rotation: 0
+      })
+      layer.style.zIndex = '1'
+    })
+
+    const timeline = gsap.timeline({
+      onComplete: () => {
+        props.scenes.forEach((_, sceneIndex) => {
+          const target = resolveVisualLayerState(sceneIndex)
+          const layer = visualLayerRefs.value[sceneIndex]
+          if (layer) {
+            layer.style.zIndex = String(target.zIndex)
+          }
+          visualLayerStates.value[sceneIndex] = target
+        })
+        resolve()
+      }
+    })
+
+    props.scenes.forEach((_, sceneIndex) => {
+      const layer = visualLayerRefs.value[sceneIndex]
+      const target = resolveVisualLayerState(sceneIndex)
+      if (!layer) return
+
+      const isHero = sceneIndex === props.activeSceneIndexBySlot
+      const delay = 0.18 + sceneIndex * 0.09
+
+      timeline.to(layer, {
+        x: target.x,
+        y: target.y,
+        scale: target.scale * (isHero ? 1.06 : 1),
+        opacity: target.opacity,
+        rotation: target.rotate,
+        duration: isHero ? 1.15 : 0.95,
+        ease: isHero ? 'power4.out' : 'power3.out'
+      }, delay)
+
+      if (isHero) {
+        timeline.to(layer, {
+          scale: target.scale,
+          duration: 0.35,
+          ease: 'power2.inOut'
+        }, delay + 1.05)
+      }
+    })
+  })
+}
+
 const clearVisualLayerTweens = () => {
   visualLayerRefs.value.forEach((layer) => {
     if (layer) {
@@ -304,6 +371,7 @@ const clearVisualLayerTweens = () => {
 
 defineExpose({
   clearVisualLayerTweens,
+  playBigBangReveal,
   syncVisualLayers
 })
 </script>
