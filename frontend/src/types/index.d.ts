@@ -37,6 +37,8 @@ declare module 'pinia' {
 declare module 'vue-router' {
   export interface RouteMeta {
     title?: string
+    requiresAuth?: boolean
+    public?: boolean
   }
 }
 

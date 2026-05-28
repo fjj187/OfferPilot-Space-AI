@@ -57,7 +57,7 @@ const childrenRoutes: Array<RouteRecordRaw> = [
   {
     path: '/showcase/space-odyssey',
     name: 'SpaceOdysseyShowcase',
-    component: () => import('@/views/showcase/space-odyssey.vue')
+    component: () => import('@/views/showcase/space-odyssey.vue'),
   },
   {
     path: '/showcase/mock-interview-space',

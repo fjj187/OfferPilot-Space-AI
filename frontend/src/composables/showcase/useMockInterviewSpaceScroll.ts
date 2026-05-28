@@ -78,6 +78,7 @@ export function useMockInterviewSpaceScroll(options: UseMockInterviewSpaceScroll
       const progress = Math.min(elapsed / duration, 1)
       const eased = easeInOutCinematic(progress)
       host.scrollTop = startTop + distance * eased
+      syncScrollState()
 
       if (progress < 1) {
         scrollAnimationFrame = window.requestAnimationFrame(tick)
@@ -85,6 +86,7 @@ export function useMockInterviewSpaceScroll(options: UseMockInterviewSpaceScroll
       }
 
       host.scrollTop = destination
+      syncScrollState()
       scrollAnimationFrame = null
       isAutoScrolling.value = false
     }
@@ -130,8 +132,8 @@ export function useMockInterviewSpaceScroll(options: UseMockInterviewSpaceScroll
     }
 
     const scrollTop = resolveScrollTop()
-    const start = currentHeaderHeight
-    headerFade.value = scrollTop > start ? 1 : 0
+    // 二元态：未超过顶栏高度保持原样；超过后触发一次渐隐（由 CSS transition 完成，不跟滚动量绑定）
+    headerFade.value = scrollTop > currentHeaderHeight ? 1 : 0
 
     if (scrollTop >= Math.max(contentRevealTarget.value - 120, 0)) {
       options.pauseAutoplayFromContent()

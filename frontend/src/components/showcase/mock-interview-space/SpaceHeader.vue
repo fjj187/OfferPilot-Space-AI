@@ -1,5 +1,6 @@
 <script lang="tsx" setup>
 import type { CSSProperties } from 'vue'
+import { useAuth } from '@/composables/useAuth'
 
 defineProps<{
   headerStyle: CSSProperties
@@ -8,9 +9,10 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  back: []
   resolveElement: [element: HTMLElement | null]
 }>()
+
+const { displayName, isLoggedIn, logout } = useAuth()
 
 const headerEl = ref<HTMLElement | null>(null)
 
@@ -60,11 +62,21 @@ onBeforeUnmount(() => {
         <span class="i-lucide-search"></span>
       </button>
       <button
+        v-if="!isLoggedIn"
         type="button"
-        class="back-link"
-        @click="$emit('back')"
+        class="back-link sign-in-link"
+        disabled
       >
-        Return to interview
+        Sign in
+      </button>
+      <button
+        v-else
+        type="button"
+        class="back-link user-badge"
+        :title="`当前用户 ${ displayName }，点击退出登录`"
+        @click="logout"
+      >
+        {{ displayName }}
       </button>
     </div>
   </header>
@@ -82,13 +94,18 @@ onBeforeUnmount(() => {
   gap: 24px;
   padding: 10px 28px;
   border-bottom: 1px solid rgb(255 255 255 / var(--header-border-opacity, 0.08));
-  background: linear-gradient(180deg, rgb(7 15 30 / var(--header-bg-opacity, 0.92)) 0%, rgb(7 15 30 / 0.34) 100%);
+  background: linear-gradient(
+    180deg,
+    rgb(7 15 30 / var(--header-bg-opacity, 0.92)) 0%,
+    rgb(7 15 30 / calc(var(--header-bg-opacity, 0.92) * 0.37)) 100%
+  );
   backdrop-filter: blur(14px);
   transition:
     opacity 0.5s ease,
     transform 0.5s var(--ease-orbit),
     border-color 0.5s ease,
-    background 0.5s ease;
+    background 0.5s ease,
+    backdrop-filter 0.5s ease;
 }
 
 .space-header.is-auto-scrolling,
@@ -200,6 +217,15 @@ onBeforeUnmount(() => {
   border-color: rgb(255 255 255 / 0.26);
   background: rgb(255 255 255 / 0.1);
   transform: translateY(-1px);
+}
+
+.sign-in-link {
+  opacity: 0.88;
+  cursor: default;
+}
+
+.sign-in-link:hover {
+  transform: none;
 }
 
 @media (max-width: 1100px) {
