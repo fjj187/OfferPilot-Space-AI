@@ -1,0 +1,51 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build MySQLConn (MSVC)",
+            "type": "shell",
+            "command": "cmd",
+            "args": [
+                "/c",
+                "\"C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat\" x64 && cl.exe",
+                "/EHsc",
+                "/utf-8",
+                "/std:c++17",
+                "/I", "C:\\Program Files\\MySQL\\MySQL Server 8.0\\include",
+                "${fileDirname}\\MySQLConn.cpp",
+                "${fileDirname}\\main.cpp",
+                "${fileDirname}\\ReportRepository.cpp",
+                "/link",
+                "C:\\Program Files\\MySQL\\MySQL Server 8.0\\lib\\libmysql.lib",
+                "Ws2_32.lib",
+                "/OUT:${fileDirname}\\program.exe"
+            ],
+            "options": {
+                "cwd": "${fileDirname}"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$msCompile",
+            "detail": "使用 MSVC 编译 MySQL 项目"
+        },
+        {
+            "label": "Run program.exe",
+            "type": "shell",
+            "command": "${fileDirname}\\program.exe",
+            "options": {
+                "cwd": "${fileDirname}"
+            },
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "dependsOn": [
+                "Build MySQLConn (MSVC)"
+            ],
+            "problemMatcher": [],
+            "detail": "编译并运行 MySQL 项目"
+        }
+    ]
+}
