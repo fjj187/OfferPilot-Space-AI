@@ -36,6 +36,7 @@ bool MySQLConn::connect(string user, string passwd, string dbName, string ip, un
 
 bool MySQLConn::query(const string& sql)
 {
+    freeResult();
     if (mysql_query(this->conn, sql.c_str()))
     {
         cout << "数据库查询失败: " << mysql_error(this->conn) << endl;
@@ -47,6 +48,7 @@ bool MySQLConn::query(const string& sql)
 
 bool MySQLConn::update(const string& sql)
 {
+    freeResult();
     if (mysql_query(this->conn, sql.c_str()))
     {
         cout << "数据库更新失败: " << mysql_error(this->conn) << endl;
