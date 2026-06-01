@@ -164,7 +164,9 @@ const initialSceneIdBySourcePage: Record<string, string> = {
   practice: 'feedback',
   report: 'report'
 }
-const initialSceneId = initialSceneIdBySourcePage[initialWorkbenchContext?.sourcePage || 'overview'] || 'overview'
+const initialSceneId = isLoggedIn.value
+  ? (initialSceneIdBySourcePage[initialWorkbenchContext?.sourcePage || 'overview'] || 'overview')
+  : 'overview'
 const initialSceneIndex = scenes.findIndex(scene => scene.id === initialSceneId)
 
 const {
@@ -825,9 +827,15 @@ watch(visualStageRef, (stage) => {
 
 watch(isLoggedIn, (loggedIn) => {
   if (!loggedIn) {
+    resetCosmosToOverviewHome({
+      startAutoplay: false,
+      instant: true
+    })
+    isCosmosContentRevealed.value = false
+    isCosmosBigBangPending.value = false
+    isCosmosBigBangPlaying.value = false
     showLoginGate.value = true
     isGateTransitioning.value = false
-    persistSceneContext('overview')
     nextTick(() => {
       if (pageRef.value) {
         pageRef.value.scrollTop = 0
@@ -875,6 +883,7 @@ const {
   pauseAutoplay,
   pauseAutoplayFromContent,
   requestSceneChange,
+  snapToScene,
   startAutoplay,
   toggleAutoplay
 } = useMockInterviewSpaceOrbit({
@@ -1040,15 +1049,22 @@ const openSceneContent = (sceneId: string) => {
   })
 }
 
-const resetCosmosToOverviewHome = (options?: { startAutoplay?: boolean }) => {
+const resetCosmosToOverviewHome = (options?: {
+  startAutoplay?: boolean
+  instant?: boolean
+}) => {
   const overviewIndex = findSceneIndexById('overview')
   if (overviewIndex < 0) return
 
   persistSceneContext('overview')
-  requestSceneChange(overviewIndex, {
-    pauseAutoplay: false,
-    scrollToContent: false
-  })
+  if (options?.instant) {
+    snapToScene(overviewIndex)
+  } else {
+    requestSceneChange(overviewIndex, {
+      pauseAutoplay: false,
+      scrollToContent: false
+    })
+  }
 
   nextTick(() => {
     if (pageRef.value) {
@@ -1103,8 +1119,12 @@ const runCosmosBigBangEntrance = async () => {
 
 const handleLoginGateSuccess = async () => {
   isCosmosBigBangPending.value = true
-  resetCosmosToOverviewHome({ startAutoplay: false })
-  // 先挂载宇宙内容完成布局，再淡出登录遮罩，最后播大爆炸入场
+  isCosmosContentRevealed.value = false
+  resetCosmosToOverviewHome({
+    startAutoplay: false,
+    instant: true
+  })
+  // 先完成总览态布局，再挂载宇宙内容并淡出登录遮罩，最后播大爆炸入场
   isGateTransitioning.value = true
   await nextTick()
   await nextTick()
@@ -1507,9 +1527,9 @@ watch(displayScene, async () => {
 
 onMounted(() => {
   const context = loadWorkbenchContext()
-  const restoredSceneId = resolveInitialSceneId()
+  const restoredSceneId = isLoggedIn.value ? resolveInitialSceneId() : 'overview'
   const restoredSceneIndex = findSceneIndexById(restoredSceneId)
-  const shouldRestoreContentScene = restoredSceneId !== 'overview'
+  const shouldRestoreContentScene = isLoggedIn.value && restoredSceneId !== 'overview'
   saveWorkbenchContext({
     activeTopic: activeTopic.value,
     activeDocumentId: context?.activeDocumentId || '',
@@ -1520,10 +1540,14 @@ onMounted(() => {
     mockSessionConfig: context?.mockSessionConfig || null
   })
 
-  requestSceneChange(restoredSceneIndex, {
-    pauseAutoplay: shouldRestoreContentScene,
-    scrollToContent: false
-  })
+  if (isLoggedIn.value) {
+    requestSceneChange(restoredSceneIndex, {
+      pauseAutoplay: shouldRestoreContentScene,
+      scrollToContent: false
+    })
+  } else {
+    snapToScene(findSceneIndexById('overview'))
+  }
 
   nextTick(() => {
     if (pageRef.value) {
@@ -1612,7 +1636,7 @@ onBeforeUnmount(() => {
       />
 
       <div
-        v-if="isLoggedIn"
+        v-if="isLoggedIn && !showLoginGate"
         class="cosmos-gate-root"
         :class="{
           'is-big-bang-active': isCosmosBigBangPending,

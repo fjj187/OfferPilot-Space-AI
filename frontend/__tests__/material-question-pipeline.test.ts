@@ -124,4 +124,23 @@ describe('material question pipeline', () => {
     expect(chunks.length).toBe(2)
     expect(chunks.every(chunk => chunk.level === 4)).toBe(true)
   })
+
+  it('超长章节续篇块不再重复出讲解题', () => {
+    const longSectionBody = `${ 'Vue3 响应式依赖收集与触发更新说明。'.repeat(55) }\n\n\`\`\`js\nconst state = reactive({ count: 0 })\n\`\`\``
+    const pool = buildMaterialQuestionPool({
+      ...createDocument(),
+      id: 'doc-long-section',
+      rawText: `## 响应式原理\n\n${ longSectionBody }`
+    })
+
+    expect(pool.chunks.length).toBeGreaterThan(1)
+    expect(pool.chunks.some(chunk => /（续\s*2）/.test(chunk.heading))).toBe(true)
+
+    const explainTitles = pool.questions
+      .filter(item => item.title.startsWith('请讲解：'))
+      .map(item => item.title)
+
+    expect(explainTitles.some(title => title.includes('响应式原理'))).toBe(true)
+    expect(explainTitles.some(title => /（续\s*\d+）/.test(title))).toBe(false)
+  })
 })

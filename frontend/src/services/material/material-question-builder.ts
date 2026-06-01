@@ -10,6 +10,7 @@ import {
   buildHeadingQuestionPrompt,
   extractMaterialReferenceAnswer,
   formatMaterialReference,
+  isContinuationChunkHeading,
   isInterviewQuestionChunk,
   isQuestionLikeHeading,
   looksLikeAnswerBody,
@@ -71,13 +72,15 @@ const buildQuestionsForChunk = (chunk: MaterialChunk): MaterialQuestionItem[] =>
   const questions: MaterialQuestionItem[] = []
   const normalizedHeading = normalizeQuestionHeading(chunk.heading)
   const substantiveText = chunk.text.replace(/-{3,}/g, '').trim()
+  const isContinuation = isContinuationChunkHeading(chunk.heading)
   const hasMeaningfulHeading = Boolean(
     normalizedHeading
     && normalizedHeading !== '资料正文'
     && !/^段落\s+\d+/.test(normalizedHeading)
+    && !isContinuation
   )
 
-  if (isInterviewQuestionChunk(chunk)) {
+  if (!isContinuation && isInterviewQuestionChunk(chunk)) {
     questions.push(buildQuestionBase(
       chunk,
       'heading',
@@ -123,7 +126,7 @@ const buildQuestionsForChunk = (chunk: MaterialChunk): MaterialQuestionItem[] =>
     questions.push(codeQuestion)
   }
 
-  if (!questions.length && hasMeaningfulHeading) {
+  if (!questions.length && hasMeaningfulHeading && !isContinuation) {
     const prompt = substantiveText.length >= 24 && substantiveText.length < 160 && !looksLikeAnswerBody(substantiveText)
       ? `请根据资料内容回答本题，并尽量结合章节要点展开。\n\n${ formatMaterialReference(normalizedHeading, substantiveText) }`
       : `请根据资料内容回答：${ normalizedHeading }`

@@ -10,6 +10,11 @@ export const normalizeQuestionHeading = (heading: string) => {
     .trim()
 }
 
+/** 滑动窗口续篇标题，如「响应式原理（续 2）」——出题时与首块合并，避免重复讲解题 */
+export const isContinuationChunkHeading = (heading: string) => {
+  return /（续\s*\d+）\s*$/.test(normalizeQuestionHeading(heading))
+}
+
 /** 题面型标题：带问号或常见问句词 */
 export const isQuestionLikeHeading = (heading: string) => {
   const normalized = normalizeQuestionHeading(heading)

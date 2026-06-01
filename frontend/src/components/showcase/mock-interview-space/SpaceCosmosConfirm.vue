@@ -48,7 +48,7 @@ const handleConfirm = () => {
         <div class="space-cosmos-confirm-dialog">
           <div class="space-cosmos-confirm-kicker">
             <span class="i-lucide-orbit kicker-icon"></span>
-            Interview Cosmos
+            OfferPilot Space AI
           </div>
           <h2 class="space-cosmos-confirm-title">
             {{ title }}

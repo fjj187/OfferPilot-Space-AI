@@ -455,6 +455,31 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
     orbitOverrides.value = {}
   }
 
+  /** 无轨道动画地切到指定场景，用于登出/登录门控前后统一回到总览态 */
+  const snapToScene = (index: number) => {
+    clearOrbitTimers()
+    autoplayPausedByContent.value = false
+    pauseAutoplay()
+    pendingTargetIndex.value = null
+    isOrbitTransitioning.value = false
+    isFastOrbitTransition.value = false
+    isPanelTransitioning.value = false
+    isOrbitPlayBursting.value = false
+    orbitProgress.value = 0
+
+    const sceneCount = options.scenes.length
+    orbitOrder.value = Array.from({
+      length: sceneCount
+    }, (_, orderIndex) => {
+      const offset = orderIndex - options.centerSlot
+      return (index + offset + sceneCount) % sceneCount
+    })
+    activeIndex.value = index
+    displayIndex.value = index
+    copySceneIndex.value = index
+    isCopyVisible.value = true
+  }
+
   return {
     activeIndex,
     activeScene,
@@ -484,6 +509,7 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
     pauseAutoplay,
     pauseAutoplayFromContent,
     requestSceneChange,
+    snapToScene,
     startAutoplay,
     toggleAutoplay
   }

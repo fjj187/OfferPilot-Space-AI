@@ -55,8 +55,8 @@ onBeforeUnmount(() => {
         <span class="i-lucide-orbit"></span>
       </div>
       <div>
-        <div class="brand-name">Interview Cosmos</div>
-        <div class="brand-meta">Mock redesign / scene preview</div>
+        <div class="brand-name">OfferPilot Space AI</div>
+        <div class="brand-meta">星际 AI 模拟面试</div>
       </div>
     </div>
 
@@ -119,9 +119,9 @@ onBeforeUnmount(() => {
   top: 0;
   z-index: 10;
   isolation: isolate;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 24px;
   padding: 10px 28px;
   border-bottom: 1px solid rgb(255 255 255 / var(--header-border-opacity, 0.08));
@@ -163,6 +163,8 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+  justify-self: start;
+  min-width: 0;
 }
 
 .brand-mark {
@@ -191,6 +193,7 @@ onBeforeUnmount(() => {
 .space-nav {
   display: flex;
   gap: 22px;
+  justify-self: center;
 }
 
 .space-nav a {
@@ -211,7 +214,10 @@ onBeforeUnmount(() => {
 .header-tools {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  justify-self: end;
   gap: 10px;
+  min-width: 0;
 }
 
 .icon-tool {
@@ -280,12 +286,24 @@ onBeforeUnmount(() => {
 
 @media (max-width: 1100px) {
   .space-header {
-    flex-wrap: wrap;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "brand tools"
+      "nav nav";
+  }
+
+  .brand-lockup {
+    grid-area: brand;
+  }
+
+  .header-tools {
+    grid-area: tools;
   }
 
   .space-nav {
-    order: 3;
+    grid-area: nav;
     width: 100%;
+    justify-self: stretch;
     overflow-x: auto;
   }
 }
@@ -297,12 +315,12 @@ onBeforeUnmount(() => {
   }
 
   .header-tools {
-    width: 100%;
-    justify-content: space-between;
+    width: auto;
+    justify-content: flex-end;
   }
 
   .back-link {
-    flex: 1;
+    flex: 0 0 auto;
   }
 }
 </style>
