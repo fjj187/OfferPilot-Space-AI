@@ -1,16 +1,21 @@
 <script lang="ts" setup>
-withDefaults(defineProps<{
+import { computed } from 'vue'
+
+const props = withDefaults(defineProps<{
   show: boolean
   title: string
   message: string
   confirmText?: string
   cancelText?: string
-  /** 主操作使用宇宙页主题色（如退出登录） */
+  /** @deprecated 请改用 confirmTone */
   confirmPrimary?: boolean
+  /** 确认按钮强调色：primary 主题色 / danger 删除等 */
+  confirmTone?: 'default' | 'primary' | 'danger'
 }>(), {
   confirmText: '确认',
   cancelText: '取消',
-  confirmPrimary: false
+  confirmPrimary: false,
+  confirmTone: 'default'
 })
 
 const emit = defineEmits<{
@@ -18,6 +23,13 @@ const emit = defineEmits<{
   confirm: []
   cancel: []
 }>()
+
+const resolvedConfirmTone = computed(() => {
+  if (props.confirmTone && props.confirmTone !== 'default') {
+    return props.confirmTone
+  }
+  return props.confirmPrimary ? 'primary' : 'default'
+})
 
 const close = () => {
   emit('update:show', false)
@@ -67,7 +79,10 @@ const handleConfirm = () => {
             <button
               type="button"
               class="space-cosmos-confirm-btn"
-              :class="{ 'is-primary': confirmPrimary }"
+              :class="{
+                'is-primary': resolvedConfirmTone === 'primary',
+                'is-danger': resolvedConfirmTone === 'danger'
+              }"
               @click="handleConfirm"
             >
               {{ confirmText }}
@@ -187,9 +202,22 @@ const handleConfirm = () => {
 }
 
 .space-cosmos-confirm-btn.is-primary:hover {
-  border-color: rgb(255 255 255 / 0.12);
+  border-color: rgb(255 255 255 / 12%);
   background: #fff;
   color: #0a1520;
+}
+
+.space-cosmos-confirm-btn.is-danger {
+  border-color: rgb(255 150 160 / 28%);
+  background: linear-gradient(180deg, rgb(255 130 145 / 92%) 0%, rgb(230 90 115 / 95%) 100%);
+  color: #2a0812;
+  font-weight: 600;
+}
+
+.space-cosmos-confirm-btn.is-danger:hover {
+  border-color: rgb(255 200 210 / 36%);
+  background: linear-gradient(180deg, rgb(255 170 180 / 98%) 0%, rgb(240 110 130 / 98%) 100%);
+  color: #1a0508;
 }
 
 .space-cosmos-confirm-fade-enter-active,

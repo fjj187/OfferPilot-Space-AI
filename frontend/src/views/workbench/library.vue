@@ -10,7 +10,12 @@ import { useWorkbenchPersistence } from '@/composables/workspace/useWorkbenchPer
 import {
   documentList as initialDocumentList,
   filterTabs,
+  isLegacyDocFile,
+  isLibraryFormatFilterKey,
+  isSupportedLibraryFileName,
   libraryStats,
+  matchesLibraryFormatFilter,
+  resolveLibraryDocumentType,
   type LibraryDocument,
   type LibraryTopicKey
 } from './library.data'
@@ -49,7 +54,8 @@ const routeDocType = computed(() => String(route.query.docType || '') as Library
 const routeSource = computed(() => String(route.query.source || ''))
 
 const resolveFilterFromQuery = () => {
-  if (routeDocType.value === 'md' || routeDocType.value === 'docx') return routeDocType.value
+  if (routeDocType.value === 'docs') return 'docx'
+  if (isLibraryFormatFilterKey(routeDocType.value)) return routeDocType.value
   if (routeTopic.value && filterTabs.some(tab => tab.key === routeTopic.value)) return routeTopic.value
   return 'all'
 }
@@ -129,8 +135,8 @@ const formatBytes = (bytes: number) => {
 const filteredDocuments = computed(() => {
   if (activeFilter.value === 'all') return documentList.value
 
-  if (activeFilter.value === 'md' || activeFilter.value === 'docx') {
-    return documentList.value.filter(item => item.type === activeFilter.value)
+  if (isLibraryFormatFilterKey(activeFilter.value)) {
+    return documentList.value.filter(item => matchesLibraryFormatFilter(item.type, activeFilter.value))
   }
 
   return documentList.value.filter(item => item.topicKeys.includes(activeFilter.value as LibraryTopicKey))
@@ -269,15 +275,21 @@ const inferTopicKeys = (name: string): LibraryTopicKey[] => {
 }
 
 const createLibraryDocument = async (file: File): Promise<LibraryDocument> => {
-  const ext = file.name.toLowerCase().endsWith('.docx') ? 'docx' : 'md'
+  const ext = resolveLibraryDocumentType(file.name)
   let rawText = ''
   let summary = '文档已导入，等待进一步解析。'
+  let status: LibraryDocument['status'] = 'pending'
 
   if (ext === 'md') {
     rawText = await file.text()
     summary = rawText.slice(0, 120).replace(/\s+/g, ' ').trim() || 'Markdown 文档已导入。'
+    status = 'parsed'
+  } else if (isLegacyDocFile(file.name)) {
+    summary = '旧版 .doc 请另存为 .docx 后再导入。'
+    status = 'error'
   } else {
-    summary = 'Word 文档已导入，第一版先展示基础信息，后续再补充完整解析。'
+    summary = 'Docs 文档已导入，第一版先展示基础信息，后续再补充完整解析。'
+    status = 'pending'
   }
 
   return {
@@ -289,7 +301,7 @@ const createLibraryDocument = async (file: File): Promise<LibraryDocument> => {
     rawText,
     summary,
     tags: inferTags(file.name),
-    status: ext === 'md' ? 'parsed' : 'pending',
+    status,
     topicKeys: inferTopicKeys(file.name),
     sourceKey: routeSource.value || 'hero-import',
     recommendedReason: routeSource.value === 'hero-import'
@@ -302,7 +314,7 @@ const appendFiles = async (files: FileList | null) => {
   if (!files?.length) return
   const nextDocs = await Promise.all(
     Array.from(files)
-      .filter(file => file.name.toLowerCase().endsWith('.md') || file.name.toLowerCase().endsWith('.docx'))
+      .filter(file => isSupportedLibraryFileName(file.name))
       .map(createLibraryDocument)
   )
 

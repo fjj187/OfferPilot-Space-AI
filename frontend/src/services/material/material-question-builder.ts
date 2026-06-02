@@ -6,6 +6,8 @@ import type {
 import type { PersistedLibraryDocument } from '@/types/workbench'
 import { resolveMaterialDocumentVersion } from '@/services/material/material-document-version'
 import { splitMaterialChunks } from '@/services/material/material-chunk-splitter'
+import { prepareMaterialRawText } from '@/services/material/normalize-interview-notes-markdown'
+import { inferMaterialQuestionTopicKeys } from '@/services/material/material-question-topics'
 import {
   buildHeadingQuestionPrompt,
   extractMaterialReferenceAnswer,
@@ -64,7 +66,12 @@ const buildQuestionBase = (
     generatedBy: 'rule',
     focusAreas: [...focusAreas],
     sourceHeading: normalizeQuestionHeading(chunk.heading),
-    referenceAnswer
+    referenceAnswer,
+    topicKeys: inferMaterialQuestionTopicKeys({
+      title,
+      prompt,
+      sourceHeading: normalizeQuestionHeading(chunk.heading)
+    })
   }
 }
 
@@ -145,7 +152,7 @@ const buildQuestionsForChunk = (chunk: MaterialChunk): MaterialQuestionItem[] =>
 }
 
 export function buildMaterialQuestionPool(document: PersistedLibraryDocument): MaterialQuestionPool {
-  const chunks = splitMaterialChunks(document.rawText || '', document.id)
+  const chunks = splitMaterialChunks(prepareMaterialRawText(document.rawText || ''), document.id)
   const questions = chunks.flatMap(chunk => buildQuestionsForChunk(chunk))
 
   return {

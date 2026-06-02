@@ -1,7 +1,8 @@
 import type {
   PersistedPracticeDifficulty,
   PersistedPracticeFocusArea,
-  PersistedPracticeQuestionType
+  PersistedPracticeQuestionType,
+  PersistedTopicKey
 } from '@/types/workbench'
 
 export type MaterialGroupOrderMode = 'chapter' | 'random' | 'difficulty_ladder' | 'single_difficulty'
@@ -30,6 +31,8 @@ export interface MaterialQuestionItem {
   focusAreas?: PersistedPracticeFocusArea[]
   referenceAnswer?: string
   sourceHeading?: string
+  /** 从标题/章节推断的主题，供混合资料组卷筛选 */
+  topicKeys?: PersistedTopicKey[]
 }
 
 export interface MaterialQuestionPool {
@@ -45,6 +48,8 @@ export interface MaterialQuestionPool {
 export interface MaterialGroupCompileOptions {
   count: number
   difficultyFilter?: PersistedPracticeDifficulty[]
+  /** 题目级主题筛选；空或未设表示不过滤 */
+  topicFilter?: PersistedTopicKey[]
   orderMode: MaterialGroupOrderMode
   singleDifficulty?: PersistedPracticeDifficulty
   /** 随机组卷时变更以触发重新洗牌 */

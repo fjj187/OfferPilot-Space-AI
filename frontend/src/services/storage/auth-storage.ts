@@ -29,10 +29,12 @@ export function getAuthSession(): AuthSession | null {
 }
 
 export function setAuthSession(session: AuthSession) {
+  if (typeof window === 'undefined') return
   window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session))
 }
 
 export function clearAuthSession() {
+  if (typeof window === 'undefined') return
   window.localStorage.removeItem(AUTH_STORAGE_KEY)
 }
 

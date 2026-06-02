@@ -11,10 +11,12 @@ import type {
 import {
   getPersistedInterviewSessions,
   getPersistedLibraryDocuments,
+  getPersistedRemovedLibraryDocumentIds,
   getPersistedReportSummaries,
   getPersistedWorkbenchContext,
   setPersistedInterviewSessions,
   setPersistedLibraryDocuments,
+  setPersistedRemovedLibraryDocumentIds,
   setPersistedReportSummaries,
   setPersistedWorkbenchContext
 } from '@/services/storage/workbench-storage'
@@ -24,7 +26,10 @@ const workbenchStorageVersion = ref(0)
 
 const normalizeLibraryDocument = <T extends PersistedLibraryDocument>(document: T): T => ({
   ...document,
+  type: document.type === 'docs' ? 'docx' : document.type,
   tags: Array.isArray(document.tags) ? document.tags : [],
+  topicKeys: Array.isArray(document.topicKeys) ? document.topicKeys : [],
+  importedName: document.importedName?.trim() || document.name,
   summary: document.summary || '当前资料还没有摘要，后续可补充解析。',
   rawText: document.rawText || ''
 })
@@ -36,8 +41,13 @@ const touchWorkbenchStorage = () => {
 export const useWorkbenchPersistence = () => {
   const loadLibraryDocuments = <T extends PersistedLibraryDocument>(seedDocuments: T[]) => {
     void workbenchStorageVersion.value
-    const storedDocuments = (getPersistedLibraryDocuments() as T[]).map(item => normalizeLibraryDocument(item))
-    const normalizedSeeds = seedDocuments.map(item => normalizeLibraryDocument(item))
+    const removedDocumentIds = new Set(getPersistedRemovedLibraryDocumentIds())
+    const storedDocuments = (getPersistedLibraryDocuments() as T[])
+      .map(item => normalizeLibraryDocument(item))
+      .filter(item => !removedDocumentIds.has(item.id))
+    const normalizedSeeds = seedDocuments
+      .map(item => normalizeLibraryDocument(item))
+      .filter(item => !removedDocumentIds.has(item.id))
     const seedMap = new Map(normalizedSeeds.map(item => [item.id, item]))
     const merged = [...storedDocuments.filter(item => !seedMap.has(item.id)), ...normalizedSeeds]
     return merged
@@ -45,6 +55,15 @@ export const useWorkbenchPersistence = () => {
 
   const saveImportedLibraryDocuments = (documents: PersistedLibraryDocument[]) => {
     setPersistedLibraryDocuments(documents.map(item => normalizeLibraryDocument(item)))
+    touchWorkbenchStorage()
+  }
+
+  const rememberRemovedLibraryDocument = (documentId: string) => {
+    if (!documentId) return
+    const removedDocumentIds = new Set(getPersistedRemovedLibraryDocumentIds())
+    if (removedDocumentIds.has(documentId)) return
+    removedDocumentIds.add(documentId)
+    setPersistedRemovedLibraryDocumentIds([...removedDocumentIds])
     touchWorkbenchStorage()
   }
 
@@ -169,6 +188,7 @@ export const useWorkbenchPersistence = () => {
   return {
     loadLibraryDocuments,
     saveImportedLibraryDocuments,
+    rememberRemovedLibraryDocument,
     loadWorkbenchContext,
     saveWorkbenchContext,
     loadInterviewSessions,

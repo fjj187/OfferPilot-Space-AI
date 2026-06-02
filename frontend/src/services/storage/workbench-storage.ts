@@ -7,6 +7,7 @@ import type {
 
 export const WORKBENCH_STORAGE_KEYS = {
   libraryDocuments: 'offerpilot.library.documents',
+  libraryRemovedDocumentIds: 'offerpilot.library.removedDocumentIds',
   workbenchContext: 'offerpilot.workbench.context',
   interviewSessions: 'offerpilot.interview.sessions',
   reportSummaries: 'offerpilot.report.summaries',
@@ -38,6 +39,14 @@ export const getPersistedLibraryDocuments = () => {
 
 export const setPersistedLibraryDocuments = (documents: PersistedLibraryDocument[]) => {
   writeJSON(WORKBENCH_STORAGE_KEYS.libraryDocuments, documents)
+}
+
+export const getPersistedRemovedLibraryDocumentIds = () => {
+  return readJSON<string[]>(WORKBENCH_STORAGE_KEYS.libraryRemovedDocumentIds, [])
+}
+
+export const setPersistedRemovedLibraryDocumentIds = (documentIds: string[]) => {
+  writeJSON(WORKBENCH_STORAGE_KEYS.libraryRemovedDocumentIds, documentIds)
 }
 
 export const getPersistedWorkbenchContext = () => {

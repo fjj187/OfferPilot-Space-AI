@@ -7,6 +7,9 @@ import LibraryFilterTabs from '@/components/library/LibraryFilterTabs.vue'
 import LibraryStatCard from '@/components/library/LibraryStatCard.vue'
 import Pagination from '@/components/Pagination/index.vue'
 import SpaceSceneHeader from '@/components/showcase/mock-interview-space/SpaceSceneHeader.vue'
+import SpaceCosmosConfirm from '@/components/showcase/mock-interview-space/SpaceCosmosConfirm.vue'
+import type { PersistedTopicKey } from '@/types/workbench'
+import { resolveLibraryDocumentSourceLabel } from '@/services/library/library-document-categories'
 
 interface LibraryStatItem {
   label: string
@@ -23,6 +26,7 @@ interface LibraryFilterTab {
 interface LibraryDocumentItem {
   id: string
   name: string
+  importedName?: string
   type: 'md' | 'docx'
   size: number
   importedAt: string
@@ -36,6 +40,7 @@ interface LibraryDocumentItem {
 interface SelectedLibraryDocument {
   id: string
   name: string
+  importedName?: string
   type: 'md' | 'docx'
   importedAt: string
   summary: string
@@ -55,6 +60,12 @@ interface MaterialPreviewItem {
   matchReason: string
 }
 
+interface MaterialTopicTab {
+  key: PersistedTopicKey
+  label: string
+  count: number
+}
+
 const props = defineProps<{
   sectionTitle: string
   sectionBody: string
@@ -64,6 +75,7 @@ const props = defineProps<{
   nextStepDesc: string
   derivedStats: LibraryStatItem[]
   filterTabs: LibraryFilterTab[]
+  customCategoryLabels: string[]
   activeFilter: string
   currentPage: number
   pageCount: number
@@ -80,6 +92,9 @@ const props = defineProps<{
   materialCompileCount: number
   materialCompileCountMax: number
   materialOrderMode: 'chapter' | 'random'
+  materialTopicFilter: PersistedTopicKey | 'all'
+  materialTopicTabs: MaterialTopicTab[]
+  materialFilteredQuestionTotal: number
   materialPoolQuestionTotal: number
   materialPreviewCount: number
   materialPreviewSignature: string
@@ -97,34 +112,42 @@ const emit = defineEmits<{
   'update:page': [value: number]
   'update:materialCompileCount': [value: number]
   'update:materialOrderMode': [value: 'chapter' | 'random']
+  'update:materialTopicFilter': [value: PersistedTopicKey | 'all']
   'select-document': [value: string]
+  'delete-document': [value: string]
+  'update-document-categories': [payload: { documentId: string, name: string, tags: string[] }]
   prepareMaterial: []
   startMaterialMock: []
 }>()
 
 const materialCountMin = 1
+/** 组卷题数草稿：仅在本组件内维护，失焦/生成前才规范化，不随父层 props 自动回写 */
 const localMaterialCompileCount = ref(props.materialCompileCount)
+const materialCompileCountInput = ref(String(props.materialCompileCount))
 const localMaterialOrderMode = ref(props.materialOrderMode)
+const localMaterialTopicFilter = ref<PersistedTopicKey | 'all'>(props.materialTopicFilter)
 
 const materialCountMaxLimit = computed(() => (
   Math.max(materialCountMin, props.materialCompileCountMax || materialCountMin)
 ))
 
-const canShuffleMaterialGroup = computed(() => (
-  props.materialPoolQuestionTotal > 0 && !props.materialIsPreparing
+const effectiveQuestionTotal = computed(() => (
+  props.materialFilteredQuestionTotal > 0
+    ? props.materialFilteredQuestionTotal
+    : props.materialPoolQuestionTotal
 ))
 
-const activeRoundCount = computed(() => (
-  Math.max(
-    materialCountMin,
-    Number(localMaterialCompileCount.value) || materialCountMin
-  )
+const canShuffleMaterialGroup = computed(() => (
+  effectiveQuestionTotal.value > 0 && !props.materialIsPreparing
 ))
+
+const activeRoundCount = computed(() => clampMaterialCompileCount(materialCompileCountInput.value))
 
 /** 草稿与上次「生成练习题」已应用的组卷设置一致时，才允许开始模拟面试 */
 const materialCompileDraftApplied = computed(() => (
   activeRoundCount.value === props.materialCompileCount
   && localMaterialOrderMode.value === props.materialOrderMode
+  && localMaterialTopicFilter.value === props.materialTopicFilter
 ))
 
 const hasMaterialPreview = computed(() => props.materialPreviewItems.length > 0)
@@ -134,39 +157,77 @@ const canStartMaterialMockNow = computed(() => (
 ))
 
 const materialCountFieldLabel = computed(() => (
-  props.materialPoolQuestionTotal > 0
+  effectiveQuestionTotal.value > 0
     ? `本轮题数（最多 ${ materialCountMaxLimit.value } 题）`
     : '本轮题数（点击生成练习题后生效）'
 ))
 
 const materialPreviewPendingHint = computed(() => {
   if (materialCompileDraftApplied.value || !hasMaterialPreview.value) return ''
-  return '组卷设置已变更，点击「生成练习题」更新预览。'
+  return '有变更，请重新生成'
 })
+
+/** 右上角徽章：反映当前预览/已组卷的本轮题数，与左侧总题数区分 */
+const materialRoundBadgeLabel = computed(() => {
+  if (props.materialIsPreparing) return '生成中…'
+  if (props.materialPoolQuestionTotal === 0) return props.materialPoolStatusLabel
+  if (!hasMaterialPreview.value) return '待组卷'
+  return `本轮 ${ props.materialPreviewCount } 题`
+})
+
+const materialPoolTotalLabel = computed(() => {
+  if (props.materialPoolQuestionTotal <= 0) return ''
+  if (
+    props.materialTopicFilter !== 'all'
+    && props.materialFilteredQuestionTotal > 0
+  ) {
+    const topicLabel = props.topicLabelMap[props.materialTopicFilter] || props.materialTopicFilter
+    return `总 ${ props.materialPoolQuestionTotal } 题 · ${ topicLabel } ${ props.materialFilteredQuestionTotal } 题`
+  }
+  return `总 ${ props.materialPoolQuestionTotal } 题`
+})
+
+const showMaterialTopicFilter = computed(() => (
+  props.materialPoolQuestionTotal > 0 && props.materialTopicTabs.length > 0
+))
 
 watch(() => props.selectedDocumentId, () => {
-  localMaterialCompileCount.value = props.materialCompileCount
   localMaterialOrderMode.value = props.materialOrderMode
+  localMaterialTopicFilter.value = 'all'
 })
 
-watch(() => props.materialCompileCount, (value) => {
-  localMaterialCompileCount.value = value
-})
-
-watch(() => props.materialOrderMode, (value) => {
-  localMaterialOrderMode.value = value
-})
-
-const resolveDraftCompileCount = () => {
-  const next = Math.max(materialCountMin, Number(localMaterialCompileCount.value) || materialCountMin)
-  localMaterialCompileCount.value = next
+const clampMaterialCompileCount = (raw: string | number) => {
+  const parsed = typeof raw === 'number'
+    ? raw
+    : Number.parseInt(String(raw).trim(), 10)
+  let next = Number.isFinite(parsed) ? parsed : materialCountMin
+  next = Math.max(materialCountMin, next)
+  if (effectiveQuestionTotal.value > 0) {
+    next = Math.min(materialCountMaxLimit.value, next)
+  }
   return next
 }
+
+const commitMaterialCompileCountDraft = () => {
+  const next = clampMaterialCompileCount(materialCompileCountInput.value)
+  localMaterialCompileCount.value = next
+  materialCompileCountInput.value = String(next)
+  return next
+}
+
+const handleMaterialCountBlur = (event: FocusEvent) => {
+  // 失焦时以 DOM 当前值为准，避免最后一次按键尚未写入 ref 就被规范化
+  materialCompileCountInput.value = (event.target as HTMLInputElement).value
+  commitMaterialCompileCountDraft()
+}
+
+const resolveDraftCompileCount = () => commitMaterialCompileCountDraft()
 
 const handlePrepareMaterialClick = () => {
   const count = resolveDraftCompileCount()
   emit('update:materialCompileCount', count)
   emit('update:materialOrderMode', localMaterialOrderMode.value)
+  emit('update:materialTopicFilter', localMaterialTopicFilter.value)
   materialPreviewPageIndex.value = 0
   emit('prepareMaterial')
 }
@@ -188,18 +249,53 @@ const handleMaterialOrderModeSelect = (orderMode: 'chapter' | 'random') => {
   localMaterialOrderMode.value = orderMode
 }
 
+const handleMaterialTopicFilterSelect = (topicKey: PersistedTopicKey | 'all') => {
+  if (localMaterialTopicFilter.value === topicKey) return
+  localMaterialTopicFilter.value = topicKey
+}
+
 const selectAllMaterialCount = () => {
   if (!canShuffleMaterialGroup.value) {
     notifyMaterialAction('请先生成练习题以获取题库容量', 'warning')
     return
   }
   localMaterialCompileCount.value = materialCountMaxLimit.value
+  materialCompileCountInput.value = String(materialCountMaxLimit.value)
   materialPreviewPageIndex.value = 0
   notifyMaterialAction(`已选全部 ${ materialCountMaxLimit.value } 题，点击生成练习题后生效`, 'info')
 }
 
-const sourceLabelText = (sourceKey?: string) => {
-  return sourceKey ? (props.sourceLabelMap[sourceKey] || sourceKey) : ''
+const sourceLabelText = (document: Pick<LibraryDocumentItem, 'importedName' | 'name' | 'sourceKey'>) => (
+  resolveLibraryDocumentSourceLabel(document, props.sourceLabelMap)
+)
+
+const pendingDeleteDocument = ref<{ id: string; name: string } | null>(null)
+
+const showDeleteConfirm = computed({
+  get: () => Boolean(pendingDeleteDocument.value),
+  set: (value: boolean) => {
+    if (!value) {
+      pendingDeleteDocument.value = null
+    }
+  }
+})
+
+const deleteConfirmMessage = computed(() => {
+  if (!pendingDeleteDocument.value) return ''
+  return `确定删除「${ pendingDeleteDocument.value.name }」吗？删除后不可恢复，关联练习题组也会一并清除。`
+})
+
+const handleDeleteDocumentRequest = (doc: LibraryDocumentItem) => {
+  pendingDeleteDocument.value = {
+    id: doc.id,
+    name: doc.name
+  }
+}
+
+const handleDeleteDocumentConfirm = () => {
+  if (!pendingDeleteDocument.value) return
+  emit('delete-document', pendingDeleteDocument.value.id)
+  pendingDeleteDocument.value = null
 }
 
 const placeholderItems = computed(() => {
@@ -247,6 +343,7 @@ watch(
     props.selectedDocumentId,
     props.materialCompileCount,
     props.materialOrderMode,
+    props.materialTopicFilter,
     props.materialPreviewSignature
   ].join('::'),
   () => {
@@ -357,6 +454,7 @@ onBeforeUnmount(() => {
     <div class="library-body-grid">
       <main class="library-main-column">
         <ImportActionCard
+          dark
           :emphasize-import="true"
           :helper-text="nextStepTitle"
           :feedback-text="showImportFeedback ? importFeedbackText : ''"
@@ -412,11 +510,16 @@ onBeforeUnmount(() => {
             :imported-at="doc.importedAt"
             :tags="doc.tags"
             :status="doc.status"
-            :source-label="sourceLabelText(doc.sourceKey)"
-            :recommended-reason="doc.recommendedReason"
+            :source-label="sourceLabelText(doc)"
             :active="doc.id === selectedDocumentId"
             active-label="当前训练资料"
+            deletable
+            editable
+            category-editor-dark
+            :existing-custom-tags="customCategoryLabels"
             @select="emit('select-document', doc.id)"
+            @delete="handleDeleteDocumentRequest(doc)"
+            @update-profile="emit('update-document-categories', { documentId: doc.id, ...$event })"
           />
           <div
             v-for="placeholder in placeholderItems"
@@ -458,8 +561,16 @@ onBeforeUnmount(() => {
               class="library-material-card"
             >
               <div class="material-card-head">
-                <div class="stat-label">资料练习题</div>
-                <div class="material-pool-badge">{{ materialPoolStatusLabel }}</div>
+                <div class="material-card-title-row">
+                  <div class="stat-label">资料练习题</div>
+                  <span
+                    v-if="materialPoolTotalLabel"
+                    class="material-pool-total"
+                  >
+                    {{ materialPoolTotalLabel }}
+                  </span>
+                </div>
+                <div class="material-pool-badge">{{ materialRoundBadgeLabel }}</div>
               </div>
               <div class="material-action-row">
                 <button
@@ -479,9 +590,18 @@ onBeforeUnmount(() => {
                   预览并开始模拟面试
                 </button>
               </div>
-              <label class="material-count-field">
+              <div class="material-count-field">
                 <span class="material-count-field-head">
-                  <span>{{ materialCountFieldLabel }}</span>
+                  <span class="material-count-field-label-row">
+                    <span>{{ materialCountFieldLabel }}</span>
+                    <span
+                      v-if="materialPreviewPendingHint"
+                      class="material-draft-hint-inline"
+                      aria-live="polite"
+                    >
+                      {{ materialPreviewPendingHint }}
+                    </span>
+                  </span>
                   <button
                     type="button"
                     class="material-count-all-button"
@@ -492,12 +612,13 @@ onBeforeUnmount(() => {
                   </button>
                 </span>
                 <input
-                  v-model.number="localMaterialCompileCount"
-                  type="number"
-                  :min="materialCountMin"
-                  :max="materialPoolQuestionTotal > 0 ? materialCountMaxLimit : undefined"
+                  v-model="materialCompileCountInput"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  @blur="handleMaterialCountBlur"
                 >
-              </label>
+              </div>
               <div class="material-order-mode-row">
                 <button
                   type="button"
@@ -518,14 +639,34 @@ onBeforeUnmount(() => {
                   <span class="material-order-mode-button__desc">打乱顺序</span>
                 </button>
               </div>
-              <p
-                v-if="hasMaterialPreview"
-                class="material-draft-hint"
-                :class="{ 'is-idle': !materialPreviewPendingHint }"
-                aria-live="polite"
+              <div
+                v-if="showMaterialTopicFilter"
+                class="material-topic-filter-row"
               >
-                组卷设置已变更，点击「生成练习题」更新预览。
-              </p>
+                <span class="material-topic-filter-label">题目主题</span>
+                <div class="material-topic-filter-chips">
+                  <button
+                    type="button"
+                    class="material-topic-chip"
+                    :class="{ 'is-active': localMaterialTopicFilter === 'all' }"
+                    @click="handleMaterialTopicFilterSelect('all')"
+                  >
+                    全部
+                    <em>{{ materialPoolQuestionTotal }}</em>
+                  </button>
+                  <button
+                    v-for="tab in materialTopicTabs"
+                    :key="tab.key"
+                    type="button"
+                    class="material-topic-chip"
+                    :class="{ 'is-active': localMaterialTopicFilter === tab.key }"
+                    @click="handleMaterialTopicFilterSelect(tab.key)"
+                  >
+                    {{ tab.label }}
+                    <em>{{ tab.count }}</em>
+                  </button>
+                </div>
+              </div>
               <p
                 v-if="hasMaterialPreview && materialGroupShortfallText"
                 class="material-shortfall-note"
@@ -636,8 +777,7 @@ onBeforeUnmount(() => {
                 :tags="selectedDocument.tags"
                 :status="selectedDocument.status"
                 :topic-labels="selectedDocument.topicKeys.map((key: string) => topicLabelMap[key])"
-                :source-label="selectedDocument.sourceKey ? (sourceLabelMap[selectedDocument.sourceKey] || selectedDocument.sourceKey) : ''"
-                :recommended-reason="selectedDocument.recommendedReason"
+                :source-label="sourceLabelText(selectedDocument)"
                 :raw-text="selectedDocument.rawText"
               />
             </div>
@@ -651,6 +791,16 @@ onBeforeUnmount(() => {
       ></div>
     </div>
   </div>
+
+  <SpaceCosmosConfirm
+    v-model:show="showDeleteConfirm"
+    title="删除资料"
+    :message="deleteConfirmMessage"
+    confirm-text="删除"
+    cancel-text="取消"
+    confirm-tone="danger"
+    @confirm="handleDeleteDocumentConfirm"
+  />
 </template>
 
 <style lang="scss" scoped>
@@ -900,7 +1050,38 @@ onBeforeUnmount(() => {
 }
 
 .library-preview-panel {
-  padding: 18px 20px;
+  padding: 18px 18px 20px;
+}
+
+.library-preview-panel :deep(.eyebrow),
+.library-preview-panel :deep(.section-label) {
+  font-size: 13px;
+}
+
+.library-preview-panel :deep(.preview-head--compact .preview-chip-row .preview-chip) {
+  min-height: 34px;
+  min-width: 56px;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.library-preview-panel :deep(.preview-expand) {
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.library-preview-panel :deep(.preview-imported-at) {
+  font-size: 12px;
+  line-height: 34px;
+}
+
+.library-preview-panel :deep(.preview-text) {
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  background: rgb(255 255 255 / 0.045);
 }
 
 .library-preview-panel :deep(.preview-card),
@@ -910,17 +1091,6 @@ onBeforeUnmount(() => {
   border: 0;
   background: transparent;
   box-shadow: none;
-}
-
-.library-preview-panel :deep(.preview-text) {
-  overflow: auto;
-  border: 1px solid rgb(255 255 255 / 0.12);
-  background: rgb(255 255 255 / 0.045);
-}
-
-.library-preview-panel :deep(.preview-expand) {
-  font-size: 15px;
-  font-weight: 700;
 }
 
 .library-scene-shell :deep(.eyebrow),
@@ -963,7 +1133,8 @@ onBeforeUnmount(() => {
   color: #d6ddff;
 }
 
-.library-document-list :deep(.doc-tag) {
+.library-document-list :deep(.doc-tag),
+.library-document-list :deep(.category-editor-tag) {
   background: rgb(255 255 255 / 0.08);
   color: rgb(241 246 255 / 0.84);
   font-size: 15px;
@@ -992,6 +1163,37 @@ onBeforeUnmount(() => {
   border-color: rgb(255 255 255 / 0.22);
   background: rgb(255 255 255 / 0.055);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+
+.library-document-list :deep(.doc-item-action) {
+  height: auto;
+  padding: 6px 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.library-document-list :deep(.doc-item-action--edit) {
+  border-color: rgb(255 255 255 / 0.14);
+  background: rgb(255 255 255 / 0.06);
+  color: rgb(220 232 255 / 0.92);
+}
+
+.library-document-list :deep(.doc-item-action--edit:hover) {
+  border-color: rgb(198 206 255 / 0.36);
+  background: rgb(198 206 255 / 0.16);
+  color: #fff;
+}
+
+.library-document-list :deep(.doc-item-action--delete) {
+  border-color: rgb(255 120 120 / 24%);
+  background: rgb(255 255 255 / 4%);
+  color: rgb(255 186 186 / 96%);
+}
+
+.library-document-list :deep(.doc-item-action--delete:hover) {
+  border-color: rgb(255 140 140 / 0.42);
+  background: rgb(255 90 90 / 0.12);
+  color: rgb(255 214 214 / 0.98);
 }
 
 .library-pagination-row :deep(.pagination-container) {
@@ -1076,6 +1278,22 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 
+.material-card-title-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.material-pool-total {
+  color: rgb(186 245 255 / 0.72);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
 .material-pool-badge {
   display: inline-flex;
   flex: 0 0 auto;
@@ -1104,6 +1322,21 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.material-count-field-label-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.material-draft-hint-inline {
+  color: rgb(186 245 255 / 0.88);
+  font: inherit;
+  line-height: inherit;
+  white-space: nowrap;
 }
 
 .material-count-all-button {
@@ -1187,6 +1420,57 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
+.material-topic-filter-row {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.material-topic-filter-label {
+  color: rgb(223 231 252 / 0.72);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.material-topic-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.material-topic-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.04);
+  color: rgb(236 242 255 / 0.88);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.material-topic-chip em {
+  color: rgb(223 231 252 / 0.62);
+  font-style: normal;
+  font-weight: 500;
+}
+
+.material-topic-chip:hover {
+  border-color: rgb(168 154 255 / 0.34);
+  background: rgb(112 94 219 / 0.14);
+}
+
+.material-topic-chip.is-active {
+  border-color: rgb(186 168 255 / 0.72);
+  background: linear-gradient(180deg, rgb(132 108 255 / 0.38) 0%, rgb(96 74 228 / 0.32) 100%);
+}
+
 .material-count-all-button:hover:not(:disabled) {
   border-color: rgb(168 154 255 / 0.34);
   background: rgb(112 94 219 / 0.18);
@@ -1215,29 +1499,12 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
-.material-draft-hint,
 .material-shortfall-note,
 .material-empty-note {
   margin: 0;
+  color: rgb(255 214 153 / 0.92);
   font-size: 13px;
   line-height: 1.5;
-}
-
-.material-draft-hint {
-  min-height: calc(13px * 1.5);
-  color: rgb(186 245 255 / 0.82);
-  transition: opacity 0.2s ease;
-}
-
-.material-draft-hint.is-idle {
-  opacity: 0;
-  pointer-events: none;
-  user-select: none;
-}
-
-.material-shortfall-note,
-.material-empty-note {
-  color: rgb(255 214 153 / 0.92);
 }
 
 .material-preview-body {

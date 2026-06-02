@@ -8,6 +8,15 @@ const legacyWorkbenchMeta = {
 
 const childrenRoutes: Array<RouteRecordRaw> = [
   {
+    path: '/login',
+    name: 'Login',
+    meta: {
+      guestOnly: true,
+      title: '登录'
+    },
+    component: () => import('@/views/login.vue')
+  },
+  {
     path: '/workspace',
     component: WorkbenchLayout,
     name: 'WorkbenchRoot',
@@ -57,11 +66,15 @@ const childrenRoutes: Array<RouteRecordRaw> = [
   {
     path: '/showcase/space-odyssey',
     name: 'SpaceOdysseyShowcase',
-    component: () => import('@/views/showcase/space-odyssey.vue'),
+    component: () => import('@/views/showcase/space-odyssey.vue')
   },
   {
     path: '/showcase/mock-interview-space',
     name: 'MockInterviewSpaceShowcase',
+    meta: {
+      requiresAuth: true,
+      title: '宇宙模拟面试'
+    },
     component: () => import('@/views/showcase/mock-interview-space.vue')
   },
   {

@@ -90,6 +90,27 @@ describe('material question pipeline', () => {
     expect(result.requestedCount).toBe(3)
   })
 
+  it('supports topic filter when compiling question group', () => {
+    const pool = buildMaterialQuestionPool(createDocument())
+    const browserResult = buildMaterialQuestionGroup(pool, {
+      count: 5,
+      orderMode: 'chapter',
+      topicFilter: ['browser']
+    }, '前端面试.md')
+
+    expect(browserResult.actualCount).toBeGreaterThan(0)
+    expect(browserResult.actualCount).toBeLessThanOrEqual(pool.questions.length)
+    expect(
+      browserResult.group.items.every(item => /meta|defer|语义化|BFC|inline/i.test(item.title))
+    ).toBe(true)
+  })
+
+  it('assigns topicKeys to generated questions', () => {
+    const pool = buildMaterialQuestionPool(createDocument())
+    expect(pool.questions.every(item => item.topicKeys?.length)).toBe(true)
+    expect(pool.questions.some(item => item.topicKeys?.includes('browser'))).toBe(true)
+  })
+
   it('随机组卷会打乱题目顺序', () => {
     const pool = buildMaterialQuestionPool(createDocument())
     const chapterResult = buildMaterialQuestionGroup(pool, {

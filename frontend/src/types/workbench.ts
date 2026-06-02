@@ -98,6 +98,8 @@ export interface PersistedLibraryDocument extends PersistedTrainingDocumentCore 
   importedAt: string
   status: PersistedDocumentStatus
   topicKeys: PersistedTopicKey[]
+  /** 导入时的原始文件名，重命名后不改变 */
+  importedName?: string
   sourceKey?: string
   recommendedReason?: string
 }

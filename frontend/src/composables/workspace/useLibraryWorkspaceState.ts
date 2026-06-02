@@ -1,12 +1,24 @@
 import type { Ref } from 'vue'
 import type { PersistedTopicKey } from '@/types/workbench'
 import { useWorkbenchPersistence } from '@/composables/workspace/useWorkbenchPersistence'
+import { getMaterialQuestionPool, removeMaterialQuestionPool } from '@/services/storage/material-pool-storage'
+import { parseDocxFile } from '@/services/material/parse-docx-file'
+import {
+  buildLibraryFilterTabs,
+  collectCustomCategoryLabels,
+  inferTagsFromFileName,
+  matchesLibraryDocumentFilter,
+  normalizeDocumentTags,
+  resolveTopicKeysFromTags
+} from '@/services/library/library-document-categories'
 import {
   type LibraryDocument,
   type LibraryTopicKey,
-  filterTabs,
   documentList as initialDocumentList,
-  libraryStats
+  isLegacyDocFile,
+  isSupportedLibraryFileName,
+  libraryStats,
+  resolveLibraryDocumentType
 } from '@/views/workbench/library.data'
 
 interface LibraryWorkspaceOptions {
@@ -36,6 +48,7 @@ export const useLibraryWorkspaceState = (options: LibraryWorkspaceOptions = {}) 
   const {
     loadLibraryDocuments,
     loadWorkbenchContext,
+    rememberRemovedLibraryDocument,
     saveImportedLibraryDocuments,
     saveWorkbenchContext
   } = useWorkbenchPersistence()
@@ -67,15 +80,13 @@ export const useLibraryWorkspaceState = (options: LibraryWorkspaceOptions = {}) 
     return documentList.value.find(item => item.id === selectedDocumentId.value) || null
   })
 
-  const filteredDocuments = computed(() => {
-    if (activeFilter.value === 'all') return documentList.value
+  const filterTabs = computed(() => buildLibraryFilterTabs(documentList.value))
 
-    if (activeFilter.value === 'md' || activeFilter.value === 'docx') {
-      return documentList.value.filter(item => item.type === activeFilter.value)
-    }
+  const customCategoryLabels = computed(() => collectCustomCategoryLabels(documentList.value))
 
-    return documentList.value.filter(item => item.topicKeys.includes(activeFilter.value as LibraryTopicKey))
-  })
+  const filteredDocuments = computed(() => (
+    documentList.value.filter(item => matchesLibraryDocumentFilter(item, activeFilter.value))
+  ))
 
   const workspaceTitle = computed(() => {
     const topic = preferredTopic?.value
@@ -90,7 +101,7 @@ export const useLibraryWorkspaceState = (options: LibraryWorkspaceOptions = {}) 
     if (source && sourceLabelMap[source]) {
       return `当前来源：${ sourceLabelMap[source] }`
     }
-    return '资料库场景负责资料导入、列表筛选、标签管理与当前训练资料承接。'
+    return '资料库负责导入、预览与管理训练资料；混合文档可直接组卷，按题目主题筛选即可。'
   })
 
   const nextStepTitle = computed(() => {
@@ -110,7 +121,6 @@ export const useLibraryWorkspaceState = (options: LibraryWorkspaceOptions = {}) 
   const derivedStats = computed(() => {
     const total = documentList.value.length
     const parsed = documentList.value.filter(item => item.status === 'parsed').length
-    const pending = documentList.value.filter(item => item.status === 'pending').length
 
     return libraryStats.map((item) => {
       if (item.tone === 'primary') {
@@ -127,10 +137,19 @@ export const useLibraryWorkspaceState = (options: LibraryWorkspaceOptions = {}) 
         }
       }
 
-      return {
-        ...item,
-        value: String(pending).padStart(2, '0')
+      if (item.label.includes('练习题')) {
+        const questionTotal = documentList.value.reduce((sum, doc) => {
+          const pool = getMaterialQuestionPool(doc.id)
+          return sum + (pool?.questions.length ?? 0)
+        }, 0)
+
+        return {
+          ...item,
+          value: String(questionTotal)
+        }
       }
+
+      return item
     })
   })
 
@@ -182,46 +201,44 @@ export const useLibraryWorkspaceState = (options: LibraryWorkspaceOptions = {}) 
     }, 5000)
   }
 
-  const inferTags = (name: string) => {
-    const lower = name.toLowerCase()
-    const tags: string[] = []
-    if (lower.includes('vue')) tags.push('Vue 3')
-    if (lower.includes('ts') || lower.includes('type')) tags.push('TypeScript')
-    if (lower.includes('build') || lower.includes('工程')) tags.push('工程化')
-    if (lower.includes('browser')) tags.push('浏览器')
-    if (lower.includes('性能')) tags.push('性能优化')
-    if (lower.includes('项目') || lower.includes('场景')) tags.push('场景题')
-    return tags.length ? tags : ['待分类']
-  }
-
   const inferTopicKeys = (name: string): LibraryTopicKey[] => {
-    const lower = name.toLowerCase()
-    const topicKeys: LibraryTopicKey[] = []
-    if (lower.includes('vue')) topicKeys.push('vue3')
-    if (lower.includes('ts') || lower.includes('type')) topicKeys.push('typescript')
-    if (lower.includes('build') || lower.includes('工程')) topicKeys.push('engineering')
-    if (lower.includes('browser')) topicKeys.push('browser')
-    if (lower.includes('性能')) topicKeys.push('performance')
-    if (lower.includes('项目') || lower.includes('场景')) topicKeys.push('scenario')
-    return topicKeys.length ? topicKeys : preferredTopic?.value ? [preferredTopic.value as LibraryTopicKey] : ['scenario']
+    return resolveTopicKeysFromTags(inferTagsFromFileName(name))
   }
 
   const createLibraryDocument = async (file: File): Promise<LibraryDocument> => {
-    const ext = file.name.toLowerCase().endsWith('.docx') ? 'docx' : 'md'
+    const ext = resolveLibraryDocumentType(file.name)
     let rawText = ''
     let summary = '文档已导入，等待进一步解析。'
+    let status: LibraryDocument['status'] = 'pending'
 
     if (ext === 'md') {
       rawText = await file.text()
       summary = rawText.slice(0, 120).replace(/\s+/g, ' ').trim() || 'Markdown 文档已导入。'
-    }
-    else {
-      summary = 'Word 文档已导入，当前先展示基础信息，后续再补完整解析。'
+      status = 'parsed'
+    } else if (isLegacyDocFile(file.name)) {
+      summary = '旧版 .doc 请另存为 .docx 后再导入。'
+      status = 'error'
+    } else {
+      try {
+        const parsed = await parseDocxFile(file)
+        rawText = parsed.rawText
+        if (!rawText.trim()) {
+          summary = 'Docs 文档未提取到可用正文，请确认文件含文字内容。'
+          status = 'error'
+        } else {
+          summary = rawText.slice(0, 120).replace(/\s+/g, ' ').trim() || 'Docs 文档已解析。'
+          status = 'parsed'
+        }
+      } catch {
+        summary = 'Docs 文档解析失败，请确认文件为有效 .docx 格式。'
+        status = 'error'
+      }
     }
 
     return {
       id: `${ file.name }-${ file.lastModified }`,
       name: file.name,
+      importedName: file.name,
       type: ext,
       size: file.size,
       importedAt: new Date().toLocaleString('zh-CN', {
@@ -229,13 +246,10 @@ export const useLibraryWorkspaceState = (options: LibraryWorkspaceOptions = {}) 
       }),
       rawText,
       summary,
-      tags: inferTags(file.name),
-      status: ext === 'md' ? 'parsed' : 'pending',
+      tags: inferTagsFromFileName(file.name),
+      status,
       topicKeys: inferTopicKeys(file.name),
-      sourceKey: preferredSource?.value || 'hero-import',
-      recommendedReason: preferredSource?.value
-        ? '这份资料会承接当前宇宙页上下文，可直接作为后续训练参考。'
-        : '根据文件名和当前主题自动分类，建议确认标签后再进入训练。'
+      sourceKey: preferredSource?.value || 'hero-import'
     }
   }
 
@@ -243,7 +257,7 @@ export const useLibraryWorkspaceState = (options: LibraryWorkspaceOptions = {}) 
     if (!files?.length) return
     const nextDocs = await Promise.all(
       Array.from(files)
-        .filter(file => file.name.toLowerCase().endsWith('.md') || file.name.toLowerCase().endsWith('.docx'))
+        .filter(file => isSupportedLibraryFileName(file.name))
         .map(createLibraryDocument)
     )
 
@@ -314,10 +328,53 @@ export const useLibraryWorkspaceState = (options: LibraryWorkspaceOptions = {}) 
     refFolderInput.value?.click()
   }
 
+  const updateDocumentCategories = (
+    documentId: string,
+    payload: { name: string, tags: string[] }
+  ) => {
+    const target = documentList.value.find(item => item.id === documentId)
+    if (!target) return
+
+    const nextName = payload.name.trim() || target.name
+    const normalizedTags = normalizeDocumentTags(payload.tags)
+    const topicKeys = resolveTopicKeysFromTags(normalizedTags)
+
+    documentList.value = documentList.value.map(item => (
+      item.id === documentId
+        ? {
+            ...item,
+            name: nextName,
+            tags: normalizedTags,
+            topicKeys
+          }
+        : item
+    ))
+
+    showFeedback(`已更新「${ nextName }」`)
+  }
+
+  const removeDocument = (documentId: string) => {
+    const target = documentList.value.find(item => item.id === documentId)
+    if (!target) return
+
+    documentList.value = documentList.value.filter(item => item.id !== documentId)
+    rememberRemovedLibraryDocument(documentId)
+    removeMaterialQuestionPool(documentId)
+    lastImportedIds.value = lastImportedIds.value.filter(id => id !== documentId)
+
+    if (selectedDocumentId.value === documentId) {
+      shouldPersistSelectedDocument.value = Boolean(documentList.value[0]?.id)
+      selectedDocumentId.value = resolvePreferredDocumentId(documentList.value)
+    }
+
+    showFeedback(`已删除「${ target.name }」`)
+  }
+
   return {
     refFileInput,
     refFolderInput,
     filterTabs,
+    customCategoryLabels,
     sourceLabelMap,
     topicLabelMap,
     activeFilter,
@@ -337,6 +394,8 @@ export const useLibraryWorkspaceState = (options: LibraryWorkspaceOptions = {}) 
     formatBytes,
     pickFiles,
     pickFolder,
-    handleFileChange
+    handleFileChange,
+    updateDocumentCategories,
+    removeDocument
   }
 }

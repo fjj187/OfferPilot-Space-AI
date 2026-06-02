@@ -4,7 +4,8 @@ import type {
   PersistedInterviewFeedbackStyle,
   PersistedMockSessionConfig,
   PersistedPracticePlan,
-  PersistedReportSummary
+  PersistedReportSummary,
+  PersistedTopicKey
 } from '@/types/workbench'
 import {
   isInterviewReportApiAvailable,
@@ -13,8 +14,8 @@ import {
 import SpaceContentPanel from '@/components/showcase/mock-interview-space/SpaceContentPanel.vue'
 import SpaceHeader from '@/components/showcase/mock-interview-space/SpaceHeader.vue'
 import SpaceCosmosBigBang from '@/components/showcase/mock-interview-space/SpaceCosmosBigBang.vue'
-import SpaceLoginHero from '@/components/showcase/mock-interview-space/SpaceLoginHero.vue'
-import { useAuth } from '@/composables/useAuth'
+import router from '@/router'
+import { useRoute } from 'vue-router'
 import SpaceOrbitNav from '@/components/showcase/mock-interview-space/SpaceOrbitNav.vue'
 import SpaceReportPreviewModal from '@/components/showcase/mock-interview-space/SpaceReportPreviewModal.vue'
 import SpaceScrollCapsule from '@/components/showcase/mock-interview-space/SpaceScrollCapsule.vue'
@@ -36,6 +37,10 @@ import {
   buildMaterialQuestionGroup,
   defaultMaterialGroupCompileOptions
 } from '@/services/material/material-question-group-builder'
+import {
+  buildMaterialTopicTabs,
+  filterMaterialQuestionsByTopic
+} from '@/services/material/material-question-topics'
 import type { PracticeGroupCompileOptions } from '@/types/practice-pool'
 import { usePracticeQuestionPoolState } from '@/composables/showcase/usePracticeQuestionPoolState'
 import {
@@ -50,31 +55,16 @@ interface OrbitSlot {
   visible: boolean
 }
 
-const {
-  isLoggedIn,
-  syncFromStorage
-} = useAuth()
+const route = useRoute()
 
-onMounted(() => {
-  syncFromStorage()
-})
-
-/** 登录门控 UI：与 isLoggedIn 解耦，便于先淡出登录再淡入宇宙内容 */
-const showLoginGate = ref(!isLoggedIn.value)
-const isGateTransitioning = ref(false)
 const isCosmosBigBangPending = ref(false)
 const isCosmosBigBangPlaying = ref(false)
-const isCosmosContentRevealed = ref(isLoggedIn.value)
+const isCosmosContentRevealed = ref(route.query.welcome !== '1')
 
 let bigBangOverlayResolver: (() => void) | null = null
 
-const handleLoginOverlayAfterLeave = () => {
-  isGateTransitioning.value = false
-}
-
-/** 登录遮罩仍在时保持门控顶栏样式，避免 header 变量切换引发布局抖动 */
 const isCosmosChromeReady = computed(
-  () => isLoggedIn.value && !showLoginGate.value && !isGateTransitioning.value && !isCosmosBigBangPending.value
+  () => !isCosmosBigBangPending.value
 )
 
 const {
@@ -164,15 +154,14 @@ const initialSceneIdBySourcePage: Record<string, string> = {
   practice: 'feedback',
   report: 'report'
 }
-const initialSceneId = isLoggedIn.value
-  ? (initialSceneIdBySourcePage[initialWorkbenchContext?.sourcePage || 'overview'] || 'overview')
-  : 'overview'
+const initialSceneId = initialSceneIdBySourcePage[initialWorkbenchContext?.sourcePage || 'overview'] || 'overview'
 const initialSceneIndex = scenes.findIndex(scene => scene.id === initialSceneId)
 
 const {
   refFileInput,
   refFolderInput,
   filterTabs: libraryFilterTabs,
+  customCategoryLabels: libraryCustomCategoryLabels,
   sourceLabelMap: librarySourceLabelMap,
   topicLabelMap: libraryTopicLabelMap,
   activeFilter: libraryActiveFilter,
@@ -191,7 +180,9 @@ const {
   formatBytes: formatLibraryBytes,
   pickFiles: pickLibraryFiles,
   pickFolder: pickLibraryFolder,
-  handleFileChange: handleLibraryFileChange
+  handleFileChange: handleLibraryFileChange,
+  updateDocumentCategories: updateLibraryDocumentCategories,
+  removeDocument: removeLibraryDocument
 } = useLibraryWorkspaceState({
   preferredTopic: activeTopic,
   preferredSource: currentSourceKey
@@ -200,6 +191,12 @@ const {
 const currentTrainingDocument = computed(() => selectedDocument.value || activeDocument.value)
 
 const materialCompileOptions = ref<MaterialGroupCompileOptions>(defaultMaterialGroupCompileOptions())
+const materialTopicFilter = ref<PersistedTopicKey | 'all'>('all')
+
+const resolveMaterialTopicFilter = (): PersistedTopicKey[] | undefined => {
+  if (materialTopicFilter.value === 'all') return undefined
+  return [materialTopicFilter.value]
+}
 const {
   poolVersion: materialPoolVersion,
   resolvePoolForDocument,
@@ -215,12 +212,34 @@ const selectedMaterialPool = computed(() => {
   return resolvePoolForDocument(currentTrainingDocument.value)
 })
 
+const librarySceneDerivedStats = computed(() => {
+  void materialPoolVersion.value
+
+  return libraryDerivedStats.value.map((item) => {
+    if (!item.label.includes('练习题')) return item
+
+    const questionTotal = libraryDocumentList.value.reduce((sum, doc) => {
+      const pool = resolvePoolForDocument(doc)
+      return sum + (pool?.questions.length ?? 0)
+    }, 0)
+
+    return {
+      ...item,
+      value: String(questionTotal),
+      note: questionTotal > 0
+        ? '跨全部资料汇总，右侧可选题开练'
+        : '选中资料并点击「生成练习题」后汇总'
+    }
+  })
+})
+
 const materialPreviewCompileOptions = computed(() => ({
   count: materialCompileOptions.value.count,
   orderMode: materialCompileOptions.value.orderMode,
   shuffleSeed: materialCompileOptions.value.shuffleSeed ?? 0,
   difficultyFilter: materialCompileOptions.value.difficultyFilter,
-  singleDifficulty: materialCompileOptions.value.singleDifficulty
+  singleDifficulty: materialCompileOptions.value.singleDifficulty,
+  topicFilter: resolveMaterialTopicFilter()
 }))
 
 const materialGroupPreview = computed(() => {
@@ -251,7 +270,7 @@ const materialPreviewSignature = computed(() => {
   const itemSignature = materialPreviewItems.value
     .map(item => `${ item.order }:${ item.questionId }`)
     .join('|')
-  return `${ compileOptions.count }:${ compileOptions.orderMode }:${ compileOptions.shuffleSeed }|${ itemSignature }`
+  return `${ compileOptions.count }:${ compileOptions.orderMode }:${ compileOptions.shuffleSeed }:${ materialTopicFilter.value }|${ itemSignature }`
 })
 
 const materialPoolQuestionTotal = computed(() => (
@@ -260,16 +279,28 @@ const materialPoolQuestionTotal = computed(() => (
     : 0
 ))
 
+const materialTopicTabs = computed(() => {
+  const pool = selectedMaterialPool.value
+  if (!pool || pool.status !== 'ready') return []
+  return buildMaterialTopicTabs(pool.questions)
+})
+
+const materialFilteredQuestionTotal = computed(() => {
+  const pool = selectedMaterialPool.value
+  if (!pool || pool.status !== 'ready') return 0
+  if (materialTopicFilter.value === 'all') return pool.questions.length
+  return filterMaterialQuestionsByTopic(pool.questions, [materialTopicFilter.value]).length
+})
+
 const materialPreviewCount = computed(() => materialPreviewItems.value.length)
 
 const materialCompileCountMax = computed(() => {
-  const poolSize = selectedMaterialPool.value?.status === 'ready'
-    ? selectedMaterialPool.value.questions.length
-    : 0
+  const poolSize = materialFilteredQuestionTotal.value
   return Math.max(1, poolSize)
 })
 
 const materialOrderMode = computed(() => materialCompileOptions.value.orderMode)
+const materialTopicFilterValue = computed(() => materialTopicFilter.value)
 
 const materialGroupShortfallText = computed(() => {
   if (!materialGroupPreview.value?.isShortfall) return ''
@@ -743,7 +774,6 @@ const offscreenOrbitRight = {
   top: 48
 }
 
-const router = useRouter()
 const pageRef = ref<HTMLElement | null>(null)
 const contentSectionRef = ref<HTMLElement | null>(null)
 const contentPanelRef = ref<HTMLElement | null>(null)
@@ -754,9 +784,39 @@ const isReportPreviewVisible = ref(false)
 const isScrollCapsuleVisible = ref(true)
 const scrollCapsuleHideLock = ref(false)
 const forceScrollCapsuleVisible = ref(false)
+/** 入场 animation 结束后置 true，避免 forwards 占用 opacity/transform 导致滚动渐隐失效 */
+const isScrollCapsuleRevealSettled = ref(route.query.welcome !== '1')
 const mockSceneResetVersion = ref(0)
 
 let scrollCapsuleRevealTimer: ReturnType<typeof setTimeout> | null = null
+let scrollCapsuleRevealSettleTimer: ReturnType<typeof setTimeout> | null = null
+
+const clearScrollCapsuleRevealSettleTimer = () => {
+  if (!scrollCapsuleRevealSettleTimer) return
+  window.clearTimeout(scrollCapsuleRevealSettleTimer)
+  scrollCapsuleRevealSettleTimer = null
+}
+
+const scheduleScrollCapsuleRevealSettle = () => {
+  clearScrollCapsuleRevealSettleTimer()
+  isScrollCapsuleRevealSettled.value = false
+  scrollCapsuleRevealSettleTimer = window.setTimeout(() => {
+    isScrollCapsuleRevealSettled.value = true
+    scrollCapsuleRevealSettleTimer = null
+  }, 900)
+}
+
+watch(isCosmosContentRevealed, (revealed) => {
+  if (!revealed) {
+    clearScrollCapsuleRevealSettleTimer()
+    isScrollCapsuleRevealSettled.value = false
+    return
+  }
+  if (isScrollCapsuleRevealSettled.value) return
+  scheduleScrollCapsuleRevealSettle()
+}, {
+  immediate: true
+})
 
 /** 宇宙页首屏顶栏（未滚动）标准样式，登录门控与之保持一致 */
 const cosmosRestingHeaderStyle = {
@@ -771,8 +831,7 @@ const cosmosRestingHeaderStyle = {
 } as CSSProperties
 
 const sceneShellStyle = computed<CSSProperties>(() => ({
-  // 登录门控沿用总览场景 shell，与宇宙页首屏顶栏背后底色一致
-  background: isLoggedIn.value ? activeScene.value.shellBackground : scenes[0].shellBackground,
+  background: activeScene.value.shellBackground,
   '--scene-line': activeScene.value.theme.line,
   '--scene-primary': activeScene.value.theme.primary,
   '--scene-secondary': activeScene.value.theme.secondary,
@@ -820,31 +879,7 @@ const scheduleVisualStageBootstrap = async () => {
 }
 
 watch(visualStageRef, (stage) => {
-  if (stage && isLoggedIn.value && !showLoginGate.value && !isCosmosBigBangPending.value) {
-    void scheduleVisualStageBootstrap()
-  }
-})
-
-watch(isLoggedIn, (loggedIn) => {
-  if (!loggedIn) {
-    resetCosmosToOverviewHome({
-      startAutoplay: false,
-      instant: true
-    })
-    isCosmosContentRevealed.value = false
-    isCosmosBigBangPending.value = false
-    isCosmosBigBangPlaying.value = false
-    showLoginGate.value = true
-    isGateTransitioning.value = false
-    nextTick(() => {
-      if (pageRef.value) {
-        pageRef.value.scrollTop = 0
-      }
-      updateHeaderFade()
-    })
-    return
-  }
-  if (visualStageRef.value && !isGateTransitioning.value && !showLoginGate.value) {
+  if (stage && !isCosmosBigBangPending.value) {
     void scheduleVisualStageBootstrap()
   }
 })
@@ -856,6 +891,7 @@ const clearTransitionTimers = () => {
     window.clearTimeout(scrollCapsuleRevealTimer)
     scrollCapsuleRevealTimer = null
   }
+  clearScrollCapsuleRevealSettleTimer()
 }
 
 let orbitScrollToSceneContent: (delay?: number, duration?: number) => void = () => {}
@@ -1091,6 +1127,7 @@ const handleBigBangOverlayComplete = () => {
 const runCosmosBigBangEntrance = async () => {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     isCosmosContentRevealed.value = true
+    isScrollCapsuleRevealSettled.value = true
     bootstrapVisualStage()
     return
   }
@@ -1117,19 +1154,28 @@ const runCosmosBigBangEntrance = async () => {
   updateScrollCapsuleVisibility()
 }
 
-const handleLoginGateSuccess = async () => {
+const runWelcomeEntranceIfNeeded = async () => {
+  if (route.query.welcome !== '1') {
+    isCosmosContentRevealed.value = true
+    return
+  }
+
   isCosmosBigBangPending.value = true
   isCosmosContentRevealed.value = false
   resetCosmosToOverviewHome({
     startAutoplay: false,
     instant: true
   })
-  // 先完成总览态布局，再挂载宇宙内容并淡出登录遮罩，最后播大爆炸入场
-  isGateTransitioning.value = true
-  await nextTick()
-  await nextTick()
-  showLoginGate.value = false
-  await nextTick()
+
+  const restQuery = {
+    ...route.query
+  }
+  delete restQuery.welcome
+  await router.replace({
+    path: route.path,
+    query: restQuery
+  })
+
   await runCosmosBigBangEntrance()
   isCosmosBigBangPending.value = false
   startAutoplay()
@@ -1155,7 +1201,38 @@ const handleMaterialOrderModeChange = (orderMode: 'chapter' | 'random') => {
   }
 }
 
+const handleMaterialTopicFilterChange = (value: PersistedTopicKey | 'all') => {
+  materialTopicFilter.value = value
+  materialCompileOptions.value = {
+    ...materialCompileOptions.value,
+    topicFilter: value === 'all' ? undefined : [value]
+  }
+  if (materialPoolQuestionTotal.value === 0) return
+  if (materialCompileOptions.value.count > materialCompileCountMax.value) {
+    materialCompileOptions.value = {
+      ...materialCompileOptions.value,
+      count: materialCompileCountMax.value
+    }
+  }
+}
+
+watch(selectedDocumentId, () => {
+  materialTopicFilter.value = 'all'
+})
+
+watch(materialFilteredQuestionTotal, (total) => {
+  if (materialPoolQuestionTotal.value === 0) return
+  if (total > 0 && materialCompileOptions.value.count > total) {
+    materialCompileOptions.value = {
+      ...materialCompileOptions.value,
+      count: total
+    }
+  }
+})
+
 watch(materialCompileCountMax, (max) => {
+  // 题池生成中 total 为 0，勿把用户刚选的出题数压回 1
+  if (materialPoolQuestionTotal.value === 0) return
   if (materialCompileOptions.value.count > max) {
     materialCompileOptions.value = {
       ...materialCompileOptions.value,
@@ -1163,6 +1240,22 @@ watch(materialCompileCountMax, (max) => {
     }
   }
 })
+
+const handleDeleteLibraryDocument = (documentId: string) => {
+  removeLibraryDocument(documentId)
+  touchMaterialPoolVersion()
+}
+
+const handleUpdateLibraryDocumentCategories = (payload: {
+  documentId: string
+  name: string
+  tags: string[]
+}) => {
+  updateLibraryDocumentCategories(payload.documentId, {
+    name: payload.name,
+    tags: payload.tags
+  })
+}
 
 const handlePrepareMaterialQuestions = async () => {
   const document = currentTrainingDocument.value
@@ -1181,11 +1274,12 @@ const handlePrepareMaterialQuestions = async () => {
     return
   }
 
-  const poolSize = result.pool.questions.length
+  const poolSize = materialFilteredQuestionTotal.value || result.pool.questions.length
   if (!poolSize) return
 
   materialCompileOptions.value = {
     ...materialCompileOptions.value,
+    topicFilter: resolveMaterialTopicFilter(),
     count: clampMaterialCompileCount(
       materialCompileOptions.value.count > poolSize ? poolSize : materialCompileOptions.value.count
     )
@@ -1196,6 +1290,12 @@ const handlePrepareMaterialQuestions = async () => {
       shuffleSeed: Date.now()
     }
   }
+
+  const roundCount = materialCompileOptions.value.count
+  window.$ModalMessage?.success?.(`练习题生成成功，本轮 ${ roundCount } 题`, {
+    duration: 2200,
+    closable: false
+  })
 }
 
 const handleStartMaterialMockFromLibrary = () => {
@@ -1214,7 +1314,7 @@ const handleStartMaterialMockFromLibrary = () => {
     return
   }
 
-  const buildResult = buildMaterialQuestionGroup(pool, materialCompileOptions.value, document.name)
+  const buildResult = buildMaterialQuestionGroup(pool, materialPreviewCompileOptions.value, document.name)
   if (!buildResult.group.items.length) {
     window.$ModalMessage?.warning?.('当前筛选条件下没有可用题目', {
       duration: 3200
@@ -1227,7 +1327,11 @@ const handleStartMaterialMockFromLibrary = () => {
     status: 'in_progress' as const
   }
   const activeDocumentId = document.id
-  const activeTopicKey = document.topicKeys[0] || activeTopic.value
+  const activeTopicKey = (
+    materialTopicFilter.value !== 'all'
+      ? materialTopicFilter.value
+      : document.topicKeys[0] || activeTopic.value
+  )
 
   startMockRound({
     activeDocumentId,
@@ -1525,11 +1629,12 @@ watch(displayScene, async () => {
   updateScrollCapsuleVisibility()
 })
 
-onMounted(() => {
+onMounted(async () => {
+  const isWelcomeEntrance = route.query.welcome === '1'
   const context = loadWorkbenchContext()
-  const restoredSceneId = isLoggedIn.value ? resolveInitialSceneId() : 'overview'
+  const restoredSceneId = resolveInitialSceneId()
   const restoredSceneIndex = findSceneIndexById(restoredSceneId)
-  const shouldRestoreContentScene = isLoggedIn.value && restoredSceneId !== 'overview'
+  const shouldRestoreContentScene = restoredSceneId !== 'overview'
   saveWorkbenchContext({
     activeTopic: activeTopic.value,
     activeDocumentId: context?.activeDocumentId || '',
@@ -1540,14 +1645,10 @@ onMounted(() => {
     mockSessionConfig: context?.mockSessionConfig || null
   })
 
-  if (isLoggedIn.value) {
-    requestSceneChange(restoredSceneIndex, {
-      pauseAutoplay: shouldRestoreContentScene,
-      scrollToContent: false
-    })
-  } else {
-    snapToScene(findSceneIndexById('overview'))
-  }
+  requestSceneChange(restoredSceneIndex, {
+    pauseAutoplay: shouldRestoreContentScene,
+    scrollToContent: false
+  })
 
   nextTick(() => {
     if (pageRef.value) {
@@ -1556,12 +1657,12 @@ onMounted(() => {
     releaseScrollCapsuleReveal()
     scrollCapsuleHideLock.value = false
     isScrollCapsuleVisible.value = true
-    if (isLoggedIn.value) {
+    if (!isWelcomeEntrance) {
       void scheduleVisualStageBootstrap()
     }
     updateScrollCapsuleVisibility()
   })
-  if (!shouldRestoreContentScene) {
+  if (!shouldRestoreContentScene && !isWelcomeEntrance) {
     startAutoplay()
   }
   updateHeaderFade()
@@ -1573,6 +1674,7 @@ onMounted(() => {
     passive: false
   })
   void loadRemoteReportSummaries()
+  await runWelcomeEntranceIfNeeded()
 })
 
 onBeforeUnmount(() => {
@@ -1595,9 +1697,7 @@ onBeforeUnmount(() => {
     :class="{
       'is-auto-scrolling': isAutoScrolling,
       'is-fast-orbit-transition': isFastOrbitTransition,
-      'is-user-scrolling': isUserScrolling,
-      'is-login-gate': showLoginGate,
-      'is-gate-transitioning': isGateTransitioning
+      'is-user-scrolling': isUserScrolling
     }"
     :style="sceneShellStyle"
   >
@@ -1626,243 +1726,234 @@ onBeforeUnmount(() => {
       @resolve-element="resolveHeaderElement"
     />
 
-    <div
-      class="showcase-body"
-      :class="{ 'is-gate-transitioning': isGateTransitioning }"
-    >
+    <div class="showcase-body">
       <SpaceCosmosBigBang
         v-if="isCosmosBigBangPlaying"
         @complete="handleBigBangOverlayComplete"
       />
 
       <div
-        v-if="isLoggedIn && !showLoginGate"
         class="cosmos-gate-root"
         :class="{
           'is-big-bang-active': isCosmosBigBangPending,
-          'is-content-revealed': isCosmosContentRevealed
+          'is-content-revealed': isCosmosContentRevealed,
+          'is-scroll-capsule-reveal-settled': isScrollCapsuleRevealSettled
         }"
       >
-      <SpaceScrollCapsule
-        :is-user-scrolling="isUserScrolling"
-        :visible="isScrollCapsuleVisible"
-        @scroll="handleScrollCapsuleClick"
-      />
+        <SpaceScrollCapsule
+          :is-user-scrolling="isUserScrolling"
+          :visible="isScrollCapsuleVisible"
+          @scroll="handleScrollCapsuleClick"
+        />
 
-      <main class="hero-stage">
-        <section class="copy-column">
-          <Transition
-            mode="out-in"
-            name="scene-copy"
-          >
-            <div
-              v-if="isCopyVisible"
-              :key="copyScene.id"
-              class="copy-inner"
-              :class="{ 'is-overview-copy': copyScene.id === 'overview' }"
+        <main class="hero-stage">
+          <section class="copy-column">
+            <Transition
+              mode="out-in"
+              name="scene-copy"
             >
-              <h1>{{ copyScene.title }}</h1>
-              <p class="summary">{{ copyScene.summary }}</p>
+              <div
+                v-if="isCopyVisible"
+                :key="copyScene.id"
+                class="copy-inner"
+                :class="{ 'is-overview-copy': copyScene.id === 'overview' }"
+              >
+                <h1>{{ copyScene.title }}</h1>
+                <p class="summary">{{ copyScene.summary }}</p>
 
-              <ul class="bullet-list">
-                <li
-                  v-for="bullet in copyScene.bullets"
-                  :key="bullet"
-                >
-                  {{ bullet }}
-                </li>
-              </ul>
-            </div>
-          </Transition>
-        </section>
+                <ul class="bullet-list">
+                  <li
+                    v-for="bullet in copyScene.bullets"
+                    :key="bullet"
+                  >
+                    {{ bullet }}
+                  </li>
+                </ul>
+              </div>
+            </Transition>
+          </section>
 
-        <SpaceVisualStage
-          ref="visualStageRef"
-          :active-scene-index-by-slot="activeSceneIndexBySlot"
-          :center-slot="centerSlot"
-          :last-orbit-direction="lastOrbitDirection"
-          :ordered-scene-indexes="orderedSceneIndexes"
+          <SpaceVisualStage
+            ref="visualStageRef"
+            :active-scene-index-by-slot="activeSceneIndexBySlot"
+            :center-slot="centerSlot"
+            :last-orbit-direction="lastOrbitDirection"
+            :ordered-scene-indexes="orderedSceneIndexes"
+            :scenes="scenes"
+            :transition-ms="transitionMs"
+          />
+        </main>
+
+        <SpaceOrbitNav
+          :autoplay="autoplay"
+          :is-fast-orbit-transition="isFastOrbitTransition"
+          :is-orbit-play-bursting="isOrbitPlayBursting"
+          :is-play-ready="isOrbitPlayReady"
+          :orbit-class="orbitClass"
+          :orbit-ghosts="orbitGhosts"
+          :orbit-progress="orbitProgress"
+          :orbit-stop-style="orbitStopStyle"
           :scenes="scenes"
-          :transition-ms="transitionMs"
+          @next="goToNext"
+          @prev="goToPrev"
+          @select="handleOrbitSceneSelect"
+          @toggle="toggleAutoplay"
         />
-      </main>
 
-      <SpaceOrbitNav
-        :autoplay="autoplay"
-        :is-fast-orbit-transition="isFastOrbitTransition"
-        :is-orbit-play-bursting="isOrbitPlayBursting"
-        :is-play-ready="isOrbitPlayReady"
-        :orbit-class="orbitClass"
-        :orbit-ghosts="orbitGhosts"
-        :orbit-progress="orbitProgress"
-        :orbit-stop-style="orbitStopStyle"
-        :scenes="scenes"
-        @next="goToNext"
-        @prev="goToPrev"
-        @select="handleOrbitSceneSelect"
-        @toggle="toggleAutoplay"
-      />
+        <SpaceContentPanel
+          :active-document="currentContextDocument"
+          :active-interview-document-meta="activeInterviewDocumentMeta"
+          :current-topic-label="currentTopicLabel"
+          :display-scene="displayScene"
+          :displayed-library-documents="displayedLibraryDocuments"
+          :format-library-bytes="formatLibraryBytes"
+          :import-feedback-text="importFeedbackText"
+          :is-library-list-visible="isLibraryListVisible"
+          :library-current-page="libraryCurrentPage"
+          :library-filtered-count="filteredDocuments.length"
+          :is-mock-current-submitted="isMockCurrentSubmitted"
+          :is-mock-streaming="isMockStreaming"
+          :library-active-filter="libraryActiveFilter"
+          :library-derived-stats="librarySceneDerivedStats"
+          :library-filter-tabs="libraryFilterTabs"
+          :library-custom-category-labels="libraryCustomCategoryLabels"
+          :library-next-step-desc="libraryNextStepDesc"
+          :library-next-step-title="libraryNextStepTitle"
+          :library-page-count="libraryPageCount"
+          :library-source-label-map="librarySourceLabelMap"
+          :library-topic-label-map="libraryTopicLabelMap"
+          :library-workspace-desc="libraryWorkspaceDesc"
+          :library-workspace-title="libraryWorkspaceTitle"
+          :mock-answer-draft="mockAnswerDraft"
+          :mock-all-messages="displayAllMessages"
+          :mock-hint-text="mockHintText"
+          :mock-hint-label="mockHintLabel"
+          :mock-question-reference="activeQuestionReference"
+          :mock-messages="displayMessages"
+          :mock-panel-meta="mockPanelMeta"
+          :mock-feedback-style="currentFeedbackStyle"
+          :mock-question-threads="mockAllQuestionThreads"
+          :mock-active-question-thread-id="activeQuestionThreadId"
+          :mock-practice-plan="currentPracticePlan"
+          :mock-has-next-question="hasNextMockFollowUp"
+          :mock-has-recent-history="hasRestorableHistoryPreview"
+          :mock-is-awaiting-setup="isMockAwaitingSetup"
+          :mock-session-status-text="mockSessionStatusText"
+          :mock-answered-count="mockAnsweredCount"
+          :mock-current-question-position="mockCurrentQuestionPosition"
+          :mock-total-count="mockTotalCount"
+          :mock-generated-thread-count="generatedThreadCount"
+          :mock-is-viewing-history-preview="flowMode === 'history_preview'"
+          :mock-scene-reset-version="mockSceneResetVersion"
+          :mock-question-prompt="mockQuestionPrompt"
+          :mock-scroll-version="mockScrollVersion"
+          :mock-stream-error="mockStreamError"
+          :mock-stream-mode="mockStreamMode"
+          :mock-stream-mode-label="mockStreamModeLabel"
+          :overview-primary-action-label="overviewPrimaryActionLabel"
+          :overview-progress-percent="overviewProgressPercent"
+          :overview-status-label="overviewStatusLabel"
+          :overview-summary-items="overviewSummaryItems"
+          :overview-practice-route-note="overviewPracticeRouteNote"
+          :report-header-meta="reportHeaderMeta"
+          :report-answer-snapshot="reportAnswerSnapshot"
+          :report-question-reviews="reportQuestionReviews"
+          :report-focus-areas="reportFocusAreas"
+          :report-latest-history="reportLatestHistory"
+          :report-overview-stats="reportOverviewStats"
+          :report-primary-weakness="reportPrimaryWeakness"
+          :report-scene-summary="reportSceneSummary"
+          :report-snapshot-items="reportSnapshotItems"
+          :report-summary-body="reportSummaryBody"
+          :report-summary-headline="reportSummaryHeadline"
+          :report-suggestion-list="reportSuggestionList"
+          :report-weakness-tags="reportWeaknessTags"
+          :selected-document="selectedDocument"
+          :selected-document-id="selectedDocumentId"
+          :show-import-feedback="showImportFeedback"
+          :topic-label-map="topicLabelMap"
+          :material-compile-count="materialCompileOptions.count"
+          :material-compile-count-max="materialCompileCountMax"
+          :material-order-mode="materialOrderMode"
+          :material-topic-filter="materialTopicFilterValue"
+          :material-topic-tabs="materialTopicTabs"
+          :material-filtered-question-total="materialFilteredQuestionTotal"
+          :material-pool-question-total="materialPoolQuestionTotal"
+          :material-preview-count="materialPreviewCount"
+          :material-preview-signature="materialPreviewSignature"
+          :material-group-shortfall-text="materialGroupShortfallText"
+          :material-is-preparing="materialIsPreparing"
+          :material-pool-status-label="materialPoolStatusLabel"
+          :material-preview-items="materialPreviewItems"
+          :can-start-material-mock="canStartMaterialMock"
+          :practice-compile-count="practiceCompileOptions.count"
+          :practice-pool-plan-snapshot="practicePoolPlanSnapshot"
+          :practice-pool-question-total="practicePoolQuestionTotal"
+          :practice-preview-signature="practicePreviewSignature"
+          :practice-group-shortfall-text="practiceGroupShortfallText"
+          :practice-is-preparing="practiceIsPreparing"
+          :practice-pool-status-label="practicePoolStatusLabel"
+          :practice-pool-stale-text="practicePoolStaleText"
+          :practice-preview-items="practicePreviewItems"
+          :can-start-practice="canStartPractice"
+          @back-library="handleReportBackToLibrary"
+          @back-overview="openSceneContent('overview')"
+          @clear-mock-answer="clearMockAnswer"
+          @clear-mock-history="handleClearMockHistory"
+          @open-mock-library="openSceneContent('library')"
+          @open-mock-practice="openSceneContent('feedback')"
+          @continue-mock="handleReportContinueMock"
+          @continue-practice="handleReportContinuePractice"
+          @open-history="handleReportOpenHistory"
+          @open-library="handleOverviewSecondaryAction"
+          @open-mock="openMockSceneFromLibrary"
+          @open-practice="openSceneContent('feedback')"
+          @open-report="handleOverviewReportAction"
+          @open-workbench-report="handleReportOpenWorkbenchReport"
+          @pick-files="pickLibraryFiles"
+          @pick-folder="pickLibraryFolder"
+          @primary-action="handleOverviewPrimaryAction"
+          @resolve-content-lead="resolveContentLeadElement"
+          @resolve-content-panel="resolveContentPanelElement"
+          @resolve-content-section="resolveContentSectionElement"
+          @select-document="setSelectedDocumentId($event)"
+          @delete-document="handleDeleteLibraryDocument"
+          @update-document-categories="handleUpdateLibraryDocumentCategories"
+          @select-mock-question-thread="selectQuestionThread"
+          @start-practice="handlePracticeStart"
+          @next-mock-question="rotateMockFollowUp"
+          @stop-mock-stream="handleMockStop"
+          @submit-mock-answer="submitMockAnswer"
+          @finish-mock-session="handleMockFinish"
+          @update-mock-feedback-style="handleMockFeedbackStyleChange"
+          @update-active-filter="libraryActiveFilter = $event"
+          @update-library-page="libraryCurrentPage = $event"
+          @update-material-compile-count="handleMaterialCompileCountChange"
+          @update-material-order-mode="handleMaterialOrderModeChange"
+          @update-material-topic-filter="handleMaterialTopicFilterChange"
+          @prepare-material="handlePrepareMaterialQuestions"
+          @start-material-mock="handleStartMaterialMockFromLibrary"
+          @prepare-practice="handlePreparePracticeQuestions"
+          @update-practice-compile-count="handlePracticeCompileCountChange"
+          @update-mock-answer-draft="mockAnswerDraft = $event"
+        />
 
-      <SpaceContentPanel
-        :active-document="currentContextDocument"
-        :active-interview-document-meta="activeInterviewDocumentMeta"
-        :current-topic-label="currentTopicLabel"
-        :display-scene="displayScene"
-        :displayed-library-documents="displayedLibraryDocuments"
-        :format-library-bytes="formatLibraryBytes"
-        :import-feedback-text="importFeedbackText"
-        :is-library-list-visible="isLibraryListVisible"
-        :library-current-page="libraryCurrentPage"
-        :library-filtered-count="filteredDocuments.length"
-        :is-mock-current-submitted="isMockCurrentSubmitted"
-        :is-mock-streaming="isMockStreaming"
-        :library-active-filter="libraryActiveFilter"
-        :library-derived-stats="libraryDerivedStats"
-        :library-filter-tabs="libraryFilterTabs"
-        :library-next-step-desc="libraryNextStepDesc"
-        :library-next-step-title="libraryNextStepTitle"
-        :library-page-count="libraryPageCount"
-        :library-source-label-map="librarySourceLabelMap"
-        :library-topic-label-map="libraryTopicLabelMap"
-        :library-workspace-desc="libraryWorkspaceDesc"
-        :library-workspace-title="libraryWorkspaceTitle"
-        :mock-answer-draft="mockAnswerDraft"
-        :mock-all-messages="displayAllMessages"
-        :mock-hint-text="mockHintText"
-        :mock-hint-label="mockHintLabel"
-        :mock-question-reference="activeQuestionReference"
-        :mock-messages="displayMessages"
-        :mock-panel-meta="mockPanelMeta"
-        :mock-feedback-style="currentFeedbackStyle"
-        :mock-question-threads="mockAllQuestionThreads"
-        :mock-active-question-thread-id="activeQuestionThreadId"
-        :mock-practice-plan="currentPracticePlan"
-        :mock-has-next-question="hasNextMockFollowUp"
-        :mock-has-recent-history="hasRestorableHistoryPreview"
-        :mock-is-awaiting-setup="isMockAwaitingSetup"
-        :mock-session-status-text="mockSessionStatusText"
-        :mock-answered-count="mockAnsweredCount"
-        :mock-current-question-position="mockCurrentQuestionPosition"
-        :mock-total-count="mockTotalCount"
-        :mock-generated-thread-count="generatedThreadCount"
-        :mock-is-viewing-history-preview="flowMode === 'history_preview'"
-        :mock-scene-reset-version="mockSceneResetVersion"
-        :mock-question-prompt="mockQuestionPrompt"
-        :mock-scroll-version="mockScrollVersion"
-        :mock-stream-error="mockStreamError"
-        :mock-stream-mode="mockStreamMode"
-        :mock-stream-mode-label="mockStreamModeLabel"
-        :overview-primary-action-label="overviewPrimaryActionLabel"
-        :overview-progress-percent="overviewProgressPercent"
-        :overview-status-label="overviewStatusLabel"
-        :overview-summary-items="overviewSummaryItems"
-        :overview-practice-route-note="overviewPracticeRouteNote"
-        :report-header-meta="reportHeaderMeta"
-        :report-answer-snapshot="reportAnswerSnapshot"
-        :report-question-reviews="reportQuestionReviews"
-        :report-focus-areas="reportFocusAreas"
-        :report-latest-history="reportLatestHistory"
-        :report-overview-stats="reportOverviewStats"
-        :report-primary-weakness="reportPrimaryWeakness"
-        :report-scene-summary="reportSceneSummary"
-        :report-snapshot-items="reportSnapshotItems"
-        :report-summary-body="reportSummaryBody"
-        :report-summary-headline="reportSummaryHeadline"
-        :report-suggestion-list="reportSuggestionList"
-        :report-weakness-tags="reportWeaknessTags"
-        :selected-document="selectedDocument"
-        :selected-document-id="selectedDocumentId"
-        :show-import-feedback="showImportFeedback"
-        :topic-label-map="topicLabelMap"
-        :material-compile-count="materialCompileOptions.count"
-        :material-compile-count-max="materialCompileCountMax"
-        :material-order-mode="materialOrderMode"
-        :material-pool-question-total="materialPoolQuestionTotal"
-        :material-preview-count="materialPreviewCount"
-        :material-preview-signature="materialPreviewSignature"
-        :material-group-shortfall-text="materialGroupShortfallText"
-        :material-is-preparing="materialIsPreparing"
-        :material-pool-status-label="materialPoolStatusLabel"
-        :material-preview-items="materialPreviewItems"
-        :can-start-material-mock="canStartMaterialMock"
-        :practice-compile-count="practiceCompileOptions.count"
-        :practice-pool-plan-snapshot="practicePoolPlanSnapshot"
-        :practice-pool-question-total="practicePoolQuestionTotal"
-        :practice-preview-signature="practicePreviewSignature"
-        :practice-group-shortfall-text="practiceGroupShortfallText"
-        :practice-is-preparing="practiceIsPreparing"
-        :practice-pool-status-label="practicePoolStatusLabel"
-        :practice-pool-stale-text="practicePoolStaleText"
-        :practice-preview-items="practicePreviewItems"
-        :can-start-practice="canStartPractice"
-        @back-library="handleReportBackToLibrary"
-        @back-overview="openSceneContent('overview')"
-        @clear-mock-answer="clearMockAnswer"
-        @clear-mock-history="handleClearMockHistory"
-        @open-mock-library="openSceneContent('library')"
-        @open-mock-practice="openSceneContent('feedback')"
-        @continue-mock="handleReportContinueMock"
-        @continue-practice="handleReportContinuePractice"
-        @open-history="handleReportOpenHistory"
-        @open-library="handleOverviewSecondaryAction"
-        @open-mock="openMockSceneFromLibrary"
-        @open-practice="openSceneContent('feedback')"
-        @open-report="handleOverviewReportAction"
-        @open-workbench-report="handleReportOpenWorkbenchReport"
-        @pick-files="pickLibraryFiles"
-        @pick-folder="pickLibraryFolder"
-        @primary-action="handleOverviewPrimaryAction"
-        @resolve-content-lead="resolveContentLeadElement"
-        @resolve-content-panel="resolveContentPanelElement"
-        @resolve-content-section="resolveContentSectionElement"
-        @select-document="setSelectedDocumentId($event)"
-        @select-mock-question-thread="selectQuestionThread"
-        @start-practice="handlePracticeStart"
-        @next-mock-question="rotateMockFollowUp"
-        @stop-mock-stream="handleMockStop"
-        @submit-mock-answer="submitMockAnswer"
-        @finish-mock-session="handleMockFinish"
-        @update-mock-feedback-style="handleMockFeedbackStyleChange"
-        @update-active-filter="libraryActiveFilter = $event"
-        @update-library-page="libraryCurrentPage = $event"
-        @update-material-compile-count="handleMaterialCompileCountChange"
-        @update-material-order-mode="handleMaterialOrderModeChange"
-        @prepare-material="handlePrepareMaterialQuestions"
-        @start-material-mock="handleStartMaterialMockFromLibrary"
-        @prepare-practice="handlePreparePracticeQuestions"
-        @update-practice-compile-count="handlePracticeCompileCountChange"
-        @update-mock-answer-draft="mockAnswerDraft = $event"
-      />
-
-      <SpaceReportPreviewModal
-        v-model:show="isReportPreviewVisible"
-        :has-summary="Boolean(reportSceneSummary)"
-        :summary-headline="reportSummaryHeadline"
-        :summary-body="reportSummaryBody"
-        :header-meta="reportHeaderMeta"
-        :focus-areas="reportFocusAreas"
-        :weakness-tags="reportWeaknessTags"
-        :answer-snapshot="reportAnswerSnapshot"
-        :question-reviews="reportQuestionReviews"
-        :suggestion-list="reportSuggestionList"
-        :snapshot-items="reportSnapshotItems"
-        @continue-practice="handleReportPreviewContinuePractice"
-        @continue-mock="handleReportPreviewContinueMock"
-      />
+        <SpaceReportPreviewModal
+          v-model:show="isReportPreviewVisible"
+          :has-summary="Boolean(reportSceneSummary)"
+          :summary-headline="reportSummaryHeadline"
+          :summary-body="reportSummaryBody"
+          :header-meta="reportHeaderMeta"
+          :focus-areas="reportFocusAreas"
+          :weakness-tags="reportWeaknessTags"
+          :answer-snapshot="reportAnswerSnapshot"
+          :question-reviews="reportQuestionReviews"
+          :suggestion-list="reportSuggestionList"
+          :snapshot-items="reportSnapshotItems"
+          @continue-practice="handleReportPreviewContinuePractice"
+          @continue-mock="handleReportPreviewContinueMock"
+        />
       </div>
-
-      <Transition
-        name="login-gate-fade"
-        @before-leave="isGateTransitioning = true"
-        @after-leave="handleLoginOverlayAfterLeave"
-      >
-        <SpaceLoginHero
-          v-if="showLoginGate"
-          key="login-gate"
-          class="login-gate-layer"
-          @success="handleLoginGateSuccess"
-        />
-      </Transition>
     </div>
   </div>
 </template>
@@ -1908,12 +1999,6 @@ onBeforeUnmount(() => {
   }
 }
 
-.interview-space-showcase.is-login-gate,
-.interview-space-showcase.is-gate-transitioning {
-  overflow: hidden;
-  overflow-y: hidden;
-}
-
 .showcase-body {
   display: flex;
   flex: 1;
@@ -1933,10 +2018,15 @@ onBeforeUnmount(() => {
 .cosmos-gate-root.is-big-bang-active:not(.is-content-revealed) {
   .copy-column,
   .orbit-rail,
-  .content-stack,
-  .scroll-capsule {
+  .content-stack {
     opacity: 0;
     transform: translateY(20px) scale(0.97);
+    pointer-events: none;
+  }
+
+  .scroll-capsule {
+    opacity: 0;
+    transform: translateY(calc(-50% + 20px)) scale(0.97);
     pointer-events: none;
   }
 }
@@ -1953,10 +2043,14 @@ onBeforeUnmount(() => {
   .content-stack {
     animation: cosmos-content-reveal 0.88s var(--ease-orbit) 0.14s forwards;
   }
+}
 
-  .scroll-capsule {
-    animation: cosmos-content-reveal 0.62s var(--ease-orbit) 0.2s forwards;
-  }
+.cosmos-gate-root.is-content-revealed:not(.is-scroll-capsule-reveal-settled) .scroll-capsule {
+  animation: cosmos-scroll-capsule-reveal 0.62s var(--ease-orbit) 0.2s both;
+}
+
+.cosmos-gate-root.is-scroll-capsule-reveal-settled .scroll-capsule {
+  animation: none;
 }
 
 @keyframes cosmos-content-reveal {
@@ -1971,25 +2065,16 @@ onBeforeUnmount(() => {
   }
 }
 
-.showcase-body.is-gate-transitioning .cosmos-gate-root {
-  pointer-events: none;
-}
+@keyframes cosmos-scroll-capsule-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-50% + 20px)) scale(0.97);
+  }
 
-.login-gate-layer {
-  /* 全屏铺星空底，顶栏透明叠在上方；z-index 低于 header 以免挡住 Sign in */
-  position: fixed;
-  inset: 0;
-  z-index: 1;
-}
-
-.login-gate-fade-enter-active,
-.login-gate-fade-leave-active {
-  transition: opacity 0.48s ease;
-}
-
-.login-gate-fade-enter-from,
-.login-gate-fade-leave-to {
-  opacity: 0;
+  to {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
 }
 
 .interview-space-showcase.is-auto-scrolling {

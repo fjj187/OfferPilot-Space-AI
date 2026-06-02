@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { SceneItem } from '@/constants/showcase/mockInterviewSpaceScenes'
-import type { PersistedInterviewFeedbackStyle, PersistedPracticePlan } from '@/types/workbench'
+import type { PersistedInterviewFeedbackStyle, PersistedPracticePlan, PersistedTopicKey } from '@/types/workbench'
 import SpaceGeneralScenePanel from '@/components/showcase/mock-interview-space/SpaceGeneralScenePanel.vue'
 import SpaceMockScene from '@/components/showcase/mock-interview-space/scenes/SpaceMockScene.vue'
 import SpacePracticeScene from '@/components/showcase/mock-interview-space/scenes/SpacePracticeScene.vue'
@@ -22,6 +22,7 @@ defineProps<{
   libraryActiveFilter: string
   libraryDerivedStats: any[]
   libraryFilterTabs: any[]
+  libraryCustomCategoryLabels: string[]
   libraryNextStepDesc: string
   libraryNextStepTitle: string
   libraryPageCount: number
@@ -80,6 +81,13 @@ defineProps<{
   materialCompileCount: number
   materialCompileCountMax: number
   materialOrderMode: 'chapter' | 'random'
+  materialTopicFilter: PersistedTopicKey | 'all'
+  materialTopicTabs: Array<{
+    key: PersistedTopicKey
+    label: string
+    count: number
+  }>
+  materialFilteredQuestionTotal: number
   materialPoolQuestionTotal: number
   materialPreviewCount: number
   materialPreviewSignature: string
@@ -136,6 +144,8 @@ const emit = defineEmits<{
   resolveContentPanel: [element: HTMLElement | null]
   resolveContentSection: [element: HTMLElement | null]
   selectDocument: [value: string]
+  deleteDocument: [value: string]
+  updateDocumentCategories: [payload: { documentId: string, name: string, tags: string[] }]
   selectMockQuestionThread: [value: string]
   finishMockSession: []
   nextMockQuestion: []
@@ -146,6 +156,7 @@ const emit = defineEmits<{
   updateLibraryPage: [value: number]
   updateMaterialCompileCount: [value: number]
   updateMaterialOrderMode: [value: 'chapter' | 'random']
+  updateMaterialTopicFilter: [value: PersistedTopicKey | 'all']
   updateMockAnswerDraft: [value: string]
   prepareMaterial: []
   startMaterialMock: []
@@ -311,6 +322,7 @@ onBeforeUnmount(() => {
                 :library-filtered-count="libraryFilteredCount"
                 :library-derived-stats="libraryDerivedStats"
                 :library-filter-tabs="libraryFilterTabs"
+                :library-custom-category-labels="libraryCustomCategoryLabels"
                 :library-next-step-desc="libraryNextStepDesc"
                 :library-next-step-title="libraryNextStepTitle"
                 :library-page-count="libraryPageCount"
@@ -329,6 +341,9 @@ onBeforeUnmount(() => {
                 :material-compile-count="materialCompileCount"
                 :material-compile-count-max="materialCompileCountMax"
                 :material-order-mode="materialOrderMode"
+                :material-topic-filter="materialTopicFilter"
+                :material-topic-tabs="materialTopicTabs"
+                :material-filtered-question-total="materialFilteredQuestionTotal"
                 :material-pool-question-total="materialPoolQuestionTotal"
                 :material-preview-count="materialPreviewCount"
                 :material-preview-signature="materialPreviewSignature"
@@ -342,6 +357,8 @@ onBeforeUnmount(() => {
                 @update-active-filter="$emit('updateActiveFilter', $event)"
                 @update-library-page="$emit('updateLibraryPage', $event)"
                 @select-document="$emit('selectDocument', $event)"
+                @delete-document="$emit('deleteDocument', $event)"
+                @update-document-categories="$emit('updateDocumentCategories', $event)"
                 @open-mock="$emit('openMock')"
                 @open-practice="$emit('openPractice')"
                 @back-overview="$emit('backOverview')"
@@ -352,6 +369,7 @@ onBeforeUnmount(() => {
                 @start-material-mock="$emit('startMaterialMock')"
                 @update-material-compile-count="$emit('updateMaterialCompileCount', $event)"
                 @update-material-order-mode="$emit('updateMaterialOrderMode', $event)"
+                @update-material-topic-filter="$emit('updateMaterialTopicFilter', $event)"
               />
             </template>
           </div>

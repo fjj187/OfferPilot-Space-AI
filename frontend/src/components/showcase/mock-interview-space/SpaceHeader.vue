@@ -1,7 +1,9 @@
 <script lang="tsx" setup>
 import type { CSSProperties } from 'vue'
 import SpaceCosmosConfirm from '@/components/showcase/mock-interview-space/SpaceCosmosConfirm.vue'
+import { LOGIN_ROUTE_NAME } from '@/config/product'
 import { useAuth } from '@/composables/useAuth'
+import router from '@/router'
 
 defineProps<{
   headerStyle: CSSProperties
@@ -26,6 +28,9 @@ const handleLogoutConfirm = () => {
   window.$ModalMessage?.success?.('已退出登录', {
     duration: 2000,
     closable: false
+  })
+  router.replace({
+    name: LOGIN_ROUTE_NAME
   })
 }
 

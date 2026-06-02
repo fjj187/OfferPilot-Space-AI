@@ -23,8 +23,22 @@ export const isQuestionLikeHeading = (heading: string) => {
   return /^(什么是|什么叫|如何|怎么|怎样|为什么|为何|有哪些|包括哪些|区别|对比|差异|谈谈|说说|解释|简述|描述|列举)/.test(normalized)
 }
 
+const stripChunkHeadingPrefix = (heading: string) => heading.replace(/^#{1,6}\s*/, '').trim()
+
+/** 面经编号题面（1. 隐藏元素的方法），排除日期场次 12.10 一面 */
+export const isNumberedInterviewNotesHeading = (heading: string) => {
+  const raw = stripChunkHeadingPrefix(heading)
+  if (!raw || /^答[：:]/.test(raw)) return false
+  if (/^\d{1,2}\.\d{1,2}\s+(?:一面|二面|三面|四面|HR)/i.test(raw)) return false
+  return /^\d+\.\s+\S/.test(raw) || /^手撕/.test(raw)
+}
+
 /** 二级及以上标题且像面试题：正文通常是参考答案要点 */
 export const isInterviewQuestionChunk = (chunk: MaterialChunk) => {
+  const rawHeading = stripChunkHeadingPrefix(chunk.heading)
+  if (/^答[：:]/.test(rawHeading)) return false
+  if (isNumberedInterviewNotesHeading(chunk.heading)) return true
+
   const heading = normalizeQuestionHeading(chunk.heading)
   if (!isQuestionLikeHeading(heading)) return false
   return chunk.level >= 2 || /[？?]/.test(heading)

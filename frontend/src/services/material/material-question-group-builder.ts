@@ -3,6 +3,7 @@ import type {
   MaterialQuestionItem,
   MaterialQuestionPool
 } from '@/types/material'
+import { matchesMaterialTopicFilter } from '@/services/material/material-question-topics'
 import type {
   PersistedPracticeDifficulty,
   PersistedPracticeQuestionGroup,
@@ -107,6 +108,7 @@ export function buildMaterialQuestionGroup(
   documentName: string
 ): MaterialQuestionGroupBuildResult {
   const filtered = pool.questions.filter((question) => {
+    if (!matchesMaterialTopicFilter(question, options.topicFilter)) return false
     if (!options.difficultyFilter?.length) return true
     return options.difficultyFilter.includes(question.difficulty)
   })

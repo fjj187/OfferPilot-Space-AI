@@ -1,4 +1,5 @@
 <script lang="tsx" setup>
+import type { PersistedTopicKey } from '@/types/workbench'
 import type { SceneItem } from '@/constants/showcase/mockInterviewSpaceScenes'
 import SpaceLibraryScene from '@/components/showcase/mock-interview-space/scenes/SpaceLibraryScene.vue'
 import SpaceOverviewScene from '@/components/showcase/mock-interview-space/scenes/SpaceOverviewScene.vue'
@@ -14,6 +15,7 @@ defineProps<{
   libraryFilteredCount: number
   libraryDerivedStats: any[]
   libraryFilterTabs: any[]
+  libraryCustomCategoryLabels: string[]
   libraryNextStepDesc: string
   libraryNextStepTitle: string
   libraryPageCount: number
@@ -32,6 +34,13 @@ defineProps<{
   materialCompileCount: number
   materialCompileCountMax: number
   materialOrderMode: 'chapter' | 'random'
+  materialTopicFilter: PersistedTopicKey | 'all'
+  materialTopicTabs: Array<{
+    key: PersistedTopicKey
+    label: string
+    count: number
+  }>
+  materialFilteredQuestionTotal: number
   materialPoolQuestionTotal: number
   materialPreviewCount: number
   materialPreviewSignature: string
@@ -57,10 +66,13 @@ defineEmits<{
   pickFiles: []
   pickFolder: []
   selectDocument: [value: string]
+  deleteDocument: [value: string]
+  updateDocumentCategories: [payload: { documentId: string, name: string, tags: string[] }]
   updateActiveFilter: [value: string]
   updateLibraryPage: [value: number]
   updateMaterialCompileCount: [value: number]
   updateMaterialOrderMode: [value: 'chapter' | 'random']
+  updateMaterialTopicFilter: [value: PersistedTopicKey | 'all']
   prepareMaterial: []
   startMaterialMock: []
 }>()
@@ -97,6 +109,7 @@ defineEmits<{
         :next-step-desc="libraryNextStepDesc"
         :derived-stats="libraryDerivedStats"
         :filter-tabs="libraryFilterTabs"
+        :custom-category-labels="libraryCustomCategoryLabels"
         :active-filter="libraryActiveFilter"
         :current-page="libraryCurrentPage"
         :filtered-count="libraryFilteredCount"
@@ -113,6 +126,9 @@ defineEmits<{
         :material-compile-count="materialCompileCount"
         :material-compile-count-max="materialCompileCountMax"
         :material-order-mode="materialOrderMode"
+        :material-topic-filter="materialTopicFilter"
+        :material-topic-tabs="materialTopicTabs"
+        :material-filtered-question-total="materialFilteredQuestionTotal"
         :material-pool-question-total="materialPoolQuestionTotal"
         :material-preview-count="materialPreviewCount"
         :material-preview-signature="materialPreviewSignature"
@@ -126,10 +142,13 @@ defineEmits<{
         @update:active-filter="$emit('updateActiveFilter', $event)"
         @update:page="$emit('updateLibraryPage', $event)"
         @select-document="$emit('selectDocument', $event)"
+        @delete-document="$emit('deleteDocument', $event)"
+        @update-document-categories="$emit('updateDocumentCategories', $event)"
         @prepare-material="$emit('prepareMaterial')"
         @start-material-mock="$emit('startMaterialMock')"
         @update:material-compile-count="$emit('updateMaterialCompileCount', $event)"
         @update:material-order-mode="$emit('updateMaterialOrderMode', $event)"
+        @update:material-topic-filter="$emit('updateMaterialTopicFilter', $event)"
       />
     </div>
 

@@ -1,7 +1,43 @@
 import type {
+  PersistedDocumentType,
   PersistedLibraryDocument,
   PersistedTopicKey
 } from '@/types/workbench'
+
+/** 资料库格式筛选项：md / docx（界面文案为 Docs，对应 .docx 文件） */
+export const libraryFormatFilterKeys = ['md', 'docx'] as const satisfies readonly PersistedDocumentType[]
+
+export const isLibraryFormatFilterKey = (key: string): key is PersistedDocumentType => (
+  (libraryFormatFilterKeys as readonly string[]).includes(key)
+)
+
+export const resolveLibraryDocumentType = (fileName: string): PersistedDocumentType => {
+  const lower = fileName.toLowerCase()
+  if (lower.endsWith('.docx') || lower.endsWith('.doc')) return 'docx'
+  return 'md'
+}
+
+export const isLegacyDocFile = (fileName: string) => {
+  const lower = fileName.toLowerCase()
+  return lower.endsWith('.doc') && !lower.endsWith('.docx')
+}
+
+export const isSupportedLibraryFileName = (fileName: string) => {
+  const lower = fileName.toLowerCase()
+  return lower.endsWith('.md') || lower.endsWith('.docx') || lower.endsWith('.doc')
+}
+
+export const getLibraryDocumentTypeLabel = (type: string) => {
+  if (type === 'md') return 'Markdown'
+  if (type === 'docx' || type === 'docs') return 'Docs'
+  return type
+}
+
+/** docx 筛选包含历史误存的 docs 类型 */
+export const matchesLibraryFormatFilter = (documentType: string, filterKey: string) => {
+  if (filterKey === 'docx') return documentType === 'docx' || documentType === 'docs'
+  return documentType === filterKey
+}
 
 export type LibraryTopicKey = PersistedTopicKey
 
@@ -23,7 +59,7 @@ export const libraryStats: LibraryStatItem[] = [
   {
     label: '总文档数',
     value: '24',
-    note: '包含 Markdown 与 Word',
+    note: '包含 Markdown 与 Docs',
     tone: 'primary'
   },
   {
@@ -32,9 +68,9 @@ export const libraryStats: LibraryStatItem[] = [
     note: '可用于训练与问答生成'
   },
   {
-    label: '待处理文档',
-    value: '06',
-    note: '等待进一步切片与摘要'
+    label: '总练习题',
+    value: '0',
+    note: '全部资料已生成的题目总量'
   }
 ]
 
@@ -49,31 +85,7 @@ export const filterTabs: LibraryFilterTab[] = [
   },
   {
     key: 'docx',
-    label: 'Word'
-  },
-  {
-    key: 'vue3',
-    label: 'Vue 3'
-  },
-  {
-    key: 'typescript',
-    label: 'TypeScript'
-  },
-  {
-    key: 'engineering',
-    label: '工程化'
-  },
-  {
-    key: 'browser',
-    label: '浏览器'
-  },
-  {
-    key: 'performance',
-    label: '性能优化'
-  },
-  {
-    key: 'scenario',
-    label: '场景题'
+    label: 'Docs'
   }
 ]
 
