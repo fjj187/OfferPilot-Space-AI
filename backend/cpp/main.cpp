@@ -1,6 +1,10 @@
 #include "MySQLConn.hpp"
+#include "ReportRepository.hpp"
+#include "ReportCommandHandler.hpp"
 #include <windows.h>
 #include <iostream>
+#include <string>
+#include "json.hpp"
 using namespace std;
 
 
@@ -12,13 +16,34 @@ int main() {
     bool success = conn.connect("root", "123456", "yuzhouyemian", "127.0.0.1", 3306);
     if (success) {
         cout << "数据库连接成功！" << endl;
-        if (conn.query("SELECT * FROM users LIMIT 1")) {
-            if (conn.next()) {
-                cout << "查询成功，用户ID: " << conn.value(0) << endl;
-            }
-        }
     } else {
-        cout << "数据库连接失败" << endl;
+        cout << "{\"success\":false,\"error\":\"Database connection failed\"}" << endl;
+        return 1;
+    }
+    ReportRepository repository(&conn);
+    ReportCommandHandler handler(repository);
+    std::string line;
+    while (getline(cin, line)) {
+        try {
+        nlohmann::json j = nlohmann::json::parse(line);
+        std::string action = j["action"].get<std::string>();
+        std::string jsonPayload = j["payload"].dump();
+        if (action == "insert") {
+            cout << handler.handleInsert(jsonPayload) << endl;
+        } else if (action == "update") {
+            cout << handler.handleUpdate(jsonPayload) << endl;
+        } else if (action == "get") {
+            cout << handler.handleGet(jsonPayload) << endl;
+        } else if (action == "list") {
+            cout << handler.handleList(jsonPayload) << endl;
+        } else if (action == "delete") {
+            cout << handler.handleDelete(jsonPayload) << endl;
+        } else {
+            cout << handler.errorResponse("Invalid action") << endl;
+        }
+    } catch (const std::exception& e) {
+        cout << handler.errorResponse(string("Parse error: ") + e.what()) << endl;
+    }
     }
     return 0;
 }

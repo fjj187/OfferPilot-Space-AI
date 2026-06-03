@@ -16,7 +16,6 @@ public:
     std::vector<InterviewReport> listReports(int userId);//根据用户ID获取所有报告
     bool deleteReport(const std::string& sessionId);//根据会话ID删除报告    
 
-private:
     MySQLConn* m_conn;
 
     bool insertWeaknessTags(const std::string& reportId, const std::vector<std::string>& tags);//插入弱项标签子表数据

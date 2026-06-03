@@ -14,7 +14,6 @@ public:
     std::string handleList(const std::string& jsonPayload);//处理列表命令
     std::string handleDelete(const std::string& jsonPayload);//处理删除命令
 
-private:
     ReportRepository& m_repository;
 
     InterviewReport parseReportFromJson(const std::string& jsonPayload);//解析 JSON 字符串为报告对象
