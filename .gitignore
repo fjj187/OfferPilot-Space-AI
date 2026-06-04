@@ -49,9 +49,6 @@ vite-stderr.log
 .idea
 .vscode/settings.json
 
-# local docs（本地开发文档，不纳入版本库）
-/docs
-
 # Cursor / AI assistant (local dev tooling, not required for build or deploy)
 .cursor/
 AGENTS.md
