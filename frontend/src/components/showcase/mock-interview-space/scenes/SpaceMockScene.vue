@@ -808,15 +808,19 @@ onBeforeUnmount(() => {
       </SpaceSceneHeader>
     </div>
 
-    <div class="mock-live-shell">
-      <section
-        class="mock-session-card"
-        :class="{
-          'is-fullscreen': isSessionFullscreen,
-          'is-fullscreen-entering': sessionFullscreenPhase === 'entering',
-          'is-fullscreen-leaving': sessionFullscreenPhase === 'leaving'
-        }"
+    <Teleport to="body" :disabled="!isSessionFullscreen">
+      <div
+        class="mock-live-shell"
+        :class="{ 'is-fullscreen': isSessionFullscreen }"
       >
+        <section
+          class="mock-session-card"
+          :class="{
+            'is-fullscreen': isSessionFullscreen,
+            'is-fullscreen-entering': sessionFullscreenPhase === 'entering',
+            'is-fullscreen-leaving': sessionFullscreenPhase === 'leaving'
+          }"
+        >
         <div class="mock-session-layout">
           <div
             class="mock-conversation-shell"
@@ -1134,8 +1138,9 @@ onBeforeUnmount(() => {
             清空对话历史
           </button>
         </div>
-      </section>
-    </div>
+        </section>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -1388,6 +1393,13 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
+.mock-live-shell.is-fullscreen {
+  position: fixed;
+  inset: 12px;
+  z-index: 1200;
+  display: block;
+}
+
 .mock-session-card {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
@@ -1405,17 +1417,19 @@ onBeforeUnmount(() => {
 
 .mock-session-card.is-fullscreen,
 .mock-session-card.is-fullscreen-leaving {
-  position: fixed;
-  inset: 12px;
-  z-index: 1200;
-  width: auto;
-  height: calc(100dvh - 24px);
+  position: relative;
+  width: 100%;
+  height: 100%;
   min-height: 0;
   max-height: none;
   margin: 0;
   box-shadow:
     0 24px 80px rgb(8 6 24 / 0.32),
     inset 0 1px 0 rgb(255 255 255 / 0.08);
+}
+
+.mock-session-card.is-fullscreen {
+  border-radius: 20px;
 }
 
 .mock-session-card.is-fullscreen-entering {
@@ -1429,24 +1443,20 @@ onBeforeUnmount(() => {
 @keyframes mock-session-fullscreen-in {
   from {
     opacity: 0;
-    transform: scale(0.97) translateY(14px);
   }
 
   to {
     opacity: 1;
-    transform: scale(1) translateY(0);
   }
 }
 
 @keyframes mock-session-fullscreen-out {
   from {
     opacity: 1;
-    transform: scale(1) translateY(0);
   }
 
   to {
     opacity: 0;
-    transform: scale(0.98) translateY(10px);
   }
 }
 
@@ -1551,6 +1561,7 @@ onBeforeUnmount(() => {
 
 .mock-side-guide-panel .mock-side-label {
   flex: 0 0 auto;
+  color: rgb(248 250 255 / 0.96);
   line-height: 1.35;
 }
 
@@ -2711,8 +2722,7 @@ onBeforeUnmount(() => {
   }
 
   .mock-session-card.is-fullscreen {
-    inset: 8px;
-    height: calc(100dvh - 16px);
+    border-radius: 18px;
   }
 
   .mock-conversation-shell {

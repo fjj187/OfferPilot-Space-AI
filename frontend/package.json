@@ -19,13 +19,13 @@
     "node": ">= 22.12.x",
     "pnpm": ">= 10.x"
   },
-  "homepage": "https://github.com/pdsuwwz/chatgpt-vue3-light-mvp",
+  "homepage": "https://github.com/fjj187/OfferPilot-Space-AI",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pdsuwwz/chatgpt-vue3-light-mvp"
+    "url": "git+https://github.com/fjj187/OfferPilot-Space-AI"
   },
   "bugs": {
-    "url": "https://github.com/pdsuwwz/chatgpt-vue3-light-mvp/issues"
+    "url": "https://github.com/fjj187/OfferPilot-Space-AI/issues"
   },
   "dependencies": {
     "@nzoth/toolkit": "^0.0.4",
