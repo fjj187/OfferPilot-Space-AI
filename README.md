@@ -98,13 +98,13 @@ pnpm dev:backend
 pnpm dev
 ```
 
-前端启动后，默认访问 `http://localhost:2048`，进入 `"/showcase/mock-interview-space"` 即可开始模拟面试对话。
+前端启动后，默认访问 http://localhost:2048/#/showcase/mock-interview-space（模拟面试空间页面路径），进入后即可开始模拟面试对话。
 
 ### 4. 接口说明
 
-* 面试流式接口默认走 `/api/interview/stream`。
-* 会话列表和复盘报告默认走 `/api/interview`。
-* 如果你有独立后端，可以直接改 `frontend/.env` 里的 `VITE_INTERVIEW_SSE_URL` 和 `VITE_INTERVIEW_BACKEND_ORIGIN`。
+* 面试流式接口默认走 /api/interview/stream（面试流式接口）
+* 会话列表和复盘报告默认走 /api/interview（面试会话与复盘接口）
+* 如果你有独立后端，可以直接修改 frontend/.env（前端环境配置文件） 里的 VITE_INTERVIEW_SSE_URL（面试流式地址配置项） 和 VITE_INTERVIEW_BACKEND_ORIGIN（后端源地址配置项）
 
 ### 5. 可选模型密钥
 
