@@ -26,7 +26,7 @@ private:
     InterviewSessionSummary toSummary(const InterviewSessionDetail&);//从详情构建摘要
     void ensureStorageDir();//确保存储目录存在
     void loadFromFile();//从文件加载数据到 m_sessions
-    void persistToFile();//将 m_sessions 中的数据持久化到文件
+    bool persistToFile();//将 m_sessions 中的数据持久化到文件
     std::string getCurrentTimestamp();//获取当前时间的 ISO 8601 字符串
     std::string m_filePath; 
 };

@@ -13,9 +13,9 @@ struct ProviderContext {
     std::string providerName;
 };
 
-class IInterviewProvider {
+class InterviewProvider {
 public:
-    virtual ~IInterviewProvider() = default;
+    virtual ~InterviewProvider() = default;
 
     // 流式生成面试反馈
     // @param request      完整的流式请求对象

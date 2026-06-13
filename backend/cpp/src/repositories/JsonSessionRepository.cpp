@@ -11,34 +11,7 @@ NLOHMANN_JSON_SERIALIZE_ENUM(InterviewFeedbackStyle, {
     {InterviewFeedbackStyle::Guided, "guided"}
 })
 
-inline void to_json(nlohmann::json&j,const InterviewFeedbackStyle){
-    switch (j.get<InterviewFeedbackStyle>()) {
-        case InterviewFeedbackStyle::Followup:
-            j = "followup";
-            break;
-        case InterviewFeedbackStyle::Corrective:
-            j = "corrective";
-            break;
-        case InterviewFeedbackStyle::Guided:
-            j = "guided";
-            break;
-        default:
-            j = nullptr; // 或者抛出异常
-    }
-}
-
-inline void from_json(const nlohmann::json& j, std::optional<InterviewFeedbackStyle>& style) {
-    if (j.is_null()) {
-        style = std::nullopt;
-        return;
-    }
-    std::string str = j.get<std::string>();
-    if (str == "followup") style = InterviewFeedbackStyle::Followup;
-    else if (str == "corrective") style = InterviewFeedbackStyle::Corrective;
-    else if (str == "guided") style = InterviewFeedbackStyle::Guided;
-    else style = std::nullopt; // 或者抛出异常
-}
-
+// ====================== 序列化函数（已适配根对象）======================
 inline void to_json(nlohmann::json& j, const InterviewMessage& m) {
     j = nlohmann::json{
         {"role", m.role},
@@ -216,6 +189,8 @@ InterviewSessionSummary JsonSessionRepository::toSummary(const InterviewSessionD
 }
 
 void JsonSessionRepository::ensureStorageDir(){
+    m_sessions.clear();
+    m_index.clear();
     std::filesystem::path path(m_filePath);
     auto dir = path.parent_path();
     if(!std::filesystem::exists(dir)){
@@ -227,42 +202,78 @@ void JsonSessionRepository::loadFromFile(){
     if(std::filesystem::exists(m_filePath)){
         std::ifstream inFile(m_filePath);
         if(inFile.is_open()){
-            nlohmann::json j;
-            inFile >> j;
-            InterviewSessionDetail s;
-            s.sessionId=j.value("sessionId", "");
-            s.threadId=j.value("threadId", "");
-            s.topic=j.value("topic", "");
-            s.questionTitle=j.value("questionTitle", "");
-            std::string styleStr = j.value("feedbackStyle", "");
-            if (styleStr == "followup") {
-                s.feedbackStyle = InterviewFeedbackStyle::Followup;
-            } else if (styleStr == "corrective") {
-                s.feedbackStyle = InterviewFeedbackStyle::Corrective;
-            } else if (styleStr == "guided") {
-                s.feedbackStyle = InterviewFeedbackStyle::Guided;
-            } else {
-                s.feedbackStyle = std::nullopt;   // 或者不赋值
+            nlohmann::json root;
+            try{
+                inFile >> root;
             }
-            s.createdAt=j.value("createdAt", "");
-            s.updatedAt=j.value("updatedAt", "");
-            if (j.contains("messages") && j["messages"].is_array()) {
-                for (auto& msgJson : j["messages"]) {
-                    InterviewMessage msg;
-                    std::string roleStr = msgJson.value("role", "");
-                    if (roleStr == "user") msg.role = InterviewMessageRole::User;
-                    else if (roleStr == "assistant") msg.role = InterviewMessageRole::Assistant;
+            catch(const std::exception&){
+                // 解析异常，初始化为空数据
+                m_sessions.clear();
+                m_index.clear();
+                return;
+            }
+            if (!root.contains("sessions") || !root["sessions"].is_array()) {
+                return;
+            }
+            for (const auto& item : root["sessions"]) {
+                InterviewSessionDetail s;
+                s.sessionId = item.value("sessionId", "");
+                s.threadId = item.value("threadId", "");
+                s.topic = item.value("topic", "");
+                s.questionTitle = item.value("questionTitle", "");
+                if (item.contains("feedbackStyle") && item["feedbackStyle"].is_string()) {
+                    std::string styleStr = item["feedbackStyle"].get<std::string>();
+                if (styleStr == "followup") {
+                    s.feedbackStyle = InterviewFeedbackStyle::Followup;
+                } else if (styleStr == "corrective") {
+                    s.feedbackStyle = InterviewFeedbackStyle::Corrective;
+                } else if (styleStr == "guided") {
+                s.feedbackStyle = InterviewFeedbackStyle::Guided;
+                }
+            // 其他字符串默认为空
+                } // 字段不存在则保持 nullopt
+                s.createdAt = item.value("createdAt", "");
+                s.updatedAt = item.value("updatedAt", "");
+        // 解析 messages 数组
+                if (item.contains("messages") && item["messages"].is_array()) {
+                    for (const auto& msgJson : item["messages"]) {
+                        InterviewMessage msg;
+                        std::string roleStr = msgJson.value("role", "");
+                        if (roleStr == "user") {
+                            msg.role = InterviewMessageRole::User;
+                        } else if (roleStr == "assistant") {
+                            msg.role = InterviewMessageRole::Assistant;
+                        } else {
+                            continue; // 忽略非法角色
+                        }
                     msg.content = msgJson.value("content", "");
                     msg.createdAt = msgJson.value("createdAt", "");
                     s.messages.push_back(msg);
+                    }
                 }
-            }   
-            m_sessions.push_back(s);
+            m_sessions.push_back(std::move(s));
+            }
         }
+        else{
+            // 无法打开文件，初始化为空数据
+            m_sessions.clear();
+            m_index.clear();
+            return;
+        }
+    }
+    else{
+        // 文件不存在，初始化为空数据
+        m_sessions.clear();
+        m_index.clear();
+        return;
+    }
+    for (size_t i = 0; i < m_sessions.size(); ++i) {
+        const auto& s = m_sessions[i];
+        m_index[buildKey(s.sessionId, s.threadId)] = i;
     }
 }
 
-void JsonSessionRepository::persistToFile() {
+bool JsonSessionRepository::persistToFile() {
     // 1. 构造根对象，不要直接盲写原始容器
     nlohmann::json root;
     root["sessions"] = m_sessions;   // 需要 m_sessions 的元素有 to_json 支持
@@ -273,7 +284,7 @@ void JsonSessionRepository::persistToFile() {
         std::ofstream ofs(tmpPath, std::ios::out | std::ios::trunc);//覆盖写入
         if (!ofs.is_open()) {
             // 打开失败，保留原文件，直接返回
-            return;
+            return false;
         }
         try {
             ofs << root.dump(2);  // 带缩进的 JSON
@@ -282,29 +293,32 @@ void JsonSessionRepository::persistToFile() {
             ofs.close();
             // 尝试删除可能已部分写入的临时文件
             std::filesystem::remove(tmpPath);
-            return;
+            return false;
         }
         // 检查写入流状态
         if (ofs.fail()) {
             ofs.close();
             std::filesystem::remove(tmpPath);
-            return;
+            return false;
         }
         // 确保数据刷新到磁盘
         ofs.close();
         if (ofs.fail()) {
             std::filesystem::remove(tmpPath);
-            return;
+            return false;
         }
     }
     // 4. 原子替换正式文件
-    try {
+    try{
+        std::filesystem::remove(m_filePath);
         std::filesystem::rename(tmpPath, m_filePath);
-    } catch (const std::filesystem::filesystem_error&) {
+    }
+    catch (const std::filesystem::filesystem_error&) {
         // 替换失败，尝试删除临时文件
         std::filesystem::remove(tmpPath);
-        // 此时原文件未被改动，保持旧数据
+        return false;
     }
+    return true;
 }
 
 std::string JsonSessionRepository::getCurrentTimestamp() {
