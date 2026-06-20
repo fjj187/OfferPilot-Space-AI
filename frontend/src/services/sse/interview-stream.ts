@@ -1,4 +1,5 @@
 import { consumeSSEStream, consumeStreamText } from './sse-client'
+import { createFetchStreamReader, classifyFetchStreamError, isFetchStreamTransportError } from './fetch-stream-transport'
 import type { InterviewApiError, InterviewStreamHandlers, InterviewStreamMode, InterviewStreamRequest } from './sse-types'
 
 const feedbackStyleInstructionMap = {
@@ -13,9 +14,10 @@ const interviewNavigationInstruction = [
 ].join('\n')
 
 const createId = () => `msg-${ Date.now() }-${ Math.random().toString(36).slice(2, 8) }`
-const createStreamError = (message: string, code = 'INTERVIEW_STREAM_ERROR'): InterviewApiError => ({
+const createStreamError = (message: string, code = 'INTERVIEW_STREAM_ERROR', retryable = true): InterviewApiError => ({
   code,
-  message
+  message,
+  retryable
 })
 
 const resolveInterviewStreamEndpoint = () => {
@@ -187,22 +189,11 @@ const createFetchReader = async (
     return splitTextToReader(buildMockInterviewReply(normalizedRequest))
   }
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(normalizedRequest),
+  return createFetchStreamReader({
+    endpoint,
+    body: normalizedRequest,
     signal
   })
-
-  if (!response.ok || !response.body) {
-    throw createStreamError(`Interview stream request failed: ${ response.status }`, `HTTP_${ response.status }`)
-  }
-
-  return response.body
-    .pipeThrough(new TextDecoderStream())
-    .getReader()
 }
 
 const resolveSSEEventData = <T>(data: string): T | null => {
@@ -228,12 +219,32 @@ export const startInterviewStream = (
     ...payload,
     messageId
   }, signal)
+  const emitActivity = () => {
+    handlers.onEvent({
+      type: 'activity',
+      messageId,
+      mode
+    })
+  }
+  const resolveStreamError = (error: Error): InterviewApiError => {
+    if (isFetchStreamTransportError(error)) {
+      return createStreamError(error.message, error.code, error.retryable)
+    }
+
+    if ('code' in error && 'message' in error) {
+      return error as InterviewApiError
+    }
+
+    const transportError = classifyFetchStreamError(error)
+    return createStreamError(transportError.message, transportError.code, transportError.retryable)
+  }
 
   if (mode === 'remote') {
     consumeSSEStream({
       signal: controller.signal,
       createReader,
       onStart: () => {
+        emitActivity()
         handlers.onEvent({
           type: 'start',
           messageId,
@@ -241,6 +252,7 @@ export const startInterviewStream = (
         })
       },
       onEvent: (frame) => {
+        emitActivity()
         if (frame.event === 'chunk' || frame.event === 'message') {
           const chunkPayload = resolveSSEEventData<{ content?: string; }>(frame.data)
           handlers.onEvent({
@@ -270,6 +282,7 @@ export const startInterviewStream = (
         }
       },
       onDone: () => {
+        emitActivity()
         if (hasCompleted) return
         hasCompleted = true
         handlers.onEvent({
@@ -278,13 +291,10 @@ export const startInterviewStream = (
         })
       },
       onError: error => {
-        const streamError = 'code' in error && 'message' in error
-          ? error as InterviewApiError
-          : createStreamError(error.message)
         handlers.onEvent({
           type: 'error',
           messageId,
-          error: streamError
+          error: resolveStreamError(error)
         })
       }
     })
@@ -294,6 +304,7 @@ export const startInterviewStream = (
       signal: controller.signal,
       createReader,
       onStart: () => {
+        emitActivity()
         handlers.onEvent({
           type: 'start',
           messageId,
@@ -301,6 +312,7 @@ export const startInterviewStream = (
         })
       },
       onChunk: chunk => {
+        emitActivity()
         handlers.onEvent({
           type: 'chunk',
           messageId,
@@ -308,6 +320,7 @@ export const startInterviewStream = (
         })
       },
       onDone: () => {
+        emitActivity()
         if (hasCompleted) return
         hasCompleted = true
         handlers.onEvent({
@@ -316,13 +329,10 @@ export const startInterviewStream = (
         })
       },
       onError: error => {
-        const streamError = 'code' in error && 'message' in error
-          ? error as InterviewApiError
-          : createStreamError(error.message)
         handlers.onEvent({
           type: 'error',
           messageId,
-          error: streamError
+          error: resolveStreamError(error)
         })
       }
     })

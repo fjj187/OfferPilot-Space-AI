@@ -53,6 +53,7 @@ defineProps<{
   mockStreamModeLabel: string
   mockScrollVersion?: string
   mockStreamError?: string
+  mockStreamConnectionHint?: string
   mockTotalCount: number
   mockGeneratedThreadCount: number
   mockSceneResetVersion: number
@@ -271,6 +272,7 @@ onBeforeUnmount(() => {
                 :submitted="isMockCurrentSubmitted"
                 :streaming="isMockStreaming"
                 :stream-error="mockStreamError"
+                :stream-connection-hint="mockStreamConnectionHint"
                 :session-status-text="mockSessionStatusText"
                 :total-count="mockTotalCount"
                 :generated-thread-count="mockGeneratedThreadCount"

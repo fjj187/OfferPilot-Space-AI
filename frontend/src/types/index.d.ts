@@ -15,6 +15,13 @@ declare module 'vue' {
 }
 
 declare module 'axios' {
+  export interface RequestRetryConfig {
+    maxRetries: number
+    retryDelayMs?: number
+    backoffMultiplier?: number
+    retryableStatusCodes?: number[]
+  }
+
   /**
    * Costom Axios Field.
    */
@@ -24,6 +31,9 @@ declare module 'axios' {
      * 是否触发浏览器下载弹框，默认会触发（仅限 blob type）
      */
     autoDownLoadFile?: boolean
+    retry?: RequestRetryConfig
+    requestName?: string
+    __retryCount?: number
   }
 }
 
@@ -62,6 +72,8 @@ declare global {
     data: any
     msg: string
     aborted?: boolean
+    errorType?: 'http' | 'network' | 'timeout' | 'aborted' | 'unknown'
+    retryable?: boolean
   }
 
   interface IRequestSuite {

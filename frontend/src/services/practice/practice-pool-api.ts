@@ -1,3 +1,6 @@
+import type { AxiosRequestConfig } from 'axios'
+
+import request from '@/utils/request'
 import type { GeneratePracticePoolPayload, PracticeQuestionPool } from '@/types/practice-pool'
 import { isInterviewApiAvailable } from '@/services/interview/interview-session-api'
 
@@ -13,12 +16,21 @@ interface GeneratePracticePoolApiResponse {
 const resolveInterviewApiBase = () => {
   const configuredBase = import.meta.env.VITE_INTERVIEW_API_BASE_URL?.trim() || ''
   if (configuredBase) return configuredBase.replace(/\/$/, '')
-  return import.meta.env.DEV ? '/api/interview' : ''
+  if (import.meta.env.DEV) {
+    return `${ window.location.origin }/api/interview`
+  }
+  return ''
 }
 
-export const isPracticePoolApiAvailable = () => isInterviewApiAvailable()
-
 const PRACTICE_POOL_REQUEST_TIMEOUT_MS = 120_000
+const PRACTICE_POOL_RETRY_CONFIG: AxiosRequestConfig['retry'] = {
+  maxRetries: 1,
+  retryDelayMs: 900
+}
+
+const normalizeApiPath = (apiBase: string, path: string) => `${ apiBase }${ path }`
+
+export const isPracticePoolApiAvailable = () => isInterviewApiAvailable()
 
 export const generatePracticePool = async (payload: GeneratePracticePoolPayload) => {
   const apiBase = resolveInterviewApiBase()
@@ -26,34 +38,27 @@ export const generatePracticePool = async (payload: GeneratePracticePoolPayload)
     throw new Error('Practice pool API is not configured.')
   }
 
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), PRACTICE_POOL_REQUEST_TIMEOUT_MS)
-
-  try {
-    const response = await fetch(`${ apiBase }/practice-pool/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    })
-
-    const result = await response.json() as GeneratePracticePoolApiResponse
-    if (!response.ok) {
-      throw new Error(result.message || `Practice pool API failed: ${ response.status }`)
+  const response = await request.post(
+    normalizeApiPath(apiBase, '/practice-pool/generate'),
+    payload,
+    {
+      timeout: PRACTICE_POOL_REQUEST_TIMEOUT_MS,
+      retry: PRACTICE_POOL_RETRY_CONFIG,
+      requestName: 'generatePracticePool'
     }
+  )
 
-    return result
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('生成补练题超时，请确认后端已启动且模型配置正确后重试')
-    }
-    if (error instanceof TypeError) {
-      throw new Error('无法连接补练题池服务，请确认已运行 pnpm dev 并启动后端')
-    }
-    throw error
-  } finally {
-    clearTimeout(timeoutId)
+  if (response.error === 0) {
+    return response.data as GeneratePracticePoolApiResponse
   }
+
+  if (response.errorType === 'timeout' || response.aborted) {
+    throw new Error('生成补练题超时，请确认后端已启动且模型配置正确后重试')
+  }
+
+  if (response.errorType === 'network') {
+    throw new Error('无法连接补练题池服务，请确认已运行 pnpm dev 并启动后端')
+  }
+
+  throw new Error(response.msg || '生成补练题失败，请稍后重试。')
 }

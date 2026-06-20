@@ -73,6 +73,7 @@ const {
   streamError: mockStreamError,
   streamMode: mockStreamMode,
   streamModeLabel: mockStreamModeLabel,
+  streamConnectionHint: mockStreamConnectionHint,
   scrollVersion: mockScrollVersion,
   setActiveSessionId,
   setActiveThreadId,
@@ -477,12 +478,20 @@ const handleMockOpenHistory = () => {
   })
 }
 const handleClearMockHistory = async () => {
-  await clearAllMockHistory()
-  await loadRemoteReportSummaries()
-  window.$ModalMessage?.success?.('对话历史已清空', {
-    duration: 2200,
-    closable: false
-  })
+  try {
+    await clearAllMockHistory()
+    await loadRemoteReportSummaries()
+    window.$ModalMessage?.success?.('对话历史已清空', {
+      duration: 2200,
+      closable: false
+    })
+  } catch (error) {
+    console.warn('[mock-interview-space] clear history failed:', error)
+    window.$ModalMessage?.error?.('清空对话历史失败，请确认后端服务可用后重试', {
+      duration: 2800,
+      closable: false
+    })
+  }
 }
 const {
   reportAnswerSnapshot,
@@ -1850,6 +1859,7 @@ onBeforeUnmount(() => {
           :mock-question-prompt="mockQuestionPrompt"
           :mock-scroll-version="mockScrollVersion"
           :mock-stream-error="mockStreamError"
+          :mock-stream-connection-hint="mockStreamConnectionHint"
           :mock-stream-mode="mockStreamMode"
           :mock-stream-mode-label="mockStreamModeLabel"
           :overview-primary-action-label="overviewPrimaryActionLabel"

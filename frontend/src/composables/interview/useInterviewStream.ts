@@ -66,12 +66,22 @@ export const useInterviewStream = () => {
   const streamError = ref('')
   const streamMode = ref<InterviewStreamMode | 'idle'>('idle')
   const retryableState = ref<RetryableStreamState | null>(null)
+  const lastStreamActivityAt = ref<number | null>(null)
+  const streamHealthCheckAt = ref(Date.now())
   const streamModeLabel = computed(() => {
     if (streamMode.value === 'remote') return '真实 AI 流式'
     if (streamMode.value === 'mock') return '本地模拟流'
     return '未开始'
   })
   const canRetryStream = computed(() => !!retryableState.value && !isStreaming.value)
+  const isStreamInactive = computed(() => {
+    if (!isStreaming.value || streamMode.value !== 'remote' || !lastStreamActivityAt.value) return false
+    return streamHealthCheckAt.value - lastStreamActivityAt.value > 15000
+  })
+  const streamConnectionHint = computed(() => {
+    if (!isStreamInactive.value) return ''
+    return '连接可能暂时无响应，正在等待服务端继续返回。请不要重复提交；如最终失败，可使用重试入口重新生成本轮反馈。'
+  })
   const retryActionLabel = computed(() => {
     if (retryableState.value?.reason === 'aborted') return '重新生成本轮反馈'
     if (retryableState.value?.reason === 'error') return '重试本轮反馈'
@@ -82,6 +92,7 @@ export const useInterviewStream = () => {
   let activeAbort: null | (() => void) = null
   let activeMessageId = ''
   let activeStreamParams: StartInterviewStreamParams | null = null
+  let streamHealthTimer: ReturnType<typeof window.setInterval> | null = null
 
   const currentMessages = computed(() => messages.value.filter(item => item.threadId === activeThreadId.value))
   const scrollVersion = computed(() => currentMessages.value.map(item => `${ item.id }:${ item.displayContent.length }:${ item.status }`).join('|'))
@@ -142,6 +153,26 @@ export const useInterviewStream = () => {
     activeMessageId = ''
     activeStreamParams = null
     isStreaming.value = false
+    if (streamHealthTimer) {
+      window.clearInterval(streamHealthTimer)
+      streamHealthTimer = null
+    }
+  }
+
+  const markStreamActivity = () => {
+    const now = Date.now()
+    lastStreamActivityAt.value = now
+    streamHealthCheckAt.value = now
+  }
+
+  const startStreamHealthCheck = () => {
+    if (streamHealthTimer) {
+      window.clearInterval(streamHealthTimer)
+    }
+    streamHealthCheckAt.value = Date.now()
+    streamHealthTimer = window.setInterval(() => {
+      streamHealthCheckAt.value = Date.now()
+    }, 1000)
   }
 
   const stopStream = () => {
@@ -180,6 +211,7 @@ export const useInterviewStream = () => {
 
   const startStream = (params: StartInterviewStreamParams) => {
     streamError.value = ''
+    lastStreamActivityAt.value = null
     stopStream()
     if (!activeSessionId.value) {
       activeSessionId.value = params.sessionId
@@ -198,6 +230,8 @@ export const useInterviewStream = () => {
     const streamTask = startInterviewStream(params, {
       onEvent: event => {
         if (event.type === 'start') {
+          markStreamActivity()
+          startStreamHealthCheck()
           isStreaming.value = true
           activeMessageId = event.messageId
           streamMode.value = event.mode || 'mock'
@@ -219,7 +253,13 @@ export const useInterviewStream = () => {
           return
         }
 
+        if (event.type === 'activity') {
+          markStreamActivity()
+          return
+        }
+
         if (event.type === 'chunk') {
+          markStreamActivity()
           const parsed = parseInterviewStreamChunk(event.messageId, event.chunk || '')
           if (parsed?.type === 'chunk' && parsed.chunk) {
             messageQueue.enqueue(parsed.messageId, parsed.chunk)
@@ -228,6 +268,7 @@ export const useInterviewStream = () => {
         }
 
         if (event.type === 'done') {
+          markStreamActivity()
           messageQueue.flushNow(event.messageId)
           messageQueue.unregister(event.messageId)
           patchMessage(event.messageId, item => ({
@@ -239,6 +280,7 @@ export const useInterviewStream = () => {
         }
 
         if (event.type === 'error') {
+          markStreamActivity()
           messageQueue.flushNow(event.messageId)
           messageQueue.unregister(event.messageId)
           const fallbackMessage = streamMode.value === 'remote'
@@ -296,6 +338,9 @@ export const useInterviewStream = () => {
     streamError,
     streamMode,
     streamModeLabel,
+    lastStreamActivityAt,
+    isStreamInactive,
+    streamConnectionHint,
     canRetryStream,
     retryActionLabel,
     scrollVersion,

@@ -1,89 +1,132 @@
 /* global
   IRequestSuite
 */
-import type { AxiosInstance } from 'axios'
+import type { AxiosError, AxiosInstance, AxiosRequestConfig } from 'axios'
 import axios from 'axios'
 import Cookie from 'js-cookie'
 
 import Router from '@/router'
 import { currentHost } from '@/utils/location'
 
-// redirect error
 function errorRedirect(url: string) {
   Router.push(`/${ url }`)
 }
-// code Message
-const codeMessage: {
-  [key: number]: string
-} = {
+
+const codeMessage: Record<number, string> = {
   200: '服务器成功返回请求的数据。',
   201: '新建或修改数据成功。',
-  202: '一个请求已经进入后台排队（异步任务）。',
+  202: '一个请求已经进入后台排队。',
   204: '删除数据成功。',
-  206: '进行范围请求成功。',
-  400: '发出的请求有错误，服务器没有进行新建或修改数据的操作。',
-  401: '用户没有权限（令牌、用户名、密码错误）。',
-  403: '用户得到授权，但是访问是被禁止的。',
-  404: '发出的请求针对的是不存在的记录，服务器没有进行操作。',
-  405: '请求不允许。',
-  406: '请求的格式不可得。',
-  410: '请求的资源被永久删除，且不会再得到的。',
-  422: '当创建一个对象时，发生一个验证错误。',
-  500: '服务器发生错误，请检查服务器。',
+  206: '范围请求成功。',
+  400: '请求参数有误，服务器没有执行对应操作。',
+  401: '用户没有权限，请重新登录。',
+  403: '用户已授权，但访问被禁止。',
+  404: '请求的资源不存在。',
+  405: '请求方法不被允许。',
+  406: '请求格式不可用。',
+  410: '请求的资源已被永久删除。',
+  422: '请求参数校验失败。',
+  500: '服务器内部错误，请检查后端服务。',
   502: '网关错误。',
-  503: '服务不可用，服务器暂时过载或维护。',
+  503: '服务暂时不可用，请稍后重试。',
   504: '网关超时。'
 }
 
-// 创建axios实例
+const DEFAULT_RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504]
+
+const waitRetryDelay = (time = 0) => new Promise(resolve => setTimeout(resolve, time))
+
+const resolveRetryDelay = (config: AxiosRequestConfig) => {
+  const retry = config.retry
+  const currentRetry = config.__retryCount || 0
+  const retryDelayMs = retry?.retryDelayMs ?? 800
+  const backoffMultiplier = retry?.backoffMultiplier ?? 1.6
+
+  return Math.round(retryDelayMs * Math.max(1, backoffMultiplier ** Math.max(0, currentRetry - 1)))
+}
+
+const resolveErrorType = (error: AxiosError): IRequestData['errorType'] => {
+  if (error.code === 'ERR_CANCELED' || error.config?.signal?.aborted) {
+    return 'aborted'
+  }
+
+  if (error.code === 'ECONNABORTED') {
+    return 'timeout'
+  }
+
+  if (error.response) {
+    return 'http'
+  }
+
+  if (error.request) {
+    return 'network'
+  }
+
+  return 'unknown'
+}
+
+const isRetryableRequestError = (error: AxiosError) => {
+  const config = error.config
+  const retry = config?.retry
+  if (!config || !retry) return false
+
+  const currentRetry = config.__retryCount || 0
+  if (currentRetry >= retry.maxRetries) return false
+
+  if (config.signal?.aborted || error.code === 'ERR_CANCELED') {
+    return false
+  }
+
+  const retryableStatusCodes = retry.retryableStatusCodes || DEFAULT_RETRYABLE_STATUS_CODES
+  if (error.response) {
+    return retryableStatusCodes.includes(error.response.status)
+  }
+
+  return error.code === 'ECONNABORTED' || Boolean(error.request)
+}
+
 const service: AxiosInstance = axios.create({
-  // api 的 base_url
   baseURL: currentHost.baseApi,
-  // 请求超时时间
   timeout: 200000
 })
 
-// request拦截器
+const retryRequest = async (error: AxiosError) => {
+  const config = error.config
+  if (!config || !isRetryableRequestError(error)) {
+    throw error
+  }
+
+  config.__retryCount = (config.__retryCount || 0) + 1
+  await waitRetryDelay(resolveRetryDelay(config))
+
+  return service(config)
+}
+
 service.interceptors.request.use(
   request => {
     const token: string | undefined = Cookie.get('token')
 
-    // Conversion of hump nomenclature
-
-    /**
-     * 让每个请求携带自定义 token
-     * 请根据实际情况自行修改
-     */
     if (request.url === '/login') {
       return request
     }
+
+    request.__retryCount = request.__retryCount || 0
     request.headers!.Authorization = token as string
     return request
   },
-  error => {
-    return Promise.reject(error)
-  }
+  error => Promise.reject(error)
 )
 
-// respone拦截器
 service.interceptors.response.use(
   response => {
-    /**
-     * response data
-     *   {
-     *     data: {},
-     *     msg: "",
-     *     error: 0      0 success | 1 error | 5000 failed | HTTP code
-     *  }
-     */
-
     const data: any = response.data
-    const msg: string = data.msg || ''
-    if (msg.indexOf('user not log in') !== -1 && data.error === -1) {
-      // TODO 写死的  之后要根据语言跳转
+    const msg: string = data?.msg || ''
+
+    if (msg.includes('user not log in') && data?.error === -1) {
       errorRedirect('login')
       return
     }
+
     if (response.config.autoDownLoadFile === undefined || response.config.autoDownLoadFile) {
       Promise.resolve().then(() => {
         useResHeadersAPI(response.headers, data)
@@ -91,22 +134,25 @@ service.interceptors.response.use(
     }
 
     if (
-      response.request.responseType === 'blob' &&
-  /json$/gi.test(response.headers['content-type'])
+      response.request.responseType === 'blob'
+      && /json$/gi.test(response.headers['content-type'])
     ) {
       return new Promise(resolve => {
         const reader = new FileReader()
-        reader.readAsText(<Blob>response.data)
+        reader.readAsText(response.data as Blob)
 
         reader.onload = () => {
-          if (!reader.result || typeof reader.result !== 'string') return resolve(response.data)
+          if (!reader.result || typeof reader.result !== 'string') {
+            return resolve(response.data)
+          }
 
           response.data = JSON.parse(reader.result)
           resolve(response.data)
         }
-
       })
-    } else if (data instanceof Blob) {
+    }
+
+    if (data instanceof Blob) {
       return {
         data,
         msg: '',
@@ -114,7 +160,7 @@ service.interceptors.response.use(
       }
     }
 
-    if (data.code && data.data) {
+    if (data?.code && data?.data) {
       return {
         data: data.data,
         error: data.code === 200 ? 0 : -1,
@@ -122,8 +168,7 @@ service.interceptors.response.use(
       }
     }
 
-
-    if (!data.data && !data.msg && !data.error) {
+    if (!data?.data && !data?.msg && !data?.error) {
       return {
         data,
         error: 0,
@@ -131,50 +176,46 @@ service.interceptors.response.use(
       }
     }
 
-
-    if (data.msg === null) {
+    if (data?.msg === null) {
       data.msg = 'Unknown error'
     }
+
     return data
   },
   error => {
-    /**
-     * 某些特定的接口 404 500 需要跳转
-     * 在需要重定向的接口中传入 redirect字段  值为要跳转的路由
-     *   redirect之后  调用接口的地方会继续执行
-     *   因为此时 response error
-     *   所以需要前端返回一个前端构造好的数据结构 避免前端业务部分逻辑出错
-     * 不重定向的接口则不需要传
-     */
-    if (error.config.redirect) {
+    if (error.config?.redirect) {
       errorRedirect(error.config.redirect)
     }
-    if (error.response) {
-      return {
-        data: {},
-        error: error.response.status,
-        msg: codeMessage[error.response.status] || error.response.data.message
+
+    return retryRequest(error).catch((finalError: AxiosError) => {
+      const errorType = resolveErrorType(finalError)
+
+      if (finalError.response) {
+        return {
+          data: {},
+          error: finalError.response.status,
+          errorType,
+          retryable: isRetryableRequestError(finalError),
+          msg: codeMessage[finalError.response.status] || finalError.response.data?.message || '请求失败'
+        }
       }
-    } else {
-      // 某些特定的接口 failed 需要跳转
-      console.log(error)
+
+      console.log(finalError)
       return {
         data: {},
         error: 5000,
-        aborted: error.config.signal?.aborted,
-        msg: '服务请求不可用，请重试或检查您的网络。'
+        errorType,
+        retryable: isRetryableRequestError(finalError),
+        aborted: finalError.config?.signal?.aborted,
+        msg: errorType === 'timeout'
+          ? '服务请求超时，请稍后重试。'
+          : errorType === 'aborted'
+            ? '请求已取消。'
+            : '服务请求不可用，请重试或检查您的网络。'
       }
-    }
+    })
   }
 )
-
-export function sleep(time = 0) {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({})
-    }, time)
-  })
-}
 
 function extractFileNameFromContentDispositionHeader(value: string) {
   const patterns = [
@@ -184,7 +225,7 @@ function extractFileNameFromContentDispositionHeader(value: string) {
     /filename=([^;]*);?/i
   ]
 
-  let responseFilename: any = null
+  let responseFilename: RegExpExecArray | null = null
   patterns.some(regex => {
     responseFilename = regex.exec(value)
     return responseFilename !== null
@@ -193,20 +234,18 @@ function extractFileNameFromContentDispositionHeader(value: string) {
   if (responseFilename !== null && responseFilename.length > 1) {
     try {
       return decodeURIComponent(responseFilename[1])
-    } catch (e) {
-      console.error(e)
+    } catch (error) {
+      console.error(error)
     }
   }
 
   return null
 }
 
-export function downloadFile(boldData: BlobPart, filename = '预设文件名称', type: any) {
-  const blob = boldData instanceof Blob
-    ? boldData
-    : new Blob([boldData], {
-      type
-    })
+export function downloadFile(blobData: BlobPart, filename = '默认文件名', type: string) {
+  const blob = blobData instanceof Blob
+    ? blobData
+    : new Blob([blobData], { type })
   const url = window.URL.createObjectURL(blob)
 
   const link = document.createElement('a')
@@ -214,21 +253,17 @@ export function downloadFile(boldData: BlobPart, filename = '预设文件名称'
   link.href = url
   link.download = filename
   document.body.appendChild(link)
-
   link.click()
-
   document.body.removeChild(link)
 }
 
-export function useResHeadersAPI(headers: any, resData: any) {
+export function useResHeadersAPI(headers: Record<string, string>, resData: any) {
   const disposition = headers['content-disposition']
-  if (disposition) {
-    let filename: string | null = ''
+  if (!disposition) return
 
-    filename = extractFileNameFromContentDispositionHeader(disposition)
-    if (filename) {
-      downloadFile(resData, filename, headers['content-type'])
-    }
+  const filename = extractFileNameFromContentDispositionHeader(disposition)
+  if (filename) {
+    downloadFile(resData, filename, headers['content-type'])
   }
 }
 

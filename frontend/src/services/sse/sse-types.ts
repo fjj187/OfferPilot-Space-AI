@@ -6,10 +6,11 @@ export type InterviewStreamMode = 'mock' | 'remote'
 export interface InterviewApiError {
   code: string
   message: string
+  retryable?: boolean
 }
 
 export interface InterviewStreamEvent {
-  type: 'start' | 'chunk' | 'done' | 'error'
+  type: 'start' | 'activity' | 'chunk' | 'done' | 'error'
   messageId: string
   mode?: InterviewStreamMode
   chunk?: string

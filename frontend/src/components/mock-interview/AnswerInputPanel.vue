@@ -21,6 +21,7 @@ const emit = defineEmits<{
 const isSpaceVariant = computed(() => props.variant === 'space')
 const isDraftFocused = ref(false)
 const canSubmit = computed(() => Boolean(props.value.trim()) && !props.streaming)
+const primaryActionText = computed(() => (props.streaming ? '停止生成' : '提交回答并继续追问'))
 const statusText = computed(() => {
   if (props.streaming) return 'AI 生成中'
   if (props.submitted) return '本题已提交'
@@ -32,6 +33,17 @@ const handleDraftKeydown = (event: KeyboardEvent) => {
   if (!canSubmit.value) return
   event.preventDefault()
   emit('submit')
+}
+
+const handlePrimaryAction = () => {
+  if (props.streaming) {
+    emit('stop')
+    return
+  }
+
+  if (canSubmit.value) {
+    emit('submit')
+  }
 }
 </script>
 
@@ -97,10 +109,11 @@ const handleDraftKeydown = (event: KeyboardEvent) => {
     <div class="panel-actions">
       <n-button
         type="primary"
-        :disabled="!canSubmit"
-        @click="emit('submit')"
+        :type="streaming ? 'warning' : 'primary'"
+        :disabled="!streaming && !canSubmit"
+        @click="handlePrimaryAction"
       >
-        提交回答并继续追问
+        {{ primaryActionText }}
       </n-button>
       <n-button
         quaternary
@@ -108,14 +121,6 @@ const handleDraftKeydown = (event: KeyboardEvent) => {
         @click="emit('clear')"
       >
         清空草稿
-      </n-button>
-      <n-button
-        v-if="streaming"
-        tertiary
-        type="warning"
-        @click="emit('stop')"
-      >
-        停止生成
       </n-button>
       <span
         v-if="isSpaceVariant"

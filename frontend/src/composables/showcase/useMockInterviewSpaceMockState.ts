@@ -1417,14 +1417,9 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
   }
 
   const clearMockHistory = async () => {
-    try {
-      await clearRemoteInterviewHistory()
-    } catch (error) {
-      console.warn('[mock-interview-space] clear remote history fallback to local only:', error)
-    }
+    await clearRemoteInterviewHistory()
 
     const context = loadWorkbenchContext()
-    const latestReport = resolveLatestPersistedReportSummary()
     loadInterviewSessions().forEach((session) => {
       removeInterviewSession(session.id)
     })
@@ -1436,8 +1431,8 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       activeDocumentId: '',
       currentMode: activeMode.value,
       sourcePage: context?.sourcePage || 'mock-interview-space',
-      practicePlan: latestReport?.practicePlan || context?.practicePlan || null,
-      practiceQuestionGroup: context?.practiceQuestionGroup || null,
+      practicePlan: null,
+      practiceQuestionGroup: null,
       mockEntryMode: 'direct',
       mockSessionConfig: null
     })

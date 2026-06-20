@@ -1,3 +1,6 @@
+import type { AxiosRequestConfig } from 'axios'
+
+import request from '@/utils/request'
 import type { InterviewMessage } from '@/types/message'
 
 interface RemoteInterviewSessionListItem {
@@ -23,18 +26,67 @@ interface RemoteInterviewSessionDetail extends RemoteInterviewSessionListItem {
 const resolveInterviewApiBase = () => {
   const configuredBase = import.meta.env.VITE_INTERVIEW_API_BASE_URL?.trim() || ''
   if (configuredBase) return configuredBase.replace(/\/$/, '')
-  return import.meta.env.DEV ? '/api/interview' : ''
+  if (import.meta.env.DEV) {
+    return `${ window.location.origin }/api/interview`
+  }
+  return ''
+}
+
+const INTERVIEW_API_RETRY_CONFIG: AxiosRequestConfig['retry'] = {
+  maxRetries: 2,
+  retryDelayMs: 600
+}
+const INTERVIEW_API_NO_RETRY_CONFIG: AxiosRequestConfig['retry'] = {
+  maxRetries: 0
 }
 
 const createInterviewApiError = (message: string) => new Error(message)
 
-const fetchJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
-  const response = await fetch(url, init)
-  if (!response.ok) {
-    throw createInterviewApiError(`Interview API request failed: ${ response.status }`)
+const normalizeApiPath = (apiBase: string, path: string) => `${ apiBase }${ path }`
+
+const requestInterviewApi = async <T>(
+  apiBase: string,
+  path: string,
+  config?: AxiosRequestConfig
+): Promise<T> => {
+  const response = await request.get(
+    normalizeApiPath(apiBase, path),
+    undefined,
+    {
+      ...config,
+      retry: config?.retry ?? INTERVIEW_API_RETRY_CONFIG,
+      requestName: config?.requestName || path
+    }
+  )
+
+  if (response.error !== 0) {
+    throw createInterviewApiError(response.msg || `Interview API request failed: ${ response.error }`)
   }
 
-  return response.json() as Promise<T>
+  return response.data as T
+}
+
+const postInterviewApi = async <T>(
+  apiBase: string,
+  path: string,
+  data?: unknown,
+  config?: AxiosRequestConfig
+): Promise<T> => {
+  const response = await request.post(
+    normalizeApiPath(apiBase, path),
+    data,
+    {
+      ...config,
+      retry: config?.retry ?? INTERVIEW_API_RETRY_CONFIG,
+      requestName: config?.requestName || path
+    }
+  )
+
+  if (response.error !== 0) {
+    throw createInterviewApiError(response.msg || `Interview API request failed: ${ response.error }`)
+  }
+
+  return response.data as T
 }
 
 export const isInterviewApiAvailable = () => Boolean(resolveInterviewApiBase())
@@ -43,7 +95,13 @@ export const listRemoteInterviewSessions = async () => {
   const apiBase = resolveInterviewApiBase()
   if (!apiBase) return []
 
-  const payload = await fetchJson<{ sessions?: RemoteInterviewSessionListItem[] }>(`${ apiBase }/sessions`)
+  const payload = await requestInterviewApi<{ sessions?: RemoteInterviewSessionListItem[] }>(
+    apiBase,
+    '/sessions',
+    {
+      requestName: 'listRemoteInterviewSessions'
+    }
+  )
   return Array.isArray(payload.sessions) ? payload.sessions : []
 }
 
@@ -53,8 +111,12 @@ export const getRemoteInterviewSessionDetail = async (sessionId: string, threadI
 
   const encodedSessionId = encodeURIComponent(sessionId)
   const encodedThreadId = encodeURIComponent(threadId)
-  const payload = await fetchJson<{ session?: RemoteInterviewSessionDetail }>(
-    `${ apiBase }/sessions/${ encodedSessionId }/${ encodedThreadId }`
+  const payload = await requestInterviewApi<{ session?: RemoteInterviewSessionDetail }>(
+    apiBase,
+    `/sessions/${ encodedSessionId }/${ encodedThreadId }`,
+    {
+      requestName: 'getRemoteInterviewSessionDetail'
+    }
   )
 
   return payload.session || null
@@ -64,9 +126,15 @@ export const clearRemoteInterviewHistory = async () => {
   const apiBase = resolveInterviewApiBase()
   if (!apiBase) return false
 
-  await fetchJson<{ ok?: boolean }>(`${ apiBase }/history/clear`, {
-    method: 'POST'
-  })
+  await postInterviewApi<{ ok?: boolean }>(
+    apiBase,
+    '/history/clear',
+    undefined,
+    {
+      retry: INTERVIEW_API_NO_RETRY_CONFIG,
+      requestName: 'clearRemoteInterviewHistory'
+    }
+  )
   return true
 }
 

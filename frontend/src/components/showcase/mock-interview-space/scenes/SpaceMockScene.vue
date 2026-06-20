@@ -43,6 +43,7 @@ const props = defineProps<{
   generatedThreadCount: number
   streaming: boolean
   streamError?: string
+  streamConnectionHint?: string
   sessionStatusText: string
 }>()
 
@@ -397,6 +398,7 @@ const finishSnapshot = ref<null | {
   generatedThreadCount: number
   streaming: boolean
   streamError?: string
+  streamConnectionHint?: string
   sessionStatusText: string
 }>(null)
 
@@ -423,6 +425,7 @@ const viewState = computed(() => {
     generatedThreadCount: props.generatedThreadCount,
     streaming: props.streaming,
     streamError: props.streamError,
+    streamConnectionHint: props.streamConnectionHint,
     sessionStatusText: props.sessionStatusText
   }
 })
@@ -626,6 +629,7 @@ const handleFinish = () => {
     generatedThreadCount: props.generatedThreadCount,
     streaming: props.streaming,
     streamError: props.streamError,
+    streamConnectionHint: props.streamConnectionHint,
     sessionStatusText: props.sessionStatusText
   }
   emit('finish')
@@ -971,6 +975,12 @@ onBeforeUnmount(() => {
                   class="mock-stream-error"
                 >
                   {{ viewState.streamError }}
+                </div>
+                <div
+                  v-else-if="viewState.streamConnectionHint"
+                  class="mock-stream-hint"
+                >
+                  {{ viewState.streamConnectionHint }}
                 </div>
               </div>
             </div>
@@ -1959,6 +1969,18 @@ onBeforeUnmount(() => {
   border-radius: 14px;
   background: rgb(255 112 112 / 0.08);
   color: rgb(255 219 219 / 0.94);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.7;
+}
+
+.mock-stream-hint {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgb(160 188 255 / 0.22);
+  border-radius: 14px;
+  background: rgb(160 188 255 / 0.08);
+  color: rgb(231 238 255 / 0.9);
   font-size: 15px;
   font-weight: 400;
   line-height: 1.7;
