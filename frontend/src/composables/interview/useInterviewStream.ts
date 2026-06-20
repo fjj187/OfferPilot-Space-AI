@@ -3,6 +3,11 @@ import type { PersistedInterviewFeedbackStyle, PersistedTopicKey } from '@/types
 import { parseInterviewStreamChunk } from '@/services/message/interview-message-parser'
 import { InterviewMessageQueue } from '@/services/message/interview-message-queue'
 import { startInterviewStream } from '@/services/sse/interview-stream'
+import {
+  clearPersistedInterviewMessages,
+  getPersistedInterviewMessages,
+  setPersistedInterviewMessages
+} from '@/services/storage/interview-message-store'
 import type { InterviewStreamMode } from '@/services/sse/sse-types'
 
 interface StartInterviewStreamParams {
@@ -55,6 +60,7 @@ const createMessage = (
 
 export const useInterviewStream = () => {
   const messages = ref<InterviewMessage[]>([])
+  const activeSessionId = ref('')
   const activeThreadId = ref('default')
   const isStreaming = ref(false)
   const streamError = ref('')
@@ -80,12 +86,32 @@ export const useInterviewStream = () => {
   const currentMessages = computed(() => messages.value.filter(item => item.threadId === activeThreadId.value))
   const scrollVersion = computed(() => currentMessages.value.map(item => `${ item.id }:${ item.displayContent.length }:${ item.status }`).join('|'))
 
+  const persistMessages = () => {
+    if (!activeSessionId.value) return
+    setPersistedInterviewMessages(activeSessionId.value, messages.value)
+  }
+
+  const restoreMessages = (sessionId: string) => {
+    messages.value = getPersistedInterviewMessages(sessionId)
+  }
+
+  const setActiveSessionId = (sessionId: string) => {
+    const normalizedSessionId = sessionId.trim()
+    if (activeSessionId.value === normalizedSessionId) return
+    activeSessionId.value = normalizedSessionId
+    restoreMessages(normalizedSessionId)
+    streamError.value = ''
+    streamMode.value = 'idle'
+    retryableState.value = null
+  }
+
   const setActiveThreadId = (threadId: string) => {
     activeThreadId.value = threadId || 'default'
   }
 
   const appendMessage = (message: InterviewMessage) => {
     messages.value = [...messages.value, message]
+    persistMessages()
     return message
   }
 
@@ -103,10 +129,12 @@ export const useInterviewStream = () => {
 
   const patchMessage = (messageId: string, updater: (message: InterviewMessage) => InterviewMessage) => {
     messages.value = messages.value.map(item => (item.id === messageId ? updater(item) : item))
+    persistMessages()
   }
 
   const removeMessage = (messageId: string) => {
     messages.value = messages.value.filter(item => item.id !== messageId)
+    persistMessages()
   }
 
   const finalizeStreamState = () => {
@@ -142,6 +170,9 @@ export const useInterviewStream = () => {
     stopStream()
     messageQueue.clear()
     messages.value = []
+    if (activeSessionId.value) {
+      clearPersistedInterviewMessages(activeSessionId.value)
+    }
     streamError.value = ''
     streamMode.value = 'idle'
     retryableState.value = null
@@ -150,6 +181,12 @@ export const useInterviewStream = () => {
   const startStream = (params: StartInterviewStreamParams) => {
     streamError.value = ''
     stopStream()
+    if (!activeSessionId.value) {
+      activeSessionId.value = params.sessionId
+      persistMessages()
+    } else if (activeSessionId.value !== params.sessionId) {
+      setActiveSessionId(params.sessionId)
+    }
     const threadId = params.threadId || activeThreadId.value
     activeThreadId.value = threadId
     activeStreamParams = {
@@ -246,12 +283,14 @@ export const useInterviewStream = () => {
   }
 
   onBeforeUnmount(() => {
-    clearMessages()
+    stopStream()
+    messageQueue.clear()
   })
 
   return {
     messages,
     currentMessages,
+    activeSessionId,
     activeThreadId,
     isStreaming,
     streamError,
@@ -260,6 +299,7 @@ export const useInterviewStream = () => {
     canRetryStream,
     retryActionLabel,
     scrollVersion,
+    setActiveSessionId,
     setActiveThreadId,
     appendUserMessage,
     appendAssistantMessage,

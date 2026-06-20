@@ -1,0 +1,363 @@
+# AI模拟面试模块 - 通信与数据可靠性升级方案
+
+> **文档性质**：可落地的渐进增强方案，保留现有 `POST /api/interview/stream`（面试流式接口）契约，不做推倒重构。
+>
+> **核心原则**：先补前端消息持久化、断流标记和请求可靠性，再在三方对齐后推进后端 `checkpoint`（断点快照接口）与幂等去重。
+
+---
+
+## 一、当前真实链路
+
+当前流式对话不是 `EventSource`（浏览器原生 SSE 对象）模型，而是：
+
+```text
+useInterviewStream（面试流组合函数）
+  -> startInterviewStream（启动面试流函数）
+    -> fetch（浏览器请求 API）POST /api/interview/stream
+      -> ReadableStream（可读流）
+        -> consumeSSEStream（SSE 文本流消费函数）
+          -> chunk / done / error（后端固定事件）
+```
+
+关键约束：
+
+| 约束 | 说明 |
+|---|---|
+| 请求方式 | 必须保持 `POST /api/interview/stream`（面试流式接口），因为需要提交完整 JSON（结构化请求体）。 |
+| 传输实现 | 继续使用 `fetch`（请求 API）+ `ReadableStream`（可读流），不切换为 `EventSource`。 |
+| 事件契约 | `chunk` / `done` / `error`（流式事件名）不单方修改。 |
+| 前端目录 | 流式相关代码继续放在 `frontend/src/services/sse`（SSE 服务目录），不新开平行 `transport` 目录。 |
+| 后端边界 | 涉及 `backend/**`（后端目录）和接口字段变更时，必须先更新对齐文档并三方确认。 |
+
+---
+
+## 二、现存问题
+
+| 问题 | 当前表现 | 建议优先级 |
+|---|---|---|
+| 消息无持久化 | 页面刷新后 `useInterviewStream` 内存消息丢失 | P0 |
+| 断流状态不完整 | 流式中断后只有 `error` / `aborted`，缺少刷新恢复语义 | P0 |
+| 重试只能手动 | `retryStream`（流重试函数）依赖用户点击，无法恢复刷新后的上下文 | P1 |
+| 非流式接口分散 | 部分面试接口仍直接使用 `fetch`，未复用 `request.ts`（请求工具）能力 | P1 |
+| 幂等仅靠前端交互 | 连点可通过按钮禁用缓解，但后端没有真正幂等去重 | P1，需要后端协作 |
+| 断点补偿缺失 | 网络中断期间错过的服务端消息无法主动补回 | P2，需要后端协作 |
+
+---
+
+## 三、目标架构
+
+```text
+页面 / 场景层
+  -> useInterviewStream（面试流组合函数）
+    -> InterviewMessageStore（面试消息存储）
+    -> startInterviewStream（启动面试流函数，保留门面）
+      -> fetchStreamTransport（fetch 流传输适配）
+        -> consumeSSEStream（SSE 文本流消费函数）
+
+非流式接口
+  -> request.ts（现有 axios 请求工具）
+    -> 可选增强：请求 ID、错误分类、按接口启用重试
+```
+
+落地策略：
+
+1. `interview-stream.ts`（面试流服务）保留为门面，不删除。
+2. `sse-client.ts`（SSE 客户端工具）继续保留纯函数解析能力。
+3. 新增能力优先放在现有目录：`frontend/src/services/sse`、`frontend/src/services/storage`、`frontend/src/composables/interview`。
+4. `REST API`（非流式接口）优先增强 `frontend/src/utils/request.ts`（请求工具），避免新增第二套 `axios`（HTTP 请求库）实例。
+
+---
+
+## 四、阶段一：前端消息持久化
+
+### 目标
+
+解决刷新后对话丢失，并为后续断线恢复提供本地数据基础。
+
+### 新增文件
+
+```text
+frontend/src/services/storage/interview-message-store.ts
+```
+
+建议职责：
+
+| 方法 | 说明 |
+|---|---|
+| `getMessages(sessionId)`（读取消息函数） | 从 `localStorage`（浏览器本地存储）读取当前会话消息。 |
+| `saveMessages(sessionId, messages)`（保存消息函数） | 整体保存当前会话消息。 |
+| `patchMessage(sessionId, messageId, patch)`（更新消息函数） | 更新单条消息状态或内容。 |
+| `clearMessages(sessionId)`（清空消息函数） | 清理指定会话消息。 |
+
+### 接入点
+
+在 `useInterviewStream.ts`（面试流组合函数）接入：
+
+| 场景 | 处理 |
+|---|---|
+| 初始化 | 根据 `sessionId`（会话标识）恢复消息。 |
+| 用户消息追加 | 立即保存。 |
+| assistant 消息 start | 保存空的 `streaming`（流式生成中）消息。 |
+| chunk 增量 | 节流保存，避免每个字都写 `localStorage`。 |
+| done | 保存为 `done`（完成状态）。 |
+| error | 保存为 `error`（错误状态）。 |
+| stop / abort | 保存为 `aborted`（中止状态）。 |
+| 刷新恢复 | 将历史 `streaming` 消息标记为 `interrupted`（中断状态）或 `aborted`，避免误判仍在生成。 |
+
+### 注意事项
+
+- 不要持久化纯 UI 状态，例如滚动位置、hover（悬停状态）、临时弹窗。
+- `localStorage` 容量有限，第一阶段只存当前必要消息；后续长对话再升级 `IndexedDB`（浏览器结构化存储）。
+- `InterviewMessage`（面试消息类型）如需新增 `interrupted` 状态，要同步检查所有渲染分支。
+
+---
+
+## 五、阶段二：保持 fetch 流的连接控制增强
+
+### 目标
+
+在不改变 `POST`（提交请求）契约的前提下，提高流式请求的可观测性和中断处理能力。
+
+### 推荐拆分
+
+```text
+frontend/src/services/sse/
+  sse-client.ts              # 保留：SSE 帧解析与流消费纯函数
+  interview-stream.ts        # 保留：面试流门面，负责 payload 归一化、mock/remote 分流
+  fetch-stream-transport.ts  # 可选新增：fetch + ReadableStream 传输适配
+  stream-retry-policy.ts     # 可选新增：退避策略纯函数
+```
+
+### 不建议做的事
+
+- 不把主链路改成 `EventSource`（浏览器原生 SSE 对象）。
+- 不新增 `frontend/src/services/transport`（传输服务目录）平行体系。
+- 不删除 `interview-stream.ts`（面试流服务门面）。
+
+### 可实现能力
+
+| 能力 | 可行方式 |
+|---|---|
+| 主动取消 | 继续使用 `AbortController`（中止控制器）。 |
+| 流错误归一化 | 在 `startInterviewStream`（启动面试流函数）内统一转成 `InterviewApiError`（面试接口错误）。 |
+| 重试策略 | 失败后生成可重试状态；自动重试只对明确安全的场景开放。 |
+| 被动心跳 | 记录最后收到 chunk（流片段）的时间，用于 UI 提示“连接可能已中断”。 |
+
+### 自动重连边界
+
+当前接口每次 `POST /api/interview/stream` 都可能触发一次模型生成。没有后端幂等和断点能力前，不建议默认自动重连并重新发起同一请求，否则可能产生重复回答。
+
+推荐：
+
+1. 前端先标记 `interrupted`（中断状态）。
+2. UI 显示“重新生成本轮反馈”。
+3. 等后端支持 `idempotentKey`（幂等键）或 `checkpoint`（断点快照接口）后，再启用自动恢复。
+
+---
+
+## 六、阶段三：REST API 可靠性
+
+### 目标
+
+统一非流式接口错误处理，避免重复新增 `axios`（HTTP 请求库）实例。
+
+### 当前事实
+
+项目已有 `frontend/src/utils/request.ts`（请求工具），其中已经包含：
+
+- `axios.create`（创建请求实例）
+- 请求拦截器
+- 响应拦截器
+- token（令牌）注入
+- 文件下载处理
+
+### 推荐方案
+
+优先增强 `request.ts`（请求工具），或为面试模块新增轻量包装，但底层仍复用同一实例。
+
+可增强项：
+
+| 能力 | 建议 |
+|---|---|
+| 请求 ID | 在请求拦截器中注入 `X-Request-Id`（请求标识）。 |
+| 错误分类 | 新增 `classifyRequestError`（请求错误分类函数）。 |
+| 重试 | 按请求配置显式开启，不做全局透明重试。 |
+| 并发控制 | 只对高频接口启用，不影响文件下载和长耗时请求。 |
+
+### 重试实现注意事项
+
+错误示例：把 `retryCount`（重试次数）放在拦截器闭包里，会导致所有请求共享计数。
+
+```typescript
+export function createRetryInterceptor() {
+  let retryCount = 0
+
+  return async (error: unknown) => {
+    if (retryCount >= 3) {
+      return Promise.reject(error)
+    }
+
+    retryCount += 1
+    await waitRetryDelay(retryCount)
+
+    return request(error.config)
+  }
+}
+```
+
+这段代码的问题是：`retryCount`（重试次数）属于 `createRetryInterceptor`（创建重试拦截器函数）生成的闭包状态，不属于某一次请求。  
+例如 A 请求失败两次后，`retryCount` 已经变成 2；此时 B 请求第一次失败，会直接从 2 开始计数，最多只剩 1 次重试机会。更糟的是，当任意请求把 `retryCount` 推到 3 后，后续所有请求都会被误判为“已达到最大重试次数”。
+
+这里的“拦截器闭包”指的是：`return async (error: unknown) => { ... }`（返回的异步错误处理函数）一直能访问外层 `createRetryInterceptor`（创建重试拦截器函数）里的 `retryCount`（重试次数）。  
+`axios`（HTTP 请求库）通常只注册一次这个错误处理函数，所以这个外层变量会长期存在，并被所有失败请求共享。
+
+```text
+createRetryInterceptor（创建重试拦截器函数）
+  ├─ retryCount = 0   <- 所有请求共享
+  └─ return async error => { ... }  <- 每次请求失败都会调用
+```
+
+正确做法是把重试次数放到每个请求自己的 `error.config.retry.currentRetry`（当前请求重试次数）里，这样 A 请求和 B 请求互不影响。
+
+正确方向：
+
+```typescript
+interface RetryRequestConfig {
+  retry?: {
+    maxRetries: number
+    currentRetry?: number
+  }
+}
+```
+
+重试次数应挂在单次请求的 `config`（请求配置）上，并且只重试安全请求或明确允许重试的接口。
+
+### 令牌桶注意事项
+
+`TokenBucket`（令牌桶）如果要落地，必须支持：
+
+| 能力 | 原因 |
+|---|---|
+| 定时释放队列 | 避免没有新请求时等待队列永远不醒。 |
+| 超时 | 避免用户一直等待。 |
+| 取消 | 与 `AbortSignal`（中止信号）联动。 |
+| 按接口配置 | 避免阻塞正常低频接口和文件下载。 |
+
+---
+
+## 七、阶段四：后端协作能力
+
+以下内容可实现，但不能由前端单方直接改契约，需要先与 Node（后端运行时）和 C++（后端语言）同学对齐。
+
+### 4.1 幂等键
+
+目标：避免重复提交产生重复回答。
+
+建议字段：
+
+```typescript
+idempotentKey?: string
+```
+
+落地要求：
+
+- 前端生成并随请求发送。
+- 后端按 `sessionId`（会话标识）+ `threadId`（线程标识）+ `idempotentKey` 去重。
+- 后端去重记录需要设置过期时间，不能无限增长。
+- 字段新增要同步 `backend/src/types/interview.ts`（后端面试类型）和 `frontend/src/services/sse/sse-types.ts`（前端 SSE 类型）。
+
+### 4.2 checkpoint 断点快照
+
+目标：断线或刷新后，从服务端拉取权威消息快照。
+
+建议接口：
+
+```text
+GET /api/interview/sessions/:sessionId/:threadId/checkpoint
+```
+
+不要使用只带 `sessionId`（会话标识）的接口，因为当前会话详情读取已包含 `threadId`（线程标识）。
+
+返回建议：
+
+```typescript
+interface InterviewSessionCheckpoint {
+  sessionId: string
+  threadId: string
+  messages: Array<{
+    role: 'user' | 'assistant'
+    content: string
+    createdAt: string
+  }>
+  updatedAt: string
+}
+```
+
+### 4.3 合并规则
+
+| 情况 | 处理 |
+|---|---|
+| 服务端有，本地无 | 补入本地。 |
+| 本地有，服务端有 | 以服务端为准。 |
+| 本地有，服务端无，且是未完成 assistant 消息 | 标记为 `interrupted`（中断状态）。 |
+| 本地 user 消息服务端无 | 保留并提示可能未提交成功，不静默删除。 |
+
+---
+
+## 八、实施顺序
+
+```text
+Phase 1：前端消息持久化
+  -> InterviewMessageStore（面试消息存储）
+  -> useInterviewStream（面试流组合函数）接入 hydration（状态恢复）
+
+Phase 2：fetch 流增强
+  -> 保留 startInterviewStream（启动面试流函数）
+  -> 增强错误分类、断流标记、重试状态
+
+Phase 3：REST API 可靠性
+  -> 复用 request.ts（请求工具）
+  -> 按接口配置重试和并发控制
+
+Phase 4：后端协作能力
+  -> idempotentKey（幂等键）
+  -> checkpoint（断点快照接口）
+  -> 三方更新类型与接口文档
+```
+
+---
+
+## 九、验证清单
+
+| 场景 | 验证方式 |
+|---|---|
+| 刷新恢复 | 生成回答到一半刷新页面，历史消息应恢复，未完成消息不显示为仍在生成。 |
+| 停止生成 | 点击停止后，assistant 消息状态应为 `aborted`（中止状态），可重试。 |
+| 流式成功 | `chunk`（流片段）能持续追加，`done`（完成事件）后状态为 `done`。 |
+| 流式失败 | `error`（错误事件）后消息保留错误说明，并出现重试入口。 |
+| 清空历史 | 清空后内存消息和本地持久化同时清理。 |
+| 非流式接口 | 断网、超时、500 类错误能归一化展示，不影响文件下载。 |
+| 契约边界 | 未经对齐不修改 `POST /api/interview/stream` 路径、事件名和核心字段。 |
+
+---
+
+## 十、后续演进
+
+| 能力 | 触发条件 |
+|---|---|
+| `IndexedDB`（浏览器结构化存储） | `localStorage` 容量接近上限，或需要分页读取长对话。 |
+| `Service Worker`（浏览器离线代理） | 需要离线提交答案并联网后重放。 |
+| `WebSocket`（双向通信协议） | 需要实时视频、白板、双向 ACK（确认回执）等能力。 |
+| 连接质量埋点 | 需要生产环境统计断线率、重试次数、恢复耗时。 |
+
+---
+
+## 十一、对面试问答的简洁说法
+
+| 问题 | 回答要点 |
+|---|---|
+| SSE 代码怎么组织？ | 当前是 `POST + fetch + ReadableStream`（提交请求加可读流）模型，保留请求契约，把解析、业务消费和持久化分层。 |
+| 页面刷新消息丢失怎么办？ | 消息级持久化到 `InterviewMessageStore`（面试消息存储），刷新时 hydration（状态恢复），未完成消息标记为中断。 |
+| 断网怎么办？ | 前端先做中断标记和手动重试；后端支持 `checkpoint`（断点快照接口）后，再做自动补偿。 |
+| 如何防重复提交？ | 前端按钮禁用只能缓解，真正可靠需要 `idempotentKey`（幂等键）和后端去重。 |
+| 为什么不用 EventSource？ | 因为当前接口必须 `POST`（提交请求）并携带 JSON（结构化请求体），`EventSource` 更适合简单 `GET`（读取请求）订阅。 |

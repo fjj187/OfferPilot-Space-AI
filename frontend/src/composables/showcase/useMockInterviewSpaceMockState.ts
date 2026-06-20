@@ -85,6 +85,7 @@ interface UseMockInterviewSpaceMockStateOptions {
   isStreaming: Ref<boolean>
   activeDocument: Ref<PersistedLibraryDocument | null>
   messages: Ref<InterviewMessage[]>
+  setActiveSessionId: (sessionId: string) => void
   setActiveThreadId: (threadId: string) => void
   appendUserMessage: (content: string, threadId?: string) => void
   appendSystemMessage: (content: string, format?: 'plain' | 'markdown', threadId?: string) => void
@@ -659,6 +660,12 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     options.clearMessages()
   }
 
+  const restoreCurrentSessionMessages = () => {
+    if (currentSessionId.value) {
+      options.setActiveSessionId(currentSessionId.value)
+    }
+  }
+
   const clearHistoryPreview = () => {
     historyPreviewSessionId.value = ''
     historyPreviewThreads.value = []
@@ -1088,6 +1095,7 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       }
 
       currentSessionId.value = matchedSession.id
+      restoreCurrentSessionMessages()
       mockFollowUpIndex.value = matchedSession.followUpIndex
       mockSubmittedQuestionIds.value = submittedQuestionIds
       mockWeaknessSignals.value = [...matchedSession.weaknessTags]
@@ -1098,6 +1106,7 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       }
     } else {
       currentSessionId.value = `space-session-${ Date.now() }`
+      restoreCurrentSessionMessages()
       mockFollowUpIndex.value = 0
       mockSubmittedQuestionIds.value = []
       mockWeaknessSignals.value = []
