@@ -14,7 +14,7 @@ const username = ref(defaultUsername)
 const password = ref(defaultPassword)
 const submitting = ref(false)
 
-const handleSubmit = () => {
+const handleSubmit = async () => {
   if (submitting.value) return
 
   const trimmedUsername = username.value.trim()
@@ -24,7 +24,7 @@ const handleSubmit = () => {
   }
 
   submitting.value = true
-  const ok = login(trimmedUsername, password.value)
+  const ok = await login(trimmedUsername, password.value)
   submitting.value = false
 
   if (!ok) {

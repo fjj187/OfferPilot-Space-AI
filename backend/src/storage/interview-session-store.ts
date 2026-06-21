@@ -12,6 +12,7 @@ interface StoredInterviewMessage {
 export interface StoredInterviewSession {
   sessionId: string
   threadId: string
+  owner?: string
   topic: string
   questionTitle: string
   feedbackStyle?: string
@@ -87,7 +88,12 @@ const persistSessionStore = () => {
   renameSync(temporaryStorageFilePath, storageFilePath)
 }
 
-export const recordInterviewUserMessage = (payload: InterviewStreamRequest) => {
+export const recordInterviewUserMessage = (
+  payload: InterviewStreamRequest,
+  options?: {
+    owner?: string
+  }
+) => {
   const storeKey = buildStoreKey(payload.sessionId, payload.threadId)
   const existing = sessionStore.get(storeKey)
   const now = new Date().toISOString()
@@ -95,6 +101,7 @@ export const recordInterviewUserMessage = (payload: InterviewStreamRequest) => {
   const nextSession: StoredInterviewSession = existing || {
     sessionId: payload.sessionId,
     threadId: payload.threadId,
+    owner: options?.owner,
     topic: payload.topic,
     questionTitle: payload.questionTitle,
     feedbackStyle: payload.feedbackStyle,
@@ -102,6 +109,9 @@ export const recordInterviewUserMessage = (payload: InterviewStreamRequest) => {
     updatedAt: now
   }
 
+  if (!nextSession.owner && options?.owner) {
+    nextSession.owner = options.owner
+  }
   nextSession.feedbackStyle = payload.feedbackStyle
   nextSession.updatedAt = now
   nextSession.messages.push({
@@ -148,6 +158,10 @@ export const getStoredInterviewSessionsBySessionId = (sessionId: string) => {
   return [...sessionStore.values()]
     .filter(session => session.sessionId === sessionId)
     .sort((left, right) => (left.updatedAt < right.updatedAt ? -1 : 1))
+}
+
+export const getStoredInterviewSessionsByOwner = (owner: string) => {
+  return getStoredInterviewSessions().filter(session => session.owner === owner)
 }
 
 export const clearAllStoredInterviewSessions = () => {

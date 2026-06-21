@@ -6,7 +6,7 @@ import axios from 'axios'
 import Cookie from 'js-cookie'
 
 import Router from '@/router'
-import { currentHost } from '@/utils/location'
+import { resolveApiBase } from '@/utils/location'
 
 function errorRedirect(url: string) {
   Router.push(`/${ url }`)
@@ -86,7 +86,7 @@ const isRetryableRequestError = (error: AxiosError) => {
 }
 
 const service: AxiosInstance = axios.create({
-  baseURL: currentHost.baseApi,
+  baseURL: resolveApiBase(),
   timeout: 200000
 })
 
@@ -105,13 +105,18 @@ const retryRequest = async (error: AxiosError) => {
 service.interceptors.request.use(
   request => {
     const token: string | undefined = Cookie.get('token')
+    const normalizedUrl = String(request.url || '')
+    const isAuthLoginRequest = /\/auth\/login$/i.test(normalizedUrl) || normalizedUrl === '/login'
 
-    if (request.url === '/login') {
+    if (isAuthLoginRequest) {
       return request
     }
 
     request.__retryCount = request.__retryCount || 0
-    request.headers!.Authorization = token as string
+    if (token) {
+      request.headers = request.headers || {}
+      request.headers.Authorization = `Bearer ${ token }`
+    }
     return request
   },
   error => Promise.reject(error)

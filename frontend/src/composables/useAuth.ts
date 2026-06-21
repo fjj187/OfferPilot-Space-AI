@@ -1,45 +1,85 @@
 import { computed, ref } from 'vue'
+import { clearAuthToken, fetchCurrentAuthSession, loginByApi, setAuthToken } from '@/services/auth/auth-api'
 import {
-  DEFAULT_AUTH_CREDENTIALS,
+  DEMO_AUTH_ACCOUNTS,
   clearAuthSession,
+  getDefaultAuthCredentials,
   getAuthSession,
+  setLastAuthAccount,
   setAuthSession,
-  validateCredentials
 } from '@/services/storage/auth-storage'
 
-const authUsername = ref(getAuthSession()?.username ?? '')
+const initialSession = getAuthSession()
+const authUsername = ref(initialSession?.username ?? '')
+const authRole = ref(initialSession?.role ?? 'user')
+const authDisplayName = ref(initialSession?.displayName ?? authUsername.value)
 
 export function useAuth() {
-  const isLoggedIn = computed(() => Boolean(authUsername.value))
-  const displayName = computed(() => authUsername.value || DEFAULT_AUTH_CREDENTIALS.username)
+  const defaultCredentials = getDefaultAuthCredentials()
 
-  const syncFromStorage = () => {
-    authUsername.value = getAuthSession()?.username ?? ''
+  const applySession = (session: ReturnType<typeof getAuthSession>) => {
+    authUsername.value = session?.username ?? ''
+    authRole.value = session?.role ?? 'user'
+    authDisplayName.value = session?.displayName ?? authUsername.value
   }
 
-  const login = (username: string, password: string) => {
-    if (!validateCredentials(username, password)) return false
+  applySession(getAuthSession())
 
-    const session = {
-      username: username.trim()
+  const isLoggedIn = computed(() => Boolean(authUsername.value))
+  const isAdmin = computed(() => authRole.value === 'admin')
+  const displayName = computed(() => authDisplayName.value || authUsername.value || defaultCredentials.username)
+
+  const syncFromStorage = () => {
+    applySession(getAuthSession())
+  }
+
+  const syncFromServer = async () => {
+    const session = await fetchCurrentAuthSession()
+    if (!session) {
+      clearAuthSession()
+      clearAuthToken()
+      applySession(null)
+      return null
     }
+
     setAuthSession(session)
+    applySession(session)
+    return session
+  }
+
+  const login = async (username: string, password: string) => {
+    const result = await loginByApi(username, password)
+    if (!result) return false
+
+    setAuthToken(result.token)
+    const session = result.session
+    setAuthSession(session)
+    setLastAuthAccount(session.username)
     authUsername.value = session.username
+    authRole.value = session.role
+    authDisplayName.value = session.displayName ?? session.username
     return true
   }
 
   const logout = () => {
     clearAuthSession()
+    clearAuthToken()
     authUsername.value = ''
+    authRole.value = 'user'
+    authDisplayName.value = ''
   }
 
   return {
     authUsername,
+    authRole,
     isLoggedIn,
+    isAdmin,
     displayName,
-    defaultUsername: DEFAULT_AUTH_CREDENTIALS.username,
-    defaultPassword: DEFAULT_AUTH_CREDENTIALS.password,
+    defaultUsername: defaultCredentials.username,
+    defaultPassword: defaultCredentials.password,
+    demoAccounts: DEMO_AUTH_ACCOUNTS,
     syncFromStorage,
+    syncFromServer,
     login,
     logout
   }

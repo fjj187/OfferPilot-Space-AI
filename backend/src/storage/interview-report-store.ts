@@ -82,6 +82,10 @@ export const getStoredInterviewReportBySessionId = (sessionId: string) => {
   return reportStore.get(sessionId) || null
 }
 
+export const getStoredInterviewReportsByOwner = (owner: string) => {
+  return getStoredInterviewReports().filter(report => report.owner === owner)
+}
+
 export const upsertStoredInterviewReport = (report: StoredInterviewReportSummary) => {
   const existing = reportStore.get(report.sessionId)
   reportStore.set(report.sessionId, {

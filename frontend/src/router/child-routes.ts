@@ -17,6 +17,59 @@ const childrenRoutes: Array<RouteRecordRaw> = [
     component: () => import('@/views/login.vue')
   },
   {
+    path: '/admin/login',
+    name: 'AdminLogin',
+    meta: {
+      title: '后台登录'
+    },
+    component: () => import('@/views/admin/login.vue')
+  },
+  {
+    path: '/admin',
+    component: () => import('@/views/admin/layout.vue'),
+    name: 'AdminRoot',
+    meta: {
+      requiresAuth: true,
+      requiredRole: 'admin',
+      title: '后台管理'
+    },
+    redirect: {
+      name: 'AdminDashboard'
+    },
+    children: [
+      {
+        path: 'dashboard',
+        name: 'AdminDashboard',
+        meta: {
+          requiresAuth: true,
+          requiredRole: 'admin',
+          title: '数据看板'
+        },
+        component: () => import('@/views/admin/dashboard.vue')
+      },
+      {
+        path: 'sessions',
+        name: 'AdminSessions',
+        meta: {
+          requiresAuth: true,
+          requiredRole: 'admin',
+          title: '会话管理'
+        },
+        component: () => import('@/views/admin/sessions.vue')
+      },
+      {
+        path: 'reports',
+        name: 'AdminReports',
+        meta: {
+          requiresAuth: true,
+          requiredRole: 'admin',
+          title: '报告管理'
+        },
+        component: () => import('@/views/admin/reports.vue')
+      }
+    ]
+  },
+  {
     path: '/workspace',
     component: WorkbenchLayout,
     name: 'WorkbenchRoot',

@@ -1,7 +1,11 @@
 import type { Request, Response } from 'express'
 import { InterviewService } from '../services/interview-service.js'
 import { createInterviewProvider } from '../services/interview-provider-factory.js'
-import { getStoredInterviewSession, getStoredInterviewSessions } from '../storage/interview-session-store.js'
+import {
+  getStoredInterviewSession,
+  getStoredInterviewSessions,
+  getStoredInterviewSessionsByOwner
+} from '../storage/interview-session-store.js'
 import type {
   InterviewApiError,
   InterviewSessionDetail,
@@ -45,6 +49,27 @@ const buildSessionDetail = (session: NonNullable<ReturnType<typeof getStoredInte
   messages: session.messages
 })
 
+const resolveScopedSessionList = (request: Request) => {
+  if (request.authUser?.role === 'admin') {
+    return getStoredInterviewSessions()
+  }
+
+  if (request.authUser?.role === 'user') {
+    return getStoredInterviewSessionsByOwner(request.authUser.username)
+  }
+
+  return getStoredInterviewSessions().filter(session => !session.owner)
+}
+
+const canAccessSession = (
+  request: Request,
+  session: NonNullable<ReturnType<typeof getStoredInterviewSession>>
+) => {
+  if (!request.authUser) return !session.owner
+  if (request.authUser.role === 'admin') return true
+  return session.owner === request.authUser.username
+}
+
 export const streamInterviewController = async (request: Request, response: Response) => {
   const payload = request.body as Partial<InterviewStreamRequest>
   const validationError = validateInterviewRequest(payload)
@@ -69,7 +94,8 @@ export const streamInterviewController = async (request: Request, response: Resp
 
   try {
     for await (const event of interviewService.streamInterview(payload as InterviewStreamRequest, {
-      signal: streamAbortController.signal
+      signal: streamAbortController.signal,
+      owner: request.authUser?.username
     })) {
       if (clientClosedEarly || response.writableEnded) {
         break
@@ -116,9 +142,9 @@ export const streamInterviewController = async (request: Request, response: Resp
   }
 }
 
-export const listInterviewSessionsController = (_request: Request, response: Response) => {
+export const listInterviewSessionsController = (request: Request, response: Response) => {
   response.json({
-    sessions: getStoredInterviewSessions().map(buildSessionListItem)
+    sessions: resolveScopedSessionList(request).map(buildSessionListItem)
   })
 }
 
@@ -134,6 +160,14 @@ export const getInterviewSessionDetailController = (request: Request, response: 
   const session = getStoredInterviewSession(sessionId, threadId)
 
   if (!session) {
+    response.status(404).json({
+      code: 'SESSION_NOT_FOUND',
+      message: `No interview session found for sessionId=${ sessionId } and threadId=${ threadId }.`
+    })
+    return
+  }
+
+  if (!canAccessSession(request, session)) {
     response.status(404).json({
       code: 'SESSION_NOT_FOUND',
       message: `No interview session found for sessionId=${ sessionId } and threadId=${ threadId }.`

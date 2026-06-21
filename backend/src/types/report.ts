@@ -7,6 +7,7 @@ export interface StoredInterviewReportSummary {
   /** Stable report id, e.g. report-{sessionId} */
   id: string
   sessionId: string
+  owner?: string
   /**
    * Optional primary thread for this round.
    * When absent, consumers treat the report as round-level (whole session).

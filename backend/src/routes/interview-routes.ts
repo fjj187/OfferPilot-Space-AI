@@ -13,14 +13,15 @@ import {
   listInterviewReportsController
 } from '../controllers/report-controller.js'
 import { generatePracticePoolController } from '../controllers/practice-pool-controller.js'
+import { attachOptionalAuth } from '../middlewares/auth-middleware.js'
 
 export const interviewRouter = Router()
 
 interviewRouter.post('/history/clear', clearInterviewHistoryController)
-interviewRouter.get('/sessions', listInterviewSessionsController)
-interviewRouter.get('/sessions/:sessionId/:threadId', getInterviewSessionDetailController)
-interviewRouter.post('/stream', streamInterviewController)
-interviewRouter.get('/reports', listInterviewReportsController)
-interviewRouter.get('/reports/:sessionId', getInterviewReportBySessionIdController)
-interviewRouter.post('/reports/generate', generateInterviewReportController)
+interviewRouter.get('/sessions', attachOptionalAuth, listInterviewSessionsController)
+interviewRouter.get('/sessions/:sessionId/:threadId', attachOptionalAuth, getInterviewSessionDetailController)
+interviewRouter.post('/stream', attachOptionalAuth, streamInterviewController)
+interviewRouter.get('/reports', attachOptionalAuth, listInterviewReportsController)
+interviewRouter.get('/reports/:sessionId', attachOptionalAuth, getInterviewReportBySessionIdController)
+interviewRouter.post('/reports/generate', attachOptionalAuth, generateInterviewReportController)
 interviewRouter.post('/practice-pool/generate', generatePracticePoolController)

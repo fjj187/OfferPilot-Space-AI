@@ -7,9 +7,13 @@ export class InterviewService {
 
   async *streamInterview(
     request: InterviewStreamRequest,
-    options?: InterviewProviderStreamOptions
+    options?: InterviewProviderStreamOptions & {
+      owner?: string
+    }
   ): AsyncGenerator<InterviewProviderEvent, void, undefined> {
-    recordInterviewUserMessage(request)
+    recordInterviewUserMessage(request, {
+      owner: options?.owner
+    })
 
     let assistantContent = ''
 

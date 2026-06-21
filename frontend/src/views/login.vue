@@ -54,6 +54,12 @@ const handleLoginSuccess = () => {
   navigateAfterLogin()
 }
 
+const goAdminLogin = () => {
+  void router.push({
+    name: 'AdminLogin'
+  })
+}
+
 watch(isLoggedIn, (loggedIn) => {
   if (loggedIn) {
     navigateAfterLogin()
@@ -82,6 +88,14 @@ onMounted(() => {
       class="login-gate-layer"
       @success="handleLoginSuccess"
     />
+
+    <button
+      class="admin-entry-button"
+      type="button"
+      @click="goAdminLogin"
+    >
+      进入后台管理
+    </button>
   </div>
 </template>
 
@@ -108,5 +122,20 @@ onMounted(() => {
   position: fixed;
   inset: 0;
   z-index: 1;
+}
+.admin-entry-button {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 4;
+  height: 42px;
+  padding: 0 16px;
+  border: 1px solid rgb(118 247 234 / 0.22);
+  border-radius: 999px;
+  background: rgb(8 18 34 / 0.72);
+  color: rgb(232 244 255 / 0.9);
+  cursor: pointer;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.24);
 }
 </style>

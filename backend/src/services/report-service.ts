@@ -2,6 +2,7 @@ import { getStoredInterviewSessionsBySessionId } from '../storage/interview-sess
 import {
   getStoredInterviewReportBySessionId,
   getStoredInterviewReports,
+  getStoredInterviewReportsByOwner,
   upsertStoredInterviewReport
 } from '../storage/interview-report-store.js'
 import type {
@@ -93,12 +94,19 @@ const buildReportListItem = (report: StoredInterviewReportSummary): InterviewRep
 })
 
 export class ReportService {
-  listReports(): InterviewReportListItem[] {
-    return getStoredInterviewReports().map(buildReportListItem)
+  listReports(owner?: string): InterviewReportListItem[] {
+    const reports = owner
+      ? getStoredInterviewReportsByOwner(owner)
+      : getStoredInterviewReports().filter(report => !report.owner)
+    return reports.map(buildReportListItem)
   }
 
-  getReportBySessionId(sessionId: string) {
-    return getStoredInterviewReportBySessionId(sessionId)
+  getReportBySessionId(sessionId: string, owner?: string) {
+    const report = getStoredInterviewReportBySessionId(sessionId)
+    if (!report) return null
+    if (owner && report.owner !== owner) return null
+    if (!owner && report.owner) return null
+    return report
   }
 
   generateReport(payload: GenerateInterviewReportRequest): GenerateInterviewReportResponse {
@@ -178,6 +186,7 @@ export class ReportService {
     const report: StoredInterviewReportSummary = {
       id: `report-${ sessionId }`,
       sessionId,
+      owner: sessions[sessions.length - 1]?.owner || sessions[0]?.owner,
       threadId: sessions[sessions.length - 1]?.threadId,
       topic,
       source,

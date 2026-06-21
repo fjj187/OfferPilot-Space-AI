@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express'
 import { ReportService } from '../services/report-service.js'
+import { getStoredInterviewSessionsBySessionId } from '../storage/interview-session-store.js'
 import type { InterviewApiError } from '../types/interview.js'
 import type { GenerateInterviewReportRequest } from '../types/report.js'
 
@@ -10,9 +11,13 @@ const createValidationError = (message: string): InterviewApiError => ({
   message
 })
 
-export const listInterviewReportsController = (_request: Request, response: Response) => {
+const resolveReportOwnerScope = (request: Request) => (
+  request.authUser?.role === 'user' ? request.authUser.username : undefined
+)
+
+export const listInterviewReportsController = (request: Request, response: Response) => {
   response.json({
-    reports: reportService.listReports()
+    reports: reportService.listReports(resolveReportOwnerScope(request))
   })
 }
 
@@ -24,7 +29,7 @@ export const getInterviewReportBySessionIdController = (request: Request, respon
     return
   }
 
-  const report = reportService.getReportBySessionId(sessionId)
+  const report = reportService.getReportBySessionId(sessionId, resolveReportOwnerScope(request))
 
   if (!report) {
     response.status(404).json({
@@ -46,6 +51,38 @@ export const generateInterviewReportController = (request: Request, response: Re
   if (!sessionId) {
     response.status(400).json(createValidationError('sessionId is required.'))
     return
+  }
+
+  const sessions = getStoredInterviewSessionsBySessionId(sessionId)
+  const scopedOwner = resolveReportOwnerScope(request)
+  const hasOwnedSession = sessions.some(session => Boolean(session.owner))
+  const isAdmin = request.authUser?.role === 'admin'
+
+  if (!sessions.length) {
+    response.status(404).json({
+      code: 'SESSION_NOT_FOUND',
+      message: `No interview session found for sessionId=${ sessionId }.`
+    })
+    return
+  }
+
+  if (!isAdmin) {
+    if (scopedOwner) {
+      const hasAccess = sessions.some(session => session.owner === scopedOwner)
+      if (!hasAccess) {
+        response.status(404).json({
+          code: 'SESSION_NOT_FOUND',
+          message: `No interview session found for sessionId=${ sessionId }.`
+        })
+        return
+      }
+    } else if (hasOwnedSession) {
+      response.status(404).json({
+        code: 'SESSION_NOT_FOUND',
+        message: `No interview session found for sessionId=${ sessionId }.`
+      })
+      return
+    }
   }
 
   try {
