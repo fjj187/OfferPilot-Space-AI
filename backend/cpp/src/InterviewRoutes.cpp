@@ -1,25 +1,35 @@
-#include "../include/InterviewRoutes.hpp"
+#include "InterviewRoutes.hpp"
 
-InterviewRoutes::InterviewRoutes(HttpServer& httpServer)
-    : m_httpServer(httpServer)//初始化HTTP服务器实例
-{
-}
-InterviewRoutes::~InterviewRoutes()
-{
-}
+InterviewRoutes::InterviewRoutes(HttpServer& httpServer, InterviewController& controller)
+    : m_httpServer(httpServer), m_controller(controller) {}
 
-void InterviewRoutes::registerRoutes()
-{
-    m_httpServer.post("/api/interview/stream", [](const httplib::Request& req, httplib::Response& res)
-    {
-        
-    });
-    m_httpServer.post("/api/interview/reports/generate", [](const httplib::Request& req, httplib::Response& res)
-    {
-        
-    });
-    m_httpServer.get("api/interview/stream", [](const httplib::Request& req, httplib::Response& res)
-    {
-        
-    });
+void InterviewRoutes::registerRoutes() {
+    m_httpServer.post("/api/interview/stream",
+        [this](const httplib::Request& req, httplib::Response& res) {
+            m_controller.streamInterview(req, res);
+        });
+
+    m_httpServer.post("/api/interview/reports/generate",
+        [this](const httplib::Request& req, httplib::Response& res) {
+            m_controller.generateReport(req, res);
+        });
+
+    m_httpServer.get("/api/interview/stream",
+        [this](const httplib::Request& req, httplib::Response& res) {
+            m_controller.streamInterview(req, res);
+        });
+    m_httpServer.get("/api/interview/sessions",
+        [this](const httplib::Request& req, httplib::Response& res) {
+            m_controller.listSessions(req, res);
+        });
+
+    m_httpServer.get("/api/interview/sessions/:sessionId/:threadId",
+        [this](const httplib::Request& req, httplib::Response& res) {
+            m_controller.getSession(req, res);
+        });
+
+    m_httpServer.post("/api/interview/history/clear",
+        [this](const httplib::Request& req, httplib::Response& res) {
+            m_controller.clearHistory(req, res);
+        });
 }

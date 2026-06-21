@@ -1,4 +1,4 @@
-#include "../include/repositories/JsonSessionRepository.hpp"
+#include "repositories/JsonSessionRepository.hpp"
 
 NLOHMANN_JSON_SERIALIZE_ENUM(InterviewMessageRole, {
     {InterviewMessageRole::User, "user"},
@@ -45,11 +45,22 @@ inline void from_json(const nlohmann::json& j, InterviewSessionDetail& s) {
     j.at("topic").get_to(s.topic);
     j.at("questionTitle").get_to(s.questionTitle);
     // feedbackStyle 是 optional，nlohmann 原生支持
-    if (j.contains("feedbackStyle")) j.at("feedbackStyle").get_to(s.feedbackStyle);
+    if (j.contains("feedbackStyle") && j["feedbackStyle"].is_string()) {
+        std::string styleStr = j["feedbackStyle"].get<std::string>();
+        if (styleStr == "followup") {
+            s.feedbackStyle = InterviewFeedbackStyle::Followup;
+        } else if (styleStr == "corrective") {
+            s.feedbackStyle = InterviewFeedbackStyle::Corrective;
+        } else if (styleStr == "guided") {
+            s.feedbackStyle = InterviewFeedbackStyle::Guided;
+        }
+    }
     j.at("createdAt").get_to(s.createdAt);
     j.at("updatedAt").get_to(s.updatedAt);
     j.at("messages").get_to(s.messages);
 }
+
+
 
 JsonSessionRepository::JsonSessionRepository(const std::string& filePath)
     : m_filePath(filePath) 

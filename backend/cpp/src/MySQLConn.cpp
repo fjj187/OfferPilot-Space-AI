@@ -1,4 +1,4 @@
-#include "../include/MySQLConn.hpp"
+#include "MySQLConn.hpp"
 
 using namespace std;
 using namespace chrono;

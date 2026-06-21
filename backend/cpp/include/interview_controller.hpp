@@ -1,15 +1,24 @@
 #pragma once
 #include <string>
-#include "../third_part/httplib.h"
-#include "../third_part/json.hpp"
-#include "InterviewService.hpp"
+
+#include "httplib.h"
+#include "json.hpp"
+#include "services/InterviewService.hpp"
 
 class InterviewController {
 public:
-    static void streamInterview(const httplib::Request& req, httplib::Response& res);//流式面试对话
-    static void generateReport(const httplib::Request& req, httplib::Response& res);//生成报告
-    static void getReport(const httplib::Request& req, httplib::Response& res);//获取报告
-    static void listReports(const httplib::Request& req, httplib::Response& res);//列出所有报告
-    static void createSession(const httplib::Request& req, httplib::Response& res);//创建会话
-    static void sendMessage(const httplib::Request& req, httplib::Response& res);//发送消息
+    explicit InterviewController(InterviewService& service) : m_service(service) {};
+    void streamInterview(const httplib::Request& req, httplib::Response& res);
+    void generateReport(const httplib::Request& req, httplib::Response& res);
+    void getReport(const httplib::Request& req, httplib::Response& res);
+    void listReports(const httplib::Request& req, httplib::Response& res);
+    void createSession(const httplib::Request& req, httplib::Response& res);
+    void sendMessage(const httplib::Request& req, httplib::Response& res);
+    void listSessions(const httplib::Request& req, httplib::Response& res);
+    void getSession(const httplib::Request& req, httplib::Response& res);
+    void clearHistory(const httplib::Request& req, httplib::Response& res);
+private:
+    InterviewStreamRequest parseStreamRequest(const nlohmann::json& body) const;
+    static std::string serializeSseEvent(const std::string &eventName,const std::string &data);
+    InterviewService& m_service;
 };

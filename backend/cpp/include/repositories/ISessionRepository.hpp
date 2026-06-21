@@ -1,8 +1,10 @@
 #pragma once
+
+#include <optional>
 #include <string>
 #include <vector>
-#include <optional>
-#include "types/InterviewTypes.hpp"      // InterviewStreamRequest, InterviewSessionSummary, InterviewSessionDetail
+
+#include "types/InterviewTypes.hpp"
 
 
 class ISessionRepository {
@@ -10,10 +12,10 @@ public:
     virtual ~ISessionRepository() = default;
 
     // 记录一条用户消息
-    virtual void recordUserMessage(const InterviewStreamRequest& request) = 0;
+    virtual bool recordUserMessage(const InterviewStreamRequest& request) = 0;
 
     // 记录一条 assistant 消息（传入已聚合的完整内容）
-    virtual void recordAssistantMessage(const InterviewStreamRequest& request,
+    virtual bool recordAssistantMessage(const InterviewStreamRequest& request,
                                         const std::string& assistantContent) = 0;
 
     // 返回所有会话摘要列表

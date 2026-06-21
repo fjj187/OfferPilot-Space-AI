@@ -1,4 +1,4 @@
-#include "../include/providers/MockInterviewProviders.hpp"
+#include "providers/MockInterviewProviders.hpp"
 
 MockInterviewProvider::MockInterviewProvider()
     : m_chunkSize(15),

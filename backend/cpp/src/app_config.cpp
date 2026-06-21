@@ -1,8 +1,8 @@
-#include "../include/app_config.hpp"
+#include "app_config.hpp"
 
 AppConfig::AppConfig()
 {
-    httpPort=9090;//HTTP服务监听端口
+    httpPort=3030;//HTTP服务监听端口
     dbHost="127.0.0.1";//MySQL服务器IP
     dbPort=3306;//MySQL端口
     dbName="";//MySQL数据库名称

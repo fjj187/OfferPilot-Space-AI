@@ -1,8 +1,8 @@
 #pragma once
-#include <iostream>
 #include <string>
 #include <vector>
-#include "../third_part/json.hpp"
+
+#include "json.hpp"
 
 struct PracticePlan {
     std::string weakness_tag;   // 弱项标签

@@ -1,4 +1,4 @@
-#include "../include/ReportRepository.hpp"
+#include "ReportRepository.hpp"
 
 ReportRepository::ReportRepository(MySQLConn* conn)
 {

@@ -1,4 +1,4 @@
-#include "../include/http_server.hpp"
+#include "http_server.hpp"
 
 HttpServer::HttpServer(int port)
     : m_server(),  //初始化HTTP服务器实例
@@ -50,14 +50,7 @@ int HttpServer::getPort() const
 
 void HttpServer::setupMiddleware()
 {
-    // 处理 OPTIONS 请求, 允许所有请求方法和头字段
-       m_server.Options("*",[](const httplib::Request& req, httplib::Response& res)
-    {
-        res.set_header("Access-Control-Allow-Origin", "*");
-        res.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        res.set_header("Access-Control-Allow-Headers", "Content-Type");
-        res.set_content("", "text/plain");
-    });
+    
     // 所有响应添加 CORS 头,保证了所有实际请求的响应也带上 Access-Control-Allow-Origin
     m_server.set_pre_routing_handler([](const httplib::Request&, httplib::Response& res) {
         res.set_header("Access-Control-Allow-Origin", "*");

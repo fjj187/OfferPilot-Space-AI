@@ -1,49 +1,34 @@
-#include "../include/MySQLConn.hpp"
-#include "../include/ReportRepository.hpp"
-#include "../include/ReportCommandHandler.hpp"
 #include <windows.h>
-#include <iostream>
-#include <string>
-#include "../third_part/json.hpp"
-using namespace std;
 
+#include "app_config.hpp"
+#include "http_server.hpp"
+#include "providers/MockInterviewProviders.hpp"
+#include "repositories/JsonSessionRepository.hpp"
+#include "services/InterviewService.hpp"
+#include "interview_controller.hpp"
+#include "InterviewRoutes.hpp"
 
-int main() {
-    SetConsoleOutputCP(65001);          // 设置控制台输出为 UTF-8
-    SetConsoleCP(65001);                // 设置控制台输入为 UTF-8
-    
-    MySQLConn conn;
-    bool success = conn.connect("root", "123456", "yuzhouyemian", "127.0.0.1", 3306);
-    if (success) {
-        cout << "数据库连接成功！" << endl;
-    } else {
-        cout << "{\"success\":false,\"error\":\"Database connection failed\"}" << endl;
+int main(){
+    SetConsoleOutputCP(65001);
+    SetConsoleCP(65001);
+    AppConfig& config = AppConfig::loadFromEnv();
+    if (!config.isConfigValid()) {
         return 1;
     }
-    ReportRepository repository(&conn);
-    ReportCommandHandler handler(repository);
-    std::string line;
-    while (getline(cin, line)) {
-        try {
-        nlohmann::json j = nlohmann::json::parse(line);
-        std::string action = j["action"].get<std::string>();
-        std::string jsonPayload = j["payload"].dump();
-        if (action == "insert") {
-            cout << handler.handleInsert(jsonPayload) << endl;
-        } else if (action == "update") {
-            cout << handler.handleUpdate(jsonPayload) << endl;
-        } else if (action == "get") {
-            cout << handler.handleGet(jsonPayload) << endl;
-        } else if (action == "list") {
-            cout << handler.handleList(jsonPayload) << endl;
-        } else if (action == "delete") {
-            cout << handler.handleDelete(jsonPayload) << endl;
-        } else {
-            cout << handler.errorResponse("Invalid action") << endl;
-        }
-    } catch (const std::exception& e) {
-        cout << handler.errorResponse(string("Parse error: ") + e.what()) << endl;
-    }
-    }
+    HttpServer httpServer(config.httpPort);
+    httpServer.setupMiddleware();
+    httpServer.setupErrorHandler();
+    httpServer.get("/api/health", [](const httplib::Request&, httplib::Response& res) {
+        res.set_content(R"({"success":true,"message":"ok"})", "application/json");
+    });
+    MockInterviewProvider provider;
+    JsonSessionRepository sessionRepo("data/interview_sessions.json");
+    InterviewService service(provider, sessionRepo);
+    InterviewController controller(service);
+    InterviewRoutes routes(httpServer, controller);
+
+    routes.registerRoutes();
+    httpServer.start();
+
     return 0;
 }
