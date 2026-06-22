@@ -15,11 +15,26 @@ declare module 'vue' {
 }
 
 declare module 'axios' {
+  export interface RequestConcurrencyConfig {
+    enabled?: boolean
+    maxConcurrentRequests?: number
+    queueTimeoutMs?: number
+  }
+
   export interface RequestRetryConfig {
+    enabled?: boolean
     maxRetries: number
     retryDelayMs?: number
     backoffMultiplier?: number
     retryableStatusCodes?: number[]
+  }
+
+  export interface RequestCircuitBreakerConfig {
+    enabled?: boolean
+    failureThreshold?: number
+    cooldownMs?: number
+    halfOpenMaxRequests?: number
+    key?: string
   }
 
   /**
@@ -31,9 +46,13 @@ declare module 'axios' {
      * 是否触发浏览器下载弹框，默认会触发（仅限 blob type）
      */
     autoDownLoadFile?: boolean
+    concurrency?: RequestConcurrencyConfig
+    circuitBreaker?: RequestCircuitBreakerConfig
     retry?: RequestRetryConfig
     requestName?: string
     __retryCount?: number
+    __releaseConcurrency?: (() => void) | null
+    __circuitBreakerKey?: string
   }
 }
 
@@ -73,7 +92,7 @@ declare global {
     data: any
     msg: string
     aborted?: boolean
-    errorType?: 'http' | 'network' | 'timeout' | 'aborted' | 'unknown'
+    errorType?: 'http' | 'network' | 'timeout' | 'aborted' | 'queue_timeout' | 'circuit_open' | 'unknown'
     retryable?: boolean
   }
 

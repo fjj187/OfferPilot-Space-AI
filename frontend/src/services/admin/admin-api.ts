@@ -72,11 +72,6 @@ const unwrapResponse = <T>(response: IRequestData) => {
   return response.data as T
 }
 
-const ADMIN_API_RETRY_CONFIG: AxiosRequestConfig['retry'] = {
-  maxRetries: 1,
-  retryDelayMs: 500
-}
-
 const resolveAdminApiBase = () => {
   const configuredBase = import.meta.env.VITE_ADMIN_API_BASE_URL?.trim() || ''
   if (configuredBase) return configuredBase.replace(/\/$/, '')
@@ -96,7 +91,6 @@ const requestAdminApi = async <T>(path: string, config?: AxiosRequestConfig) => 
 
   const response = await request.get(normalizeApiPath(apiBase, path), undefined, {
     ...config,
-    retry: config?.retry ?? ADMIN_API_RETRY_CONFIG,
     requestName: config?.requestName || path
   })
 

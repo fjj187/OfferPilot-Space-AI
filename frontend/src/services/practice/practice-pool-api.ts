@@ -23,11 +23,6 @@ const resolveInterviewApiBase = () => {
 }
 
 const PRACTICE_POOL_REQUEST_TIMEOUT_MS = 120_000
-const PRACTICE_POOL_RETRY_CONFIG: AxiosRequestConfig['retry'] = {
-  maxRetries: 1,
-  retryDelayMs: 900
-}
-
 const normalizeApiPath = (apiBase: string, path: string) => `${ apiBase }${ path }`
 
 export const isPracticePoolApiAvailable = () => isInterviewApiAvailable()
@@ -43,7 +38,6 @@ export const generatePracticePool = async (payload: GeneratePracticePoolPayload)
     payload,
     {
       timeout: PRACTICE_POOL_REQUEST_TIMEOUT_MS,
-      retry: PRACTICE_POOL_RETRY_CONFIG,
       requestName: 'generatePracticePool'
     }
   )

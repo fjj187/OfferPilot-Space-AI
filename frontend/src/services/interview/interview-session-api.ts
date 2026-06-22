@@ -32,10 +32,6 @@ const resolveInterviewApiBase = () => {
   return ''
 }
 
-const INTERVIEW_API_RETRY_CONFIG: AxiosRequestConfig['retry'] = {
-  maxRetries: 2,
-  retryDelayMs: 600
-}
 const INTERVIEW_API_NO_RETRY_CONFIG: AxiosRequestConfig['retry'] = {
   maxRetries: 0
 }
@@ -54,7 +50,6 @@ const requestInterviewApi = async <T>(
     undefined,
     {
       ...config,
-      retry: config?.retry ?? INTERVIEW_API_RETRY_CONFIG,
       requestName: config?.requestName || path
     }
   )
@@ -77,7 +72,7 @@ const postInterviewApi = async <T>(
     data,
     {
       ...config,
-      retry: config?.retry ?? INTERVIEW_API_RETRY_CONFIG,
+      retry: config?.retry,
       requestName: config?.requestName || path
     }
   )
