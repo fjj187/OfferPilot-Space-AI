@@ -54,6 +54,9 @@ defineProps<{
   mockScrollVersion?: string
   mockStreamError?: string
   mockStreamConnectionHint?: string
+  mockStreamRecoveryHint?: string
+  mockCanRetryStream: boolean
+  mockRetryActionLabel: string
   mockTotalCount: number
   mockGeneratedThreadCount: number
   mockSceneResetVersion: number
@@ -151,6 +154,7 @@ const emit = defineEmits<{
   finishMockSession: []
   nextMockQuestion: []
   stopMockStream: []
+  retryMockStream: []
   submitMockAnswer: []
   updateMockFeedbackStyle: [value: PersistedInterviewFeedbackStyle]
   updateActiveFilter: [value: string]
@@ -273,6 +277,9 @@ onBeforeUnmount(() => {
                 :streaming="isMockStreaming"
                 :stream-error="mockStreamError"
                 :stream-connection-hint="mockStreamConnectionHint"
+                :stream-recovery-hint="mockStreamRecoveryHint"
+                :can-retry-stream="mockCanRetryStream"
+                :retry-action-label="mockRetryActionLabel"
                 :session-status-text="mockSessionStatusText"
                 :total-count="mockTotalCount"
                 :generated-thread-count="mockGeneratedThreadCount"
@@ -286,6 +293,7 @@ onBeforeUnmount(() => {
                 @open-history="$emit('openHistory')"
                 @open-practice="$emit('openMockPractice')"
                 @stop="$emit('stopMockStream')"
+                @retry="$emit('retryMockStream')"
                 @update:feedback-style="$emit('updateMockFeedbackStyle', $event)"
                 @select-question-thread="$emit('selectMockQuestionThread', $event)"
               />

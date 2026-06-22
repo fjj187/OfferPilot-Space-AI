@@ -657,7 +657,9 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
   })
 
   const initializeMockConversation = () => {
-    options.clearMessages()
+    if (currentSessionId.value) {
+      options.setActiveSessionId(currentSessionId.value)
+    }
   }
 
   const restoreCurrentSessionMessages = () => {

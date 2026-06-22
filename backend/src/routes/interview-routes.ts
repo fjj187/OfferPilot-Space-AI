@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import {
+  getInterviewStreamCheckpointController,
   getInterviewSessionDetailController,
   listInterviewSessionsController,
   streamInterviewController
@@ -20,6 +21,7 @@ export const interviewRouter = Router()
 interviewRouter.post('/history/clear', clearInterviewHistoryController)
 interviewRouter.get('/sessions', attachOptionalAuth, listInterviewSessionsController)
 interviewRouter.get('/sessions/:sessionId/:threadId', attachOptionalAuth, getInterviewSessionDetailController)
+interviewRouter.get('/sessions/:sessionId/:threadId/checkpoint', attachOptionalAuth, getInterviewStreamCheckpointController)
 interviewRouter.post('/stream', attachOptionalAuth, streamInterviewController)
 interviewRouter.get('/reports', attachOptionalAuth, listInterviewReportsController)
 interviewRouter.get('/reports/:sessionId', attachOptionalAuth, getInterviewReportBySessionIdController)

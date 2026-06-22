@@ -4,6 +4,7 @@ export interface InterviewStreamRequest {
   sessionId: string
   messageId: string
   threadId: string
+  idempotentKey?: string
   topic: string
   topicLabel: string
   prompt: string
@@ -38,6 +39,12 @@ export interface InterviewStreamDoneEvent {
   type: 'done'
 }
 
+export interface InterviewStreamHeartbeatEvent {
+  type: 'heartbeat'
+  checkpointIdempotentKey: string
+  checkpointSequence: number
+}
+
 export interface InterviewStreamErrorEvent {
   type: 'error'
   code: string
@@ -47,6 +54,7 @@ export interface InterviewStreamErrorEvent {
 export type InterviewProviderEvent =
   | InterviewStreamChunkEvent
   | InterviewStreamDoneEvent
+  | InterviewStreamHeartbeatEvent
   | InterviewStreamErrorEvent
 
 export interface InterviewApiError {
@@ -72,4 +80,19 @@ export interface InterviewSessionDetail extends InterviewSessionListItem {
     content: string
     createdAt: string
   }>
+}
+
+export interface InterviewStreamCheckpointSnapshot {
+  sessionId: string
+  threadId: string
+  messageId: string
+  idempotentKey: string
+  status: 'streaming' | 'done' | 'error' | 'aborted'
+  content: string
+  lastSequence: number
+  createdAt: string
+  updatedAt: string
+  completedAt?: string
+  errorCode?: string
+  errorMessage?: string
 }

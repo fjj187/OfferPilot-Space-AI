@@ -74,12 +74,16 @@ const {
   streamMode: mockStreamMode,
   streamModeLabel: mockStreamModeLabel,
   streamConnectionHint: mockStreamConnectionHint,
+  streamRecoveryHint: mockStreamRecoveryHint,
+  canRetryStream: canRetryMockStream,
+  retryActionLabel: retryMockActionLabel,
   scrollVersion: mockScrollVersion,
   setActiveSessionId,
   setActiveThreadId,
   appendUserMessage,
   appendSystemMessage,
   startStream: startMockStream,
+  retryStream: retryMockStream,
   stopStream: stopMockStream,
   clearMessages: clearMockMessages
 } = useInterviewStream()
@@ -1860,6 +1864,9 @@ onBeforeUnmount(() => {
           :mock-scroll-version="mockScrollVersion"
           :mock-stream-error="mockStreamError"
           :mock-stream-connection-hint="mockStreamConnectionHint"
+          :mock-stream-recovery-hint="mockStreamRecoveryHint"
+          :mock-can-retry-stream="canRetryMockStream"
+          :mock-retry-action-label="retryMockActionLabel"
           :mock-stream-mode="mockStreamMode"
           :mock-stream-mode-label="mockStreamModeLabel"
           :overview-primary-action-label="overviewPrimaryActionLabel"
@@ -1935,6 +1942,7 @@ onBeforeUnmount(() => {
           @start-practice="handlePracticeStart"
           @next-mock-question="rotateMockFollowUp"
           @stop-mock-stream="handleMockStop"
+          @retry-mock-stream="retryMockStream"
           @submit-mock-answer="submitMockAnswer"
           @finish-mock-session="handleMockFinish"
           @update-mock-feedback-style="handleMockFeedbackStyleChange"

@@ -82,7 +82,7 @@ export function createRouterGuards(router: Router) {
       }
     }
 
-    if (guestOnly && authenticated) {
+    if (guestOnly && authenticated && to.path !== '/') {
       const redirect = resolveSafeRedirect(to.query.redirect)
       return redirect
         ? {

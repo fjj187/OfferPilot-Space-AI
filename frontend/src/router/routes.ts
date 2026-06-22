@@ -1,4 +1,4 @@
-import { DEFAULT_APP_ROUTE_NAME } from '@/config/product'
+import { LOGIN_ROUTE_NAME } from '@/config/product'
 import childRoutes from '@/router/child-routes'
 
 const routes: Array<RouteRecordRaw> = [
@@ -6,7 +6,7 @@ const routes: Array<RouteRecordRaw> = [
     path: '/',
     name: 'Root',
     redirect: {
-      name: DEFAULT_APP_ROUTE_NAME
+      name: LOGIN_ROUTE_NAME
     }
   },
   ...childRoutes,

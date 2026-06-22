@@ -44,6 +44,9 @@ const props = defineProps<{
   streaming: boolean
   streamError?: string
   streamConnectionHint?: string
+  streamRecoveryHint?: string
+  canRetryStream: boolean
+  retryActionLabel: string
   sessionStatusText: string
 }>()
 
@@ -59,6 +62,7 @@ const emit = defineEmits<{
   openHistory: []
   openPractice: []
   stop: []
+  retry: []
   selectQuestionThread: [value: string]
 }>()
 
@@ -974,13 +978,29 @@ onBeforeUnmount(() => {
                   v-if="viewState.streamError"
                   class="mock-stream-error"
                 >
-                  {{ viewState.streamError }}
+                  <span>{{ viewState.streamError }}</span>
+                  <button
+                    v-if="props.canRetryStream"
+                    type="button"
+                    class="mock-stream-retry-button"
+                    @click="emit('retry')"
+                  >
+                    {{ props.retryActionLabel }}
+                  </button>
                 </div>
                 <div
-                  v-else-if="viewState.streamConnectionHint"
+                  v-else-if="props.canRetryStream || props.streamRecoveryHint || viewState.streamConnectionHint"
                   class="mock-stream-hint"
                 >
-                  {{ viewState.streamConnectionHint }}
+                  <span>{{ props.streamRecoveryHint || viewState.streamConnectionHint }}</span>
+                  <button
+                    v-if="props.canRetryStream"
+                    type="button"
+                    class="mock-stream-retry-button"
+                    @click="emit('retry')"
+                  >
+                    {{ props.retryActionLabel }}
+                  </button>
                 </div>
               </div>
             </div>
@@ -1138,6 +1158,14 @@ onBeforeUnmount(() => {
             @click="handleFinish"
           >
             结束本轮并查看报告
+          </button>
+          <button
+            v-if="props.canRetryStream && !props.isViewingHistoryPreview && !viewState.isAwaitingSetup"
+            type="button"
+            class="mock-footer-retry-button"
+            @click="emit('retry')"
+          >
+            {{ props.retryActionLabel }}
           </button>
           <button
             type="button"
@@ -1963,6 +1991,10 @@ onBeforeUnmount(() => {
 }
 
 .mock-stream-error {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
   margin-top: 14px;
   padding: 12px 14px;
   border: 1px solid rgb(255 186 186 / 0.2);
@@ -1975,6 +2007,10 @@ onBeforeUnmount(() => {
 }
 
 .mock-stream-hint {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
   margin-top: 14px;
   padding: 12px 14px;
   border: 1px solid rgb(160 188 255 / 0.22);
@@ -1984,6 +2020,29 @@ onBeforeUnmount(() => {
   font-size: 15px;
   font-weight: 400;
   line-height: 1.7;
+}
+
+.mock-stream-retry-button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.08);
+  color: rgb(245 248 255 / 0.96);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.mock-stream-retry-button:hover {
+  border-color: rgb(255 255 255 / 0.28);
+  background: rgb(255 255 255 / 0.14);
+  transform: translateY(-1px);
 }
 
 .mock-thread-history {
@@ -2373,7 +2432,8 @@ onBeforeUnmount(() => {
 }
 
 .mock-secondary-button,
-.mock-finish-button {
+.mock-finish-button,
+.mock-footer-retry-button {
   min-height: 44px;
   padding: 0 18px;
   margin-top: 0;
@@ -2401,8 +2461,16 @@ onBeforeUnmount(() => {
   color: #fff;
 }
 
+.mock-footer-retry-button {
+  border: 1px solid rgb(173 196 255 / 0.34);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgb(93 113 194 / 0.4) 0%, rgb(64 74 156 / 0.32) 100%);
+  color: #fff;
+}
+
 .mock-secondary-button:hover:not(:disabled),
-.mock-finish-button:hover:not(:disabled) {
+.mock-finish-button:hover:not(:disabled),
+.mock-footer-retry-button:hover:not(:disabled) {
   transform: translateY(-1px);
 }
 
@@ -2415,8 +2483,14 @@ onBeforeUnmount(() => {
   border-color: rgb(139 246 220 / 0.45);
 }
 
+.mock-footer-retry-button:hover:not(:disabled) {
+  border-color: rgb(196 211 255 / 0.52);
+  background: linear-gradient(180deg, rgb(107 128 214 / 0.48) 0%, rgb(76 88 177 / 0.4) 100%);
+}
+
 .mock-secondary-button:disabled,
-.mock-finish-button:disabled {
+.mock-finish-button:disabled,
+.mock-footer-retry-button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }

@@ -2,7 +2,6 @@
 import type { CSSProperties } from 'vue'
 import SpaceHeader from '@/components/showcase/mock-interview-space/SpaceHeader.vue'
 import SpaceLoginHero from '@/components/showcase/mock-interview-space/SpaceLoginHero.vue'
-import { useAuth } from '@/composables/useAuth'
 import { DEFAULT_APP_ROUTE_NAME } from '@/config/product'
 import { scenes } from '@/constants/showcase/mockInterviewSpaceScenes'
 import router from '@/router'
@@ -10,7 +9,6 @@ import { resolveSafeRedirect } from '@/utils/auth/resolve-safe-redirect'
 import { useRoute } from 'vue-router'
 
 const route = useRoute()
-const { isLoggedIn } = useAuth()
 const overviewScene = scenes[0]!
 
 /** 与宇宙页登录门控一致的静止顶栏样式 */
@@ -60,17 +58,6 @@ const goAdminLogin = () => {
   })
 }
 
-watch(isLoggedIn, (loggedIn) => {
-  if (loggedIn) {
-    navigateAfterLogin()
-  }
-})
-
-onMounted(() => {
-  if (isLoggedIn.value) {
-    navigateAfterLogin()
-  }
-})
 </script>
 
 <template>

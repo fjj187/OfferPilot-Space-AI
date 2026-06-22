@@ -6,8 +6,14 @@ import {
   getStoredInterviewSessions,
   getStoredInterviewSessionsByOwner
 } from '../storage/interview-session-store.js'
+import {
+  failInterviewStreamCheckpoint,
+  getLatestStoredInterviewStreamCheckpoint,
+  getStoredInterviewStreamCheckpoint
+} from '../storage/interview-stream-checkpoint-store.js'
 import type {
   InterviewApiError,
+  InterviewStreamCheckpointSnapshot,
   InterviewSessionDetail,
   InterviewSessionListItem,
   InterviewStreamRequest
@@ -30,6 +36,27 @@ const validateInterviewRequest = (body: Partial<InterviewStreamRequest>) => {
   if (!body.answer) return createValidationError('answer is required.')
   if (!body.prompt) return createValidationError('prompt is required.')
   return null
+}
+
+const buildCheckpointDetail = (
+  checkpoint: ReturnType<typeof getStoredInterviewStreamCheckpoint>
+): InterviewStreamCheckpointSnapshot | null => {
+  if (!checkpoint) return null
+
+  return {
+    sessionId: checkpoint.sessionId,
+    threadId: checkpoint.threadId,
+    messageId: checkpoint.messageId,
+    idempotentKey: checkpoint.idempotentKey,
+    status: checkpoint.status,
+    content: checkpoint.content,
+    lastSequence: checkpoint.lastSequence,
+    createdAt: checkpoint.createdAt,
+    updatedAt: checkpoint.updatedAt,
+    completedAt: checkpoint.completedAt,
+    errorCode: checkpoint.errorCode,
+    errorMessage: checkpoint.errorMessage
+  }
 }
 
 const buildSessionListItem = (session: ReturnType<typeof getStoredInterviewSessions>[number]): InterviewSessionListItem => ({
@@ -84,6 +111,34 @@ export const streamInterviewController = async (request: Request, response: Resp
   const interviewService = new InterviewService(createInterviewProvider())
   const streamAbortController = new AbortController()
   let clientClosedEarly = false
+  const normalizedPayload = {
+    ...payload,
+    idempotentKey: payload.idempotentKey?.trim() || payload.messageId
+  } as InterviewStreamRequest
+  const checkpointKey = normalizedPayload.idempotentKey || normalizedPayload.messageId
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+
+  const stopHeartbeat = () => {
+    if (!heartbeatTimer) return
+    clearInterval(heartbeatTimer)
+    heartbeatTimer = null
+  }
+
+  const emitCheckpointEvent = () => {
+    const checkpoint = getStoredInterviewStreamCheckpoint(
+      normalizedPayload.sessionId,
+      normalizedPayload.threadId,
+      checkpointKey
+    )
+
+    if (!checkpoint || response.writableEnded) return
+
+    writeSSEEvent(response, 'checkpoint', {
+      idempotentKey: checkpoint.idempotentKey,
+      sequence: checkpoint.lastSequence,
+      status: checkpoint.status
+    })
+  }
 
   response.on('close', () => {
     if (!response.writableEnded) {
@@ -93,7 +148,20 @@ export const streamInterviewController = async (request: Request, response: Resp
   })
 
   try {
-    for await (const event of interviewService.streamInterview(payload as InterviewStreamRequest, {
+    heartbeatTimer = setInterval(() => {
+      if (clientClosedEarly || response.writableEnded) {
+        stopHeartbeat()
+        return
+      }
+
+      writeSSEEvent(response, 'heartbeat', {
+        ts: Date.now(),
+        idempotentKey: checkpointKey
+      })
+      emitCheckpointEvent()
+    }, 5000)
+
+    for await (const event of interviewService.streamInterview(normalizedPayload, {
       signal: streamAbortController.signal,
       owner: request.authUser?.username
     })) {
@@ -113,6 +181,16 @@ export const streamInterviewController = async (request: Request, response: Resp
         break
       }
 
+      if (event.type === 'heartbeat') {
+        writeSSEEvent(response, 'heartbeat', {
+          idempotentKey: event.checkpointIdempotentKey,
+          sequence: event.checkpointSequence,
+          ts: Date.now()
+        })
+        emitCheckpointEvent()
+        continue
+      }
+
       if (event.type === 'error') {
         writeSSEEvent(response, 'error', {
           code: event.code,
@@ -123,6 +201,14 @@ export const streamInterviewController = async (request: Request, response: Resp
     }
   } catch (error) {
     if (streamAbortController.signal.aborted || clientClosedEarly) {
+      failInterviewStreamCheckpoint({
+        sessionId: normalizedPayload.sessionId,
+        threadId: normalizedPayload.threadId,
+        idempotentKey: checkpointKey,
+        code: 'STREAM_ABORTED',
+        message: 'Stream aborted by client.',
+        status: 'aborted'
+      })
       return
     }
 
@@ -130,10 +216,19 @@ export const streamInterviewController = async (request: Request, response: Resp
       code: 'INTERNAL_STREAM_ERROR',
       message: error instanceof Error ? error.message : 'Unknown stream error.'
     }
+    failInterviewStreamCheckpoint({
+      sessionId: normalizedPayload.sessionId,
+      threadId: normalizedPayload.threadId,
+      idempotentKey: checkpointKey,
+      code: normalizedError.code,
+      message: normalizedError.message,
+      status: 'error'
+    })
     writeSSEEvent(response, 'error', {
       ...normalizedError
     })
   } finally {
+    stopHeartbeat()
     streamAbortController.abort()
 
     if (!response.writableEnded) {
@@ -177,5 +272,49 @@ export const getInterviewSessionDetailController = (request: Request, response: 
 
   response.json({
     session: buildSessionDetail(session)
+  })
+}
+
+export const getInterviewStreamCheckpointController = (request: Request, response: Response) => {
+  const sessionId = String(request.params.sessionId || '').trim()
+  const threadId = String(request.params.threadId || '').trim()
+  const idempotentKey = String(request.query.idempotentKey || '').trim()
+
+  if (!sessionId || !threadId) {
+    response.status(400).json(createValidationError('sessionId and threadId are required.'))
+    return
+  }
+
+  const session = getStoredInterviewSession(sessionId, threadId)
+  if (!session) {
+    response.status(404).json({
+      code: 'SESSION_NOT_FOUND',
+      message: `No interview session found for sessionId=${ sessionId } and threadId=${ threadId }.`
+    })
+    return
+  }
+
+  if (!canAccessSession(request, session)) {
+    response.status(404).json({
+      code: 'SESSION_NOT_FOUND',
+      message: `No interview session found for sessionId=${ sessionId } and threadId=${ threadId }.`
+    })
+    return
+  }
+
+  const checkpoint = idempotentKey
+    ? getStoredInterviewStreamCheckpoint(sessionId, threadId, idempotentKey)
+    : getLatestStoredInterviewStreamCheckpoint(sessionId, threadId)
+
+  if (!checkpoint) {
+    response.status(404).json({
+      code: 'CHECKPOINT_NOT_FOUND',
+      message: `No checkpoint found for sessionId=${ sessionId } and threadId=${ threadId }.`
+    })
+    return
+  }
+
+  response.json({
+    checkpoint: buildCheckpointDetail(checkpoint)
   })
 }

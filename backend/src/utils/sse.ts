@@ -10,7 +10,7 @@ export const setupSSEResponse = (response: Response) => {
 
 export const writeSSEEvent = (
   response: Response,
-  eventName: InterviewProviderEvent['type'],
+  eventName: InterviewProviderEvent['type'] | 'checkpoint',
   data: Record<string, unknown> = {}
 ) => {
   response.write(`event: ${ eventName }\n`)
