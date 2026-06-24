@@ -5,6 +5,11 @@ const routes: Array<RouteRecordRaw> = [
   {
     path: '/',
     name: 'Root',
+    meta: {
+      public: true,
+      requiresAuth: false,
+      preserveQuery: true
+    },
     redirect: {
       name: LOGIN_ROUTE_NAME
     }
@@ -13,6 +18,11 @@ const routes: Array<RouteRecordRaw> = [
   {
     path: '/:pathMatch(.*)',
     name: '404',
+    meta: {
+      public: true,
+      requiresAuth: false,
+      preserveQuery: true
+    },
     component: () => import('@/components/404.vue')
   }
 ]

@@ -1,17 +1,14 @@
-const WorkbenchLayout = () => import('@/views/workbench/layout.vue')
-
-/** legacy 工作台路由元信息：保留代码，默认由路由守卫拦截 */
-const legacyWorkbenchMeta = {
-  legacy: true,
-  hidden: true
-} as const
+import type { RouteRecordRaw } from 'vue-router'
 
 const childrenRoutes: Array<RouteRecordRaw> = [
   {
     path: '/login',
     name: 'Login',
     meta: {
+      public: true,
       guestOnly: true,
+      requiresAuth: false,
+      preserveQuery: true,
       title: '登录'
     },
     component: () => import('@/views/login.vue')
@@ -20,6 +17,10 @@ const childrenRoutes: Array<RouteRecordRaw> = [
     path: '/admin/login',
     name: 'AdminLogin',
     meta: {
+      public: true,
+      guestOnly: true,
+      requiresAuth: false,
+      preserveQuery: true,
       title: '后台登录'
     },
     component: () => import('@/views/admin/login.vue')
@@ -29,8 +30,11 @@ const childrenRoutes: Array<RouteRecordRaw> = [
     component: () => import('@/views/admin/layout.vue'),
     name: 'AdminRoot',
     meta: {
+      public: false,
       requiresAuth: true,
       requiredRole: 'admin',
+      dynamic: false,
+      preserveQuery: true,
       title: '后台管理'
     },
     redirect: {
@@ -41,8 +45,11 @@ const childrenRoutes: Array<RouteRecordRaw> = [
         path: 'dashboard',
         name: 'AdminDashboard',
         meta: {
+          public: false,
           requiresAuth: true,
           requiredRole: 'admin',
+          dynamic: false,
+          preserveQuery: true,
           title: '数据看板'
         },
         component: () => import('@/views/admin/dashboard.vue')
@@ -51,8 +58,11 @@ const childrenRoutes: Array<RouteRecordRaw> = [
         path: 'sessions',
         name: 'AdminSessions',
         meta: {
+          public: false,
           requiresAuth: true,
           requiredRole: 'admin',
+          dynamic: false,
+          preserveQuery: true,
           title: '会话管理'
         },
         component: () => import('@/views/admin/sessions.vue')
@@ -61,71 +71,47 @@ const childrenRoutes: Array<RouteRecordRaw> = [
         path: 'reports',
         name: 'AdminReports',
         meta: {
+          public: false,
           requiresAuth: true,
           requiredRole: 'admin',
+          dynamic: false,
+          preserveQuery: true,
           title: '报告管理'
         },
         component: () => import('@/views/admin/reports.vue')
-      }
-    ]
-  },
-  {
-    path: '/workspace',
-    component: WorkbenchLayout,
-    name: 'WorkbenchRoot',
-    meta: legacyWorkbenchMeta,
-    redirect: {
-      name: 'WorkbenchOverview'
-    },
-    children: [
-      {
-        path: 'overview',
-        name: 'WorkbenchOverview',
-        meta: legacyWorkbenchMeta,
-        component: () => import('@/views/workbench/overview.vue')
       },
       {
-        path: 'library',
-        name: 'WorkbenchLibrary',
-        meta: legacyWorkbenchMeta,
-        component: () => import('@/views/workbench/library.vue')
-      },
-      {
-        path: 'mock-interview',
-        name: 'WorkbenchMockInterview',
-        meta: legacyWorkbenchMeta,
-        component: () => import('@/views/workbench/mock-interview.vue')
-      },
-      {
-        path: 'practice',
-        name: 'WorkbenchPractice',
-        meta: legacyWorkbenchMeta,
-        component: () => import('@/views/workbench/practice.vue')
-      },
-      {
-        path: 'report',
-        name: 'WorkbenchReport',
-        meta: legacyWorkbenchMeta,
-        component: () => import('@/views/workbench/report.vue')
-      },
-      {
-        path: 'history',
-        name: 'WorkbenchHistory',
-        meta: legacyWorkbenchMeta,
-        component: () => import('@/views/workbench/history.vue')
+        path: 'models',
+        name: 'AdminModels',
+        meta: {
+          public: false,
+          requiresAuth: true,
+          requiredRole: 'admin',
+          dynamic: false,
+          preserveQuery: true,
+          title: '模型管理'
+        },
+        component: () => import('@/views/admin/models.vue')
       }
     ]
   },
   {
     path: '/showcase/space-odyssey',
     name: 'SpaceOdysseyShowcase',
+    meta: {
+      public: true,
+      requiresAuth: false,
+      preserveQuery: true
+    },
     component: () => import('@/views/showcase/space-odyssey.vue')
   },
   {
     path: '/showcase/mock-interview-space',
     name: 'MockInterviewSpaceShowcase',
     meta: {
+      public: false,
       requiresAuth: true,
+      preserveQuery: true,
       title: '宇宙模拟面试'
     },
     component: () => import('@/views/showcase/mock-interview-space.vue')
@@ -133,6 +119,11 @@ const childrenRoutes: Array<RouteRecordRaw> = [
   {
     path: '/chat',
     name: 'ChatRoot',
+    meta: {
+      public: true,
+      requiresAuth: false,
+      preserveQuery: true
+    },
     component: () => import('@/views/chat.vue')
   }
 ]

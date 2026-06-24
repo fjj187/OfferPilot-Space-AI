@@ -2,6 +2,7 @@
 import type { AdminReportListItem } from '@/services/admin/admin-api'
 import { listAdminReports } from '@/services/admin/admin-api'
 import { getRemoteInterviewReportBySessionId } from '@/services/interview/interview-report-api'
+import { useRoute, useRouter } from 'vue-router'
 
 type ScoreRangeFilter = 'all' | '90+' | '80-89' | '60-79' | '<60'
 type ReportStatusFilter = 'all' | 'generated' | 'incomplete'
@@ -17,6 +18,8 @@ const detailLoading = ref(false)
 const detailErrorMessage = ref('')
 const selectedReportSessionId = ref('')
 const reportDetail = ref<Awaited<ReturnType<typeof getRemoteInterviewReportBySessionId>>>(null)
+const route = useRoute()
+const router = useRouter()
 
 const getDerivedReportScore = (report: AdminReportListItem) => report.score
 
@@ -60,11 +63,27 @@ const selectedReportSummary = computed(() => {
   return reports.value.find(item => item.sessionId === selectedReportSessionId.value) ?? null
 })
 
+const routeReportSessionId = computed(() => {
+  const raw = Array.isArray(route.params.sessionId)
+    ? route.params.sessionId[0]
+    : route.params.sessionId
+  return typeof raw === 'string' ? raw.trim() : ''
+})
+
 const resetReportDetail = () => {
   selectedReportSessionId.value = ''
   reportDetail.value = null
   detailErrorMessage.value = ''
   detailLoading.value = false
+}
+
+const closeReportDetail = () => {
+  resetReportDetail()
+  if (route.name === 'AdminReportDetail') {
+    void router.replace({
+      name: 'AdminReports'
+    })
+  }
 }
 
 const loadReportDetail = async (sessionId: string) => {
@@ -110,7 +129,17 @@ const loadReports = async () => {
 
 const inspectReport = async (sessionId: string) => {
   if (selectedReportSessionId.value === sessionId) {
-    resetReportDetail()
+    closeReportDetail()
+    return
+  }
+
+  if (routeReportSessionId.value !== sessionId || route.name !== 'AdminReportDetail') {
+    void router.push({
+      name: 'AdminReportDetail',
+      params: {
+        sessionId
+      }
+    })
     return
   }
 
@@ -121,6 +150,21 @@ const inspectReport = async (sessionId: string) => {
 
 onMounted(() => {
   void loadReports()
+})
+
+watch(routeReportSessionId, async (sessionId) => {
+  if (!sessionId) {
+    resetReportDetail()
+    return
+  }
+
+  if (selectedReportSessionId.value === sessionId && (detailLoading.value || reportDetail.value)) return
+
+  selectedReportSessionId.value = sessionId
+  reportDetail.value = null
+  await loadReportDetail(sessionId)
+}, {
+  immediate: true
 })
 </script>
 
@@ -261,7 +305,7 @@ onMounted(() => {
         <button
           type="button"
           class="ghost-button"
-          @click="resetReportDetail"
+          @click="closeReportDetail"
         >
           收回详情
         </button>

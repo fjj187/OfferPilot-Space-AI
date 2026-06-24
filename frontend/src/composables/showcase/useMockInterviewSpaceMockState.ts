@@ -1,5 +1,5 @@
 import { computed, ref, watch } from 'vue'
-import type { Ref } from 'vue'
+import type { ComputedRef, Ref } from 'vue'
 import { useWorkbenchPersistence } from '@/composables/workspace/useWorkbenchPersistence'
 import type { InterviewMessage } from '@/types/message'
 import type { InterviewGuide, InterviewQuestion } from '@/views/workbench/mock-interview.data'
@@ -85,6 +85,8 @@ interface UseMockInterviewSpaceMockStateOptions {
   isStreaming: Ref<boolean>
   activeDocument: Ref<PersistedLibraryDocument | null>
   messages: Ref<InterviewMessage[]>
+  mockSessionIdOverride?: ComputedRef<string>
+  mockThreadIdOverride?: ComputedRef<string>
   setActiveSessionId: (sessionId: string) => void
   setActiveThreadId: (threadId: string) => void
   appendUserMessage: (content: string, threadId?: string) => void
@@ -1379,13 +1381,15 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
 
   const hasRestorableHistoryPreview = computed(() => Boolean(resolveLatestRestorableSession()))
 
-  const openLatestHistoryPreview = () => {
-    const latestCompletedSession = resolveLatestRestorableSession()
+  const openHistoryPreviewBySession = (sessionId: string) => {
+    const targetSession = getInterviewSessionById(sessionId)
 
-    if (!latestCompletedSession?.questionThreadsSnapshot?.length) return false
+    if (!targetSession?.questionThreadsSnapshot?.length || targetSession.status !== 'completed') {
+      return false
+    }
 
-    historyPreviewSessionId.value = latestCompletedSession.id
-    historyPreviewThreads.value = latestCompletedSession.questionThreadsSnapshot.map((thread, index) => ({
+    historyPreviewSessionId.value = targetSession.id
+    historyPreviewThreads.value = targetSession.questionThreadsSnapshot.map((thread, index) => ({
       id: thread.id,
       questionId: thread.questionId,
       order: thread.order,
@@ -1393,15 +1397,37 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       title: thread.title,
       prompt: thread.prompt,
       origin: thread.origin || (index === 0 ? 'primary' : 'followup'),
-      createdAt: thread.createdAt || latestCompletedSession.startedAt
+      createdAt: thread.createdAt || targetSession.startedAt
     }))
-    historyPreviewMessages.value = [...(latestCompletedSession.messagesSnapshot || [])]
-    historyPreviewSubmittedQuestionIds.value = [...latestCompletedSession.submittedQuestionIds]
-    historyPreviewActiveThreadId.value = latestCompletedSession.activeQuestionThreadId
-      || latestCompletedSession.questionThreadsSnapshot[0]?.id
+    historyPreviewMessages.value = [...(targetSession.messagesSnapshot || [])]
+    historyPreviewSubmittedQuestionIds.value = [...targetSession.submittedQuestionIds]
+    historyPreviewActiveThreadId.value = targetSession.activeQuestionThreadId
+      || targetSession.questionThreadsSnapshot[0]?.id
       || ''
     options.setActiveThreadId(historyPreviewActiveThreadId.value)
     return true
+  }
+
+  const openHistoryPreviewBySessionAndThread = (sessionId: string, threadId?: string) => {
+    const opened = openHistoryPreviewBySession(sessionId)
+    if (!opened) return false
+
+    const normalizedThreadId = threadId?.trim() || ''
+    if (!normalizedThreadId) return true
+
+    const matchedThread = historyPreviewThreads.value.find(item => item.id === normalizedThreadId)
+    if (!matchedThread) return true
+
+    historyPreviewActiveThreadId.value = matchedThread.id
+    options.setActiveThreadId(matchedThread.id)
+    return true
+  }
+
+  const openLatestHistoryPreview = () => {
+    const latestCompletedSession = resolveLatestRestorableSession()
+
+    if (!latestCompletedSession?.id) return false
+    return openHistoryPreviewBySession(latestCompletedSession.id)
   }
 
   const exitHistoryPreview = () => {
@@ -1500,6 +1526,30 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     }
   )
 
+  watch(
+    () => [
+      options.mockSessionIdOverride?.value || '',
+      options.mockThreadIdOverride?.value || ''
+    ] as const,
+    ([sessionId, threadId]) => {
+      const normalizedSessionId = sessionId.trim()
+      if (!normalizedSessionId) return
+
+      const normalizedThreadId = threadId.trim()
+      if (
+        historyPreviewSessionId.value === normalizedSessionId
+        && (!normalizedThreadId || historyPreviewActiveThreadId.value === normalizedThreadId)
+      ) {
+        return
+      }
+
+      openHistoryPreviewBySessionAndThread(normalizedSessionId, normalizedThreadId)
+    },
+    {
+      immediate: true
+    }
+  )
+
   return {
     activeTopicKey,
     answeredCount,
@@ -1549,6 +1599,9 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     isViewingHistoryPreview,
     hasRestorableHistoryPreview,
     historyPreviewSessionId,
+    historyPreviewActiveThreadId,
+    openHistoryPreviewBySession,
+    openHistoryPreviewBySessionAndThread,
     openLatestHistoryPreview,
     rotateMockFollowUp,
     selectQuestionThread,

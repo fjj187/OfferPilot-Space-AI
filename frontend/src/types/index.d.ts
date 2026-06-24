@@ -70,6 +70,9 @@ declare module 'vue-router' {
     requiredRole?: 'user' | 'admin'
     guestOnly?: boolean
     public?: boolean
+    dynamic?: boolean
+    preserveQuery?: boolean
+    persistParams?: boolean
   }
 }
 

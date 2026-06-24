@@ -4,6 +4,7 @@ import { listAdminSessions } from '@/services/admin/admin-api'
 import {
   getRemoteInterviewSessionDetail,
 } from '@/services/interview/interview-session-api'
+import { useRoute, useRouter } from 'vue-router'
 
 type SessionStatusFilter = 'all' | 'in_progress' | 'completed' | 'aborted'
 type DateRangeFilter = 'all' | 'today' | '7d' | '30d'
@@ -19,6 +20,8 @@ const detailLoading = ref(false)
 const detailErrorMessage = ref('')
 const selectedSessionKey = ref('')
 const sessionDetail = ref<Awaited<ReturnType<typeof getRemoteInterviewSessionDetail>>>(null)
+const route = useRoute()
+const router = useRouter()
 
 const getSessionStatus = (session: AdminSessionListItem) => session.status
 
@@ -73,11 +76,34 @@ const selectedSessionSummary = computed(() => {
   return sessions.value.find(item => `${ item.sessionId }::${ item.threadId }` === selectedSessionKey.value) ?? null
 })
 
+const routeSessionParams = computed(() => {
+  const rawSessionId = Array.isArray(route.params.sessionId)
+    ? route.params.sessionId[0]
+    : route.params.sessionId
+  const rawThreadId = Array.isArray(route.params.threadId)
+    ? route.params.threadId[0]
+    : route.params.threadId
+
+  return {
+    sessionId: typeof rawSessionId === 'string' ? rawSessionId.trim() : '',
+    threadId: typeof rawThreadId === 'string' ? rawThreadId.trim() : ''
+  }
+})
+
 const resetSessionDetail = () => {
   selectedSessionKey.value = ''
   sessionDetail.value = null
   detailErrorMessage.value = ''
   detailLoading.value = false
+}
+
+const closeSessionDetail = () => {
+  resetSessionDetail()
+  if (route.name === 'AdminSessionDetail') {
+    void router.replace({
+      name: 'AdminSessions'
+    })
+  }
 }
 
 const loadSessionDetail = async (sessionId: string, threadId: string) => {
@@ -125,7 +151,22 @@ const inspectSession = async (sessionId: string, threadId: string) => {
   const nextKey = `${ sessionId }::${ threadId }`
 
   if (selectedSessionKey.value === nextKey) {
-    resetSessionDetail()
+    closeSessionDetail()
+    return
+  }
+
+  if (
+    routeSessionParams.value.sessionId !== sessionId
+    || routeSessionParams.value.threadId !== threadId
+    || route.name !== 'AdminSessionDetail'
+  ) {
+    void router.push({
+      name: 'AdminSessionDetail',
+      params: {
+        sessionId,
+        threadId
+      }
+    })
     return
   }
 
@@ -136,6 +177,22 @@ const inspectSession = async (sessionId: string, threadId: string) => {
 
 onMounted(() => {
   void loadSessions()
+})
+
+watch(routeSessionParams, async ({ sessionId, threadId }) => {
+  if (!sessionId || !threadId) {
+    resetSessionDetail()
+    return
+  }
+
+  const nextKey = `${ sessionId }::${ threadId }`
+  if (selectedSessionKey.value === nextKey && (detailLoading.value || sessionDetail.value)) return
+
+  selectedSessionKey.value = nextKey
+  sessionDetail.value = null
+  await loadSessionDetail(sessionId, threadId)
+}, {
+  immediate: true
 })
 </script>
 
@@ -276,7 +333,7 @@ onMounted(() => {
         <button
           type="button"
           class="ghost-button"
-          @click="resetSessionDetail"
+          @click="closeSessionDetail"
         >
           收回详情
         </button>

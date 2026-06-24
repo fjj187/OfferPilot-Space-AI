@@ -100,6 +100,46 @@ const {
   saveWorkbenchContext
 } = useWorkbenchPersistence()
 
+const sceneIdBySourcePage: Record<string, string> = {
+  overview: 'overview',
+  library: 'library',
+  'mock-interview-space': 'mock',
+  practice: 'feedback',
+  report: 'report'
+}
+
+const sourcePageBySceneId: Record<string, string> = {
+  overview: 'overview',
+  library: 'library',
+  mock: 'mock-interview-space',
+  feedback: 'practice',
+  report: 'report'
+}
+
+const validSceneIds = new Set(scenes.map(scene => scene.id))
+
+const normalizeRouteSceneQuery = (sceneQuery: unknown) => {
+  const rawSceneId = Array.isArray(sceneQuery)
+    ? sceneQuery[0]
+    : sceneQuery
+  if (typeof rawSceneId !== 'string') return null
+  return validSceneIds.has(rawSceneId) ? rawSceneId : null
+}
+
+const resolveSceneIdFromRouteQuery = () => normalizeRouteSceneQuery(route.query.scene)
+
+const normalizeRouteSessionIdQuery = (sessionIdQuery: unknown) => {
+  const rawSessionId = Array.isArray(sessionIdQuery)
+    ? sessionIdQuery[0]
+    : sessionIdQuery
+  if (typeof rawSessionId !== 'string') return ''
+  return rawSessionId.trim()
+}
+
+const resolveReportSessionIdFromRouteQuery = () => normalizeRouteSessionIdQuery(route.query.reportSessionId)
+const resolveMockSessionIdFromRouteQuery = () => normalizeRouteSessionIdQuery(route.query.mockSessionId)
+const resolveThreadIdFromRouteQuery = () => normalizeRouteSessionIdQuery(route.query.threadId)
+
 const remoteReportSummaries = ref<PersistedReportSummary[]>([])
 const remoteReportsLoaded = ref(false)
 
@@ -151,16 +191,7 @@ const {
   resolveReportSummaries: mergeReportSummaries
 })
 const currentWorkbenchContext = computed(() => loadWorkbenchContext())
-
-const initialWorkbenchContext = currentWorkbenchContext.value
-const initialSceneIdBySourcePage: Record<string, string> = {
-  overview: 'overview',
-  library: 'library',
-  'mock-interview-space': 'mock',
-  practice: 'feedback',
-  report: 'report'
-}
-const initialSceneId = initialSceneIdBySourcePage[initialWorkbenchContext?.sourcePage || 'overview'] || 'overview'
+const initialSceneId = resolveSceneIdFromRouteQuery() || 'overview'
 const initialSceneIndex = scenes.findIndex(scene => scene.id === initialSceneId)
 
 const {
@@ -319,6 +350,17 @@ const currentContextDocument = computed(() => {
   return libraryDocumentList.value.find(item => item.id === activeDocumentId) || null
 })
 
+const mockSessionIdOverride = computed(() => {
+  if (resolveSceneIdFromRouteQuery() !== 'mock') return ''
+  return resolveMockSessionIdFromRouteQuery()
+})
+
+const mockThreadIdOverride = computed(() => {
+  if (resolveSceneIdFromRouteQuery() !== 'mock') return ''
+  if (!resolveMockSessionIdFromRouteQuery()) return ''
+  return resolveThreadIdFromRouteQuery()
+})
+
 const {
   currentGuide,
   currentFeedbackStyle,
@@ -352,8 +394,10 @@ const {
   finishMockSession,
   hasRestorableHistoryPreview,
   historyPreviewSessionId,
+  historyPreviewActiveThreadId,
   isMockCurrentSubmitted,
   exitHistoryPreview,
+  openHistoryPreviewBySession,
   openLatestHistoryPreview,
   rotateMockFollowUp,
   selectQuestionThread,
@@ -363,6 +407,8 @@ const {
   isStreaming: isMockStreaming,
   activeDocument: currentContextDocument,
   messages: mockMessages,
+  mockSessionIdOverride,
+  mockThreadIdOverride,
   setActiveSessionId,
   setActiveThreadId,
   appendUserMessage,
@@ -462,6 +508,11 @@ const getLocalReportSummaryBySessionId = (sessionId: string) => {
     || undefined
 }
 
+const reportSessionIdOverride = computed(() => {
+  if (resolveSceneIdFromRouteQuery() !== 'report') return ''
+  return resolveReportSessionIdFromRouteQuery()
+})
+
 const reportTargetSession = computed(() => latestCompletedSession.value || inProgressSession.value || null)
 
 const {
@@ -469,6 +520,7 @@ const {
   resolveReportSummary
 } = useMockInterviewSpaceReportHydration({
   reportSession: reportTargetSession,
+  reportSessionIdOverride,
   getLocalReportSummary: getLocalReportSummaryBySessionId
 })
 
@@ -519,6 +571,7 @@ const {
   inProgressSession,
   latestCompletedSession,
   latestReportSummary,
+  reportSessionIdOverride,
   getReportSummaryBySessionId: getMergedReportSummaryBySessionId,
   loadReportSummaries: mergeReportSummaries,
   reportAnswerSnapshotFromRemote
@@ -734,12 +787,11 @@ const {
 })
 
 const handleMockFinish = async () => {
-  if (!(await finishAndOpenReport())) return
+  const result = await finishAndOpenReport()
+  if (!result) return
   await loadRemoteReportSummaries()
-  requestSceneChange(findSceneIndexById('report'), {
-    pauseAutoplay: true,
-    scrollToContent: true
-  })
+  await replaceReportSceneQuery(result.sessionId)
+  await openSceneById('report')
 }
 
 const sceneIndexById = scenes.reduce<Record<string, number>>((map, scene, index) => {
@@ -1018,14 +1070,6 @@ const releaseScrollCapsuleReveal = () => {
 
 const persistSceneContext = (sceneId: string) => {
   const context = loadWorkbenchContext()
-  const sourcePageBySceneId: Record<string, string> = {
-    overview: 'overview',
-    library: 'library',
-    mock: 'mock-interview-space',
-    feedback: 'practice',
-    report: 'report'
-  }
-
   const sourcePage = sourcePageBySceneId[sceneId]
   if (!sourcePage) return
 
@@ -1073,19 +1117,105 @@ const buildMaterialMockSessionConfig = (
 })
 
 const resolveInitialSceneId = () => {
-  const sceneIdBySourcePage: Record<string, string> = {
-    overview: 'overview',
-    library: 'library',
-    'mock-interview-space': 'mock',
-    practice: 'feedback',
-    report: 'report'
+  const routeSceneId = resolveSceneIdFromRouteQuery()
+  if (routeSceneId) {
+    return routeSceneId
   }
-
-  const sourcePage = loadWorkbenchContext()?.sourcePage || 'overview'
-  return sceneIdBySourcePage[sourcePage] || 'overview'
+  return 'overview'
 }
 
-const openSceneContent = (sceneId: string) => {
+const replaceSceneQuery = async (sceneId: string) => {
+  if (!validSceneIds.has(sceneId)) return
+
+  const nextQuery = {
+    ...route.query,
+    scene: sceneId
+  } as Record<string, unknown>
+
+  if (sceneId !== 'report') {
+    delete nextQuery.reportSessionId
+  }
+  if (sceneId !== 'mock') {
+    delete nextQuery.mockSessionId
+    delete nextQuery.threadId
+  }
+
+  if (
+    resolveSceneIdFromRouteQuery() === sceneId
+    && resolveReportSessionIdFromRouteQuery() === normalizeRouteSessionIdQuery(nextQuery.reportSessionId)
+    && resolveMockSessionIdFromRouteQuery() === normalizeRouteSessionIdQuery(nextQuery.mockSessionId)
+    && resolveThreadIdFromRouteQuery() === normalizeRouteSessionIdQuery(nextQuery.threadId)
+  ) return
+
+  await router.replace({
+    path: route.path,
+    query: nextQuery
+  })
+}
+
+const replaceReportSceneQuery = async (sessionId: string) => {
+  const normalizedSessionId = sessionId.trim()
+  if (!normalizedSessionId) {
+    await replaceSceneQuery('report')
+    return
+  }
+  if (
+    resolveSceneIdFromRouteQuery() === 'report'
+    && resolveReportSessionIdFromRouteQuery() === normalizedSessionId
+  ) return
+
+  await router.replace({
+    path: route.path,
+    query: {
+      ...route.query,
+      scene: 'report',
+      reportSessionId: normalizedSessionId
+    }
+  })
+}
+
+const replaceMockSceneQuery = async (sessionId?: string, threadId?: string) => {
+  const normalizedSessionId = sessionId?.trim() || ''
+  const normalizedThreadId = threadId?.trim() || ''
+  if (
+    resolveSceneIdFromRouteQuery() === 'mock'
+    && resolveMockSessionIdFromRouteQuery() === normalizedSessionId
+    && resolveThreadIdFromRouteQuery() === normalizedThreadId
+  ) return
+
+  const nextQuery = {
+    ...route.query,
+    scene: 'mock'
+  } as Record<string, unknown>
+
+  if (normalizedSessionId) {
+    nextQuery.mockSessionId = normalizedSessionId
+  } else {
+    delete nextQuery.mockSessionId
+  }
+  if (normalizedSessionId && normalizedThreadId) {
+    nextQuery.threadId = normalizedThreadId
+  } else {
+    delete nextQuery.threadId
+  }
+
+  await router.replace({
+    path: route.path,
+    query: nextQuery
+  })
+}
+
+const openSceneById = async (
+  sceneId: string,
+  options?: {
+    pauseAutoplay?: boolean
+    scrollToContent?: boolean
+    revealScrollCapsule?: boolean
+  }
+) => {
+  const sceneIndex = findSceneIndexById(sceneId)
+  if (sceneIndex < 0) return
+
   if (sceneId === 'mock' && flowMode.value === 'report') {
     finalizeFinishedMockSession()
     mockSceneResetVersion.value += 1
@@ -1093,11 +1223,21 @@ const openSceneContent = (sceneId: string) => {
   if (sceneId !== 'mock') {
     exitHistoryPreview()
   }
+
+  if (options?.revealScrollCapsule) {
+    revealScrollCapsule()
+  }
+
   persistSceneContext(sceneId)
-  requestSceneChange(findSceneIndexById(sceneId), {
-    pauseAutoplay: true,
-    scrollToContent: true
+  await replaceSceneQuery(sceneId)
+  requestSceneChange(sceneIndex, {
+    pauseAutoplay: options?.pauseAutoplay ?? true,
+    scrollToContent: options?.scrollToContent ?? false
   })
+}
+
+const openSceneContent = (sceneId: string) => {
+  void openSceneById(sceneId)
 }
 
 const resetCosmosToOverviewHome = (options?: {
@@ -1108,6 +1248,7 @@ const resetCosmosToOverviewHome = (options?: {
   if (overviewIndex < 0) return
 
   persistSceneContext('overview')
+  void replaceSceneQuery('overview')
   if (options?.instant) {
     snapToScene(overviewIndex)
   } else {
@@ -1367,10 +1508,7 @@ const handleStartMaterialMockFromLibrary = () => {
     mockEntryMode: 'material',
     mockSessionConfig: buildMaterialMockSessionConfig(activeDocumentId, buildResult.actualCount)
   })
-  requestSceneChange(findSceneIndexById('mock'), {
-    pauseAutoplay: true,
-    scrollToContent: true
-  })
+  void openSceneById('mock')
 
   if (buildResult.isShortfall) {
     window.$ModalMessage?.info?.(
@@ -1393,10 +1531,7 @@ const openMockSceneFromLibrary = () => {
     mockSessionConfig: buildDirectMockSessionConfig(),
     sourcePage: 'mock-interview-space'
   })
-  requestSceneChange(findSceneIndexById('mock'), {
-    pauseAutoplay: true,
-    scrollToContent: true
-  })
+  void openSceneById('mock')
 }
 
 const handleOverviewPrimaryAction = () => {
@@ -1439,10 +1574,7 @@ const handleReportContinueMock = () => {
       sourcePage: 'mock-interview-space'
     })
   }
-  requestSceneChange(findSceneIndexById('mock'), {
-    pauseAutoplay: true,
-    scrollToContent: true
-  })
+  void openSceneById('mock')
 }
 
 const practiceTopicByZone: Record<PersistedPracticePlan['zone'], keyof typeof topicLabelMap> = {
@@ -1499,10 +1631,7 @@ const handlePracticeStart = (plan: PersistedPracticePlan) => {
     mockEntryMode: 'practice',
     mockSessionConfig: buildPracticeMockSessionConfig(effectivePlan)
   })
-  requestSceneChange(findSceneIndexById('mock'), {
-    pauseAutoplay: true,
-    scrollToContent: true
-  })
+  void openSceneById('mock')
 }
 
 const handleReportContinuePractice = () => {
@@ -1529,13 +1658,19 @@ const handleReportBackToLibrary = () => {
   openSceneContent('library')
 }
 
+const handleReportOpenLatest = () => {
+  const latestSessionId = reportLatestHistory.value?.sessionId || latestReportSummary.value?.sessionId || ''
+  if (!latestSessionId) {
+    openSceneContent('report')
+    return
+  }
+  void replaceReportSceneQuery(latestSessionId)
+}
+
 const handleReportOpenHistory = () => {
   handleMockOpenHistory()
   if (flowMode.value === 'history_preview') {
-    requestSceneChange(findSceneIndexById('mock'), {
-      pauseAutoplay: true,
-      scrollToContent: true
-    })
+    void openSceneById('mock')
   }
 }
 
@@ -1564,18 +1699,16 @@ const handleReportPreviewContinueMock = () => {
 }
 
 const handleOrbitSceneSelect = (index: number) => {
-  revealScrollCapsule()
   const nextScene = scenes[index]
   if (nextScene) {
-    if (nextScene.id === 'mock' && flowMode.value === 'report') {
-      finalizeFinishedMockSession()
-      mockSceneResetVersion.value += 1
-    }
-    if (nextScene.id !== 'mock') {
-      exitHistoryPreview()
-    }
-    persistSceneContext(nextScene.id)
+    void openSceneById(nextScene.id, {
+      pauseAutoplay: true,
+      scrollToContent: false,
+      revealScrollCapsule: true
+    })
+    return
   }
+  revealScrollCapsule()
   handleOrbitStopClick(index)
 }
 
@@ -1644,6 +1777,57 @@ watch(displayScene, async () => {
   updateScrollCapsuleVisibility()
 })
 
+watch(
+  () => route.query.scene,
+  (sceneQuery) => {
+    const nextSceneId = normalizeRouteSceneQuery(sceneQuery)
+    if (!nextSceneId) return
+    if (nextSceneId === activeScene.value.id) return
+
+    requestSceneChange(findSceneIndexById(nextSceneId), {
+      pauseAutoplay: true,
+      scrollToContent: false
+    })
+    persistSceneContext(nextSceneId)
+  }
+)
+
+watch(
+  () => route.query.reportSessionId,
+  (sessionIdQuery) => {
+    const nextSessionId = normalizeRouteSessionIdQuery(sessionIdQuery)
+    if (!nextSessionId) return
+    if (resolveSceneIdFromRouteQuery() !== 'report') return
+    persistSceneContext('report')
+  }
+)
+
+watch(
+  [historyPreviewSessionId, historyPreviewActiveThreadId, () => route.query.scene],
+  ([sessionId, threadId, sceneQuery]) => {
+    const nextSceneId = normalizeRouteSceneQuery(sceneQuery)
+    if (nextSceneId !== 'mock') return
+
+    const normalizedSessionId = sessionId.trim()
+    const normalizedThreadId = threadId.trim()
+    if (!normalizedSessionId) {
+      if (resolveMockSessionIdFromRouteQuery() || resolveThreadIdFromRouteQuery()) {
+        void replaceMockSceneQuery()
+      }
+      return
+    }
+
+    if (
+      resolveMockSessionIdFromRouteQuery() === normalizedSessionId
+      && resolveThreadIdFromRouteQuery() === normalizedThreadId
+    ) return
+    void replaceMockSceneQuery(normalizedSessionId, normalizedThreadId)
+  },
+  {
+    immediate: true
+  }
+)
+
 onMounted(async () => {
   const isWelcomeEntrance = route.query.welcome === '1'
   const context = loadWorkbenchContext()
@@ -1654,11 +1838,12 @@ onMounted(async () => {
     activeTopic: activeTopic.value,
     activeDocumentId: context?.activeDocumentId || '',
     currentMode: currentMode.value,
-    sourcePage: context?.sourcePage || 'overview',
+    sourcePage: sourcePageBySceneId[restoredSceneId] || context?.sourcePage || 'overview',
     practicePlan: context?.practicePlan || null,
     mockEntryMode: context?.mockEntryMode || 'direct',
     mockSessionConfig: context?.mockSessionConfig || null
   })
+  await replaceSceneQuery(restoredSceneId)
 
   requestSceneChange(restoredSceneIndex, {
     pauseAutoplay: shouldRestoreContentScene,
@@ -1927,7 +2112,7 @@ onBeforeUnmount(() => {
           @open-library="handleOverviewSecondaryAction"
           @open-mock="openMockSceneFromLibrary"
           @open-practice="openSceneContent('feedback')"
-          @open-report="handleOverviewReportAction"
+          @open-report="handleReportOpenLatest"
           @open-workbench-report="handleReportOpenWorkbenchReport"
           @pick-files="pickLibraryFiles"
           @pick-folder="pickLibraryFolder"

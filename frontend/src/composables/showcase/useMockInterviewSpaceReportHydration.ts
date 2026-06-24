@@ -43,6 +43,7 @@ const buildEvidenceFromRemoteMessages = (
 
 interface UseMockInterviewSpaceReportHydrationOptions {
   reportSession: ComputedRef<PersistedInterviewSession | null>
+  reportSessionIdOverride?: ComputedRef<string>
   getLocalReportSummary: (sessionId: string) => PersistedReportSummary | undefined
 }
 
@@ -51,7 +52,11 @@ export function useMockInterviewSpaceReportHydration(options: UseMockInterviewSp
   const remoteEvidenceSnapshot = ref<string[]>([])
   const isHydrating = ref(false)
 
-  const reportSessionId = computed(() => options.reportSession.value?.id || '')
+  const reportSessionId = computed(() => (
+    options.reportSessionIdOverride?.value
+    || options.reportSession.value?.id
+    || ''
+  ))
 
   const resolveReportSummary = (sessionId: string) => {
     if (!sessionId) return undefined

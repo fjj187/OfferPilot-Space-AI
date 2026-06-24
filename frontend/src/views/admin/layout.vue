@@ -2,22 +2,43 @@
 import { useAuth } from '@/composables/useAuth'
 
 const router = useRouter()
+const route = useRoute()
 const { displayName, authRole, logout } = useAuth()
 
 const navItems = [
   {
     name: 'AdminDashboard',
+    routeName: 'AdminDashboard',
     label: '数据看板'
   },
   {
     name: 'AdminSessions',
+    routeName: 'AdminSessions',
     label: '会话管理'
   },
   {
     name: 'AdminReports',
+    routeName: 'AdminReports',
     label: '报告管理'
+  },
+  {
+    name: 'AdminModels',
+    routeName: 'AdminModels',
+    label: '模型管理'
   }
 ] as const
+
+const isNavItemActive = (name: typeof navItems[number]['name']) => {
+  if (name === 'AdminSessions') {
+    return route.name === 'AdminSessions' || route.name === 'AdminSessionDetail'
+  }
+
+  if (name === 'AdminReports') {
+    return route.name === 'AdminReports' || route.name === 'AdminReportDetail'
+  }
+
+  return route.name === name
+}
 
 const handleLogout = () => {
   logout()
@@ -45,7 +66,8 @@ const handleLogout = () => {
         <RouterLink
           v-for="item in navItems"
           :key="item.name"
-          :to="{ name: item.name }"
+          :to="{ name: item.routeName }"
+          :class="{ 'router-link-active': isNavItemActive(item.name) }"
         >
           {{ item.label }}
         </RouterLink>

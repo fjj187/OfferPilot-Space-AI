@@ -27,6 +27,7 @@ interface UseMockInterviewSpaceReportSceneOptions {
   inProgressSession: ComputedRef<PersistedInterviewSession | null>
   latestCompletedSession: ComputedRef<PersistedInterviewSession | null>
   latestReportSummary: ComputedRef<PersistedReportSummary | null>
+  reportSessionIdOverride?: ComputedRef<string>
   getReportSummaryBySessionId: (sessionId: string) => PersistedReportSummary | undefined
   loadReportSummaries: () => PersistedReportSummary[]
   /** 远程 session 消息摘录；summary 无 answerSnapshot 时作证据补充 */
@@ -46,6 +47,10 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
   })
 
   const reportSceneSummary = computed<PersistedReportSummary | null>(() => {
+    const overrideSessionId = options.reportSessionIdOverride?.value
+    if (overrideSessionId) {
+      return options.getReportSummaryBySessionId(overrideSessionId) || null
+    }
     const sessionId = reportSceneSession.value?.id
     if (sessionId) {
       return options.getReportSummaryBySessionId(sessionId) || null

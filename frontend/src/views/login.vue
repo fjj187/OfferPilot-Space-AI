@@ -36,6 +36,15 @@ const loginPageStyle = computed<CSSProperties>(() => ({
 const navigateAfterLogin = () => {
   const redirect = resolveSafeRedirect(route.query.redirect)
   if (redirect) {
+    if (redirect.startsWith('/showcase/mock-interview-space')) {
+      void router.replace({
+        name: DEFAULT_APP_ROUTE_NAME,
+        query: {
+          welcome: '1'
+        }
+      })
+      return
+    }
     void router.replace(redirect)
     return
   }
