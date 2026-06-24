@@ -62,6 +62,7 @@ type MockInterviewMode = 'standard' | 'stress' | 'guided'
 
 interface StartMockStreamPayload {
   threadId?: string
+  modelId?: string
   prompt: string
   topicLabel: string
   questionTitle: string
@@ -85,6 +86,7 @@ interface UseMockInterviewSpaceMockStateOptions {
   isStreaming: Ref<boolean>
   activeDocument: Ref<PersistedLibraryDocument | null>
   messages: Ref<InterviewMessage[]>
+  selectedModelId?: ComputedRef<string>
   mockSessionIdOverride?: ComputedRef<string>
   mockThreadIdOverride?: ComputedRef<string>
   setActiveSessionId: (sessionId: string) => void
@@ -1217,6 +1219,7 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     options.startStream({
       sessionId: currentSessionId.value,
       threadId: thread.id,
+      modelId: options.selectedModelId?.value || undefined,
       topic: activeTopicKey.value,
       prompt: [
         streamQuestionPrompt,
@@ -1308,14 +1311,20 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       try {
         const generated = await generateRemoteInterviewReport({
           sessionId: currentSessionId.value,
+          modelId: options.selectedModelId?.value || undefined,
           topic: activeTopicKey.value,
           source: currentSourceKey.value,
           sourceDocumentId: options.activeDocument.value?.id || '',
           sourceDocumentName: options.activeDocument.value?.name || '',
+          sourceDocumentExcerpt: localSummary.sourceDocumentExcerpt,
           answeredCount: answeredCount.value,
           totalCount: totalCount.value,
+          summaryBody: localSummary.summaryBody,
           weaknessTags: [...mockWeaknessSignals.value],
-          primaryWeakness: mockWeaknessSignals.value[0] || localSummary.primaryWeakness
+          weaknessFocusAreas: localSummary.weaknessFocusAreas,
+          primaryWeakness: mockWeaknessSignals.value[0] || localSummary.primaryWeakness,
+          questionReviews: localSummary.questionReviews,
+          suggestedFocus: localSummary.suggestedFocus
         })
         summary = {
           ...generated.report,

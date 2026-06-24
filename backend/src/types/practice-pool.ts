@@ -22,6 +22,7 @@ export interface PracticePoolQuestionReviewInput {
 export interface GeneratePracticePoolRequest {
   sessionId: string
   reportId?: string
+  modelId?: string
   questionCount: number
   plan: PracticePoolPlanInput
   questionReviews?: PracticePoolQuestionReviewInput[]

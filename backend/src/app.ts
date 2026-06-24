@@ -4,6 +4,7 @@ import { adminRouter } from './routes/admin-routes.js'
 import { authRouter } from './routes/auth-routes.js'
 import { healthRouter } from './routes/health-routes.js'
 import { interviewRouter } from './routes/interview-routes.js'
+import { modelRouter } from './routes/model-routes.js'
 import { backendEnv } from './utils/env.js'
 
 const app = express()
@@ -27,6 +28,7 @@ app.use('/api/health', healthRouter)
 app.use('/api/auth', authRouter)
 app.use('/api/admin', adminRouter)
 app.use('/api/interview', interviewRouter)
+app.use('/api/models', modelRouter)
 
 app.listen(backendEnv.port, () => {
   console.log(`[backend] listening on http://localhost:${ backendEnv.port }`)

@@ -44,7 +44,7 @@ export const getInterviewReportBySessionIdController = (request: Request, respon
   })
 }
 
-export const generateInterviewReportController = (request: Request, response: Response) => {
+export const generateInterviewReportController = async (request: Request, response: Response) => {
   const payload = request.body as Partial<GenerateInterviewReportRequest>
   const sessionId = String(payload.sessionId || '').trim()
 
@@ -86,16 +86,22 @@ export const generateInterviewReportController = (request: Request, response: Re
   }
 
   try {
-    const result = reportService.generateReport({
+    const result = await reportService.generateReport({
       sessionId,
+      modelId: payload.modelId,
       topic: payload.topic,
       source: payload.source,
       sourceDocumentId: payload.sourceDocumentId,
       sourceDocumentName: payload.sourceDocumentName,
+      sourceDocumentExcerpt: payload.sourceDocumentExcerpt,
       answeredCount: payload.answeredCount,
       totalCount: payload.totalCount,
+      summaryBody: payload.summaryBody,
       weaknessTags: payload.weaknessTags,
-      primaryWeakness: payload.primaryWeakness
+      weaknessFocusAreas: payload.weaknessFocusAreas,
+      primaryWeakness: payload.primaryWeakness,
+      questionReviews: payload.questionReviews,
+      suggestedFocus: payload.suggestedFocus
     })
 
     response.json(result)

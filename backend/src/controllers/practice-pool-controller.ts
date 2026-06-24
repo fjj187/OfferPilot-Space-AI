@@ -28,6 +28,7 @@ export const generatePracticePoolController = async (request: Request, response:
     const result = await practicePoolService.generatePool({
       sessionId,
       reportId: payload.reportId,
+      modelId: payload.modelId,
       questionCount: Number(payload.questionCount) || Number(payload.plan?.questionCount) || 5,
       plan: payload.plan as GeneratePracticePoolRequest['plan'],
       questionReviews: payload.questionReviews,

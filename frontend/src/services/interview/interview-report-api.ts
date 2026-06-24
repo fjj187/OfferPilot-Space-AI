@@ -6,6 +6,7 @@ import type {
   PersistedPracticeFocusArea,
   PersistedPracticePlan,
   PersistedPracticeQuestionType,
+  PersistedReportQuestionReviewItem,
   PersistedPracticeZone,
   PersistedReportSummary,
   PersistedTopicKey
@@ -15,11 +16,13 @@ import { isInterviewApiAvailable } from '@/services/interview/interview-session-
 interface RemoteInterviewReportSummary {
   id: string
   sessionId: string
+  modelId?: string
   threadId?: string
   topic: string
   source: string
   sourceDocumentId?: string
   sourceDocumentName?: string
+  sourceDocumentExcerpt?: string
   questionTitle?: string
   summaryHeadline: string
   summaryBody: string
@@ -29,6 +32,7 @@ interface RemoteInterviewReportSummary {
   answeredCount: number
   totalCount: number
   answerSnapshot?: string[]
+  questionReviews?: PersistedReportQuestionReviewItem[]
   suggestedFocus?: string[]
   practicePlan?: {
     weaknessTag: string
@@ -42,14 +46,20 @@ interface RemoteInterviewReportSummary {
 
 export interface GenerateRemoteInterviewReportPayload {
   sessionId: string
+  modelId?: string
   topic?: string
   source?: string
   sourceDocumentId?: string
   sourceDocumentName?: string
+  sourceDocumentExcerpt?: string
   answeredCount?: number
   totalCount?: number
+  summaryBody?: string
   weaknessTags?: string[]
+  weaknessFocusAreas?: string[]
   primaryWeakness?: string
+  questionReviews?: PersistedReportQuestionReviewItem[]
+  suggestedFocus?: string[]
 }
 
 const resolveInterviewApiBase = () => {
@@ -130,10 +140,12 @@ export const mapRemoteReportToPersisted = (
 ): PersistedReportSummary => ({
   id: report.id,
   sessionId: report.sessionId,
+  modelId: report.modelId,
   topic: report.topic as PersistedTopicKey,
   source: report.source,
   sourceDocumentId: report.sourceDocumentId,
   sourceDocumentName: report.sourceDocumentName,
+  sourceDocumentExcerpt: report.sourceDocumentExcerpt,
   weaknessTags: report.weaknessTags,
   weaknessFocusAreas: report.weaknessFocusAreas as PersistedReportSummary['weaknessFocusAreas'],
   primaryWeakness: report.primaryWeakness,
@@ -142,6 +154,7 @@ export const mapRemoteReportToPersisted = (
   summaryHeadline: report.summaryHeadline,
   summaryBody: report.summaryBody,
   answerSnapshot: report.answerSnapshot,
+  questionReviews: report.questionReviews,
   suggestedFocus: report.suggestedFocus,
   practicePlan: toPracticePlan(report),
   createdAt: report.createdAt

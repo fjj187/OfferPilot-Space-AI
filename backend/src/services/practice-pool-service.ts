@@ -76,13 +76,15 @@ export class PracticePoolService {
 
     let questions: PracticeQuestionItemDto[] = []
 
-    if (isRemoteLlmConfigured()) {
+    if (isRemoteLlmConfigured(normalizedRequest.modelId)) {
       const messages = buildPracticePoolLlmMessages(normalizedRequest)
       let lastError: Error | null = null
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
-          const raw = await completeRemoteLlmJson(messages)
+          const raw = await completeRemoteLlmJson(messages, {
+            modelId: normalizedRequest.modelId
+          })
           questions = parsePracticePoolLlmJson(raw, sessionId, questionCount)
           if (questions.length) break
         } catch (error) {

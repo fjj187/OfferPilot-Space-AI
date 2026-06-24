@@ -29,6 +29,7 @@ export interface InterviewStreamRequest {
   sessionId: string
   messageId: string
   threadId: string
+  modelId?: string
   idempotentKey?: string
   topic: PersistedTopicKey
   topicLabel: string

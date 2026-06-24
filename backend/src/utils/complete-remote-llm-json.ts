@@ -1,41 +1,46 @@
-import { backendEnv } from './env.js'
+import { resolveActiveModelConfig } from '../services/model-config-resolver.js'
 
 type ChatMessage = {
   role: 'system' | 'user' | 'assistant'
   content: string
 }
 
-const createOpenAICompatibleUrl = () => {
-  const baseUrl = backendEnv.remoteBaseUrl.replace(/\/+$/, '')
-  return `${ baseUrl }/chat/completions`
+const createOpenAICompatibleUrl = (baseUrl: string) => {
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, '')
+  return `${ normalizedBaseUrl }/chat/completions`
 }
 
-export const isRemoteLlmConfigured = () => Boolean(backendEnv.remoteApiKey && backendEnv.remoteModel)
+export const isRemoteLlmConfigured = (requestedModelId?: string) => {
+  try {
+    return Boolean(resolveActiveModelConfig(requestedModelId))
+  } catch {
+    return false
+  }
+}
 
 export const completeRemoteLlmJson = async (
   messages: ChatMessage[],
-  options?: { signal?: AbortSignal }
+  options?: { signal?: AbortSignal, modelId?: string }
 ): Promise<string> => {
-  if (!backendEnv.remoteApiKey) {
-    throw new Error('INTERVIEW_REMOTE_API_KEY is not configured.')
-  }
-  if (!backendEnv.remoteModel) {
-    throw new Error('INTERVIEW_REMOTE_MODEL is not configured.')
+  const runtimeModelConfig = resolveActiveModelConfig(options?.modelId)
+
+  if (!runtimeModelConfig.apiKey) {
+    throw new Error(`当前模型 ${ runtimeModelConfig.displayName } 缺少 apiKey（接口密钥）配置。`)
   }
 
-  const response = await fetch(createOpenAICompatibleUrl(), {
+  const response = await fetch(createOpenAICompatibleUrl(runtimeModelConfig.baseUrl), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${ backendEnv.remoteApiKey }`
+      Authorization: `Bearer ${ runtimeModelConfig.apiKey }`
     },
     signal: options?.signal,
     body: JSON.stringify({
-      model: backendEnv.remoteModel,
+      model: runtimeModelConfig.modelName,
       stream: false,
       messages,
       temperature: 0.4,
-      enable_thinking: false
+      enable_thinking: runtimeModelConfig.enableThinking
     })
   })
 

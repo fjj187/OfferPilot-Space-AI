@@ -12,6 +12,7 @@ import {
 import type {
   AdminModelConfigDTO,
   CreateModelConfigPayload,
+  EnabledModelConfigDTO,
   ModelConnectivityTestResult,
   StoredModelConfig,
   UpdateModelConfigPayload
@@ -86,6 +87,13 @@ const toAdminModelConfig = (model: StoredModelConfig): AdminModelConfigDTO => ({
   lastTestedAt: model.lastTestedAt,
   lastTestStatus: model.lastTestStatus,
   lastTestMessage: model.lastTestMessage
+})
+
+const toEnabledModelConfig = (model: StoredModelConfig): EnabledModelConfigDTO => ({
+  modelId: model.modelId,
+  displayName: model.displayName,
+  provider: model.provider,
+  isDefault: model.isDefault
 })
 
 const findNextDefaultModelId = (models: StoredModelConfig[], excludedModelId?: string) => {
@@ -213,6 +221,12 @@ export class AdminService {
 
   listModels() {
     return getStoredModelConfigs().map(toAdminModelConfig)
+  }
+
+  listEnabledModels() {
+    return getStoredModelConfigs()
+      .filter(model => model.enabled)
+      .map(toEnabledModelConfig)
   }
 
   createModel(payload: CreateModelConfigPayload) {

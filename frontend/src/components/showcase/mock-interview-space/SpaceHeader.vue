@@ -5,14 +5,28 @@ import { LOGIN_ROUTE_NAME } from '@/config/product'
 import { useAuth } from '@/composables/useAuth'
 import router from '@/router'
 
-defineProps<{
+withDefaults(defineProps<{
   headerStyle: CSSProperties
   isAutoScrolling: boolean
   isUserScrolling: boolean
-}>()
+  selectedModelId?: string
+  selectedModelLabel?: string
+  enabledModels: Array<{
+    modelId: string
+    displayName: string
+    isDefault: boolean
+  }>
+  isLoadingModels?: boolean
+}>(), {
+  selectedModelId: '',
+  selectedModelLabel: '未选择模型',
+  enabledModels: () => [],
+  isLoadingModels: false
+})
 
 const emit = defineEmits<{
   resolveElement: [element: HTMLElement | null]
+  updateModelId: [modelId: string]
 }>()
 
 const { displayName, isLoggedIn, logout } = useAuth()
@@ -74,6 +88,26 @@ onBeforeUnmount(() => {
     </nav>
 
     <div class="header-tools">
+      <label
+        class="model-picker"
+        :title="`当前模型 ${ selectedModelLabel }`"
+      >
+        <span class="model-picker__label">模型</span>
+        <select
+          class="model-picker__select"
+          :value="selectedModelId"
+          :disabled="isLoadingModels || enabledModels.length <= 0"
+          @change="emit('updateModelId', ($event.target as HTMLSelectElement).value)"
+        >
+          <option
+            v-for="item in enabledModels"
+            :key="item.modelId"
+            :value="item.modelId"
+          >
+            {{ item.displayName }}{{ item.isDefault ? ' · 默认' : '' }}
+          </option>
+        </select>
+      </label>
       <button
         type="button"
         class="icon-tool"
@@ -225,6 +259,38 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
+.model-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.06);
+  color: rgb(255 255 255 / 0.92);
+}
+
+.model-picker__label {
+  color: rgb(232 244 255 / 0.66);
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.model-picker__select {
+  min-width: 136px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+}
+
+.model-picker__select option {
+  color: #08111f;
+}
+
 .icon-tool {
   display: grid;
   place-items: center;
@@ -322,6 +388,15 @@ onBeforeUnmount(() => {
   .header-tools {
     width: auto;
     justify-content: flex-end;
+  }
+
+  .model-picker {
+    max-width: 44vw;
+  }
+
+  .model-picker__select {
+    min-width: 0;
+    width: 100%;
   }
 
   .back-link {

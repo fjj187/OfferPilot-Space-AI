@@ -43,6 +43,7 @@ import {
 } from '@/services/material/material-question-topics'
 import type { PracticeGroupCompileOptions } from '@/types/practice-pool'
 import { usePracticeQuestionPoolState } from '@/composables/showcase/usePracticeQuestionPoolState'
+import { useEnabledModels } from '@/composables/model/useEnabledModels'
 import {
   buildPracticeQuestionGroup,
   defaultPracticeGroupCompileOptions
@@ -191,6 +192,16 @@ const {
   resolveReportSummaries: mergeReportSummaries
 })
 const currentWorkbenchContext = computed(() => loadWorkbenchContext())
+
+const {
+  enabledModels,
+  isLoadingEnabledModels,
+  selectedModelDisplayName,
+  selectedModelId,
+  updateSelectedModelId
+} = useEnabledModels({
+  initialSelectedModelId: currentWorkbenchContext.value?.selectedModelId || ''
+})
 const initialSceneId = resolveSceneIdFromRouteQuery() || 'overview'
 const initialSceneIndex = scenes.findIndex(scene => scene.id === initialSceneId)
 
@@ -350,6 +361,25 @@ const currentContextDocument = computed(() => {
   return libraryDocumentList.value.find(item => item.id === activeDocumentId) || null
 })
 
+watch(selectedModelId, (nextModelId) => {
+  const normalizedModelId = nextModelId.trim()
+  if ((currentWorkbenchContext.value?.selectedModelId || '') === normalizedModelId) {
+    return
+  }
+
+  const context = loadWorkbenchContext()
+  saveWorkbenchContext({
+    activeTopic: context?.activeTopic || activeTopic.value,
+    activeDocumentId: context?.activeDocumentId || '',
+    selectedModelId: normalizedModelId || undefined,
+    currentMode: context?.currentMode || currentMode.value,
+    sourcePage: context?.sourcePage || 'overview',
+    practicePlan: context?.practicePlan || null,
+    mockEntryMode: context?.mockEntryMode || 'direct',
+    mockSessionConfig: context?.mockSessionConfig || null
+  })
+})
+
 const mockSessionIdOverride = computed(() => {
   if (resolveSceneIdFromRouteQuery() !== 'mock') return ''
   return resolveMockSessionIdFromRouteQuery()
@@ -407,6 +437,7 @@ const {
   isStreaming: isMockStreaming,
   activeDocument: currentContextDocument,
   messages: mockMessages,
+  selectedModelId,
   mockSessionIdOverride,
   mockThreadIdOverride,
   setActiveSessionId,
@@ -714,7 +745,8 @@ const handlePreparePracticeQuestions = async (plan: PersistedPracticePlan) => {
   const result = await preparePracticeQuestions(
     report,
     plan,
-    generateCount
+    generateCount,
+    selectedModelId.value || undefined
   )
   if (!result.ok) {
     window.$ModalMessage?.warning?.(result.message, {
@@ -1923,7 +1955,12 @@ onBeforeUnmount(() => {
       :header-style="headerStyle"
       :is-auto-scrolling="isAutoScrolling"
       :is-user-scrolling="isUserScrolling"
+      :selected-model-id="selectedModelId"
+      :selected-model-label="selectedModelDisplayName"
+      :enabled-models="enabledModels"
+      :is-loading-models="isLoadingEnabledModels"
       @resolve-element="resolveHeaderElement"
+      @update-model-id="updateSelectedModelId"
     />
 
     <div class="showcase-body">

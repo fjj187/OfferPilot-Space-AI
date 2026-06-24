@@ -1,7 +1,7 @@
 import { buildInterviewLlmMessages } from '../utils/build-interview-llm-messages.js'
-import { backendEnv } from '../utils/env.js'
 import type { InterviewProvider, InterviewProviderStreamOptions } from './llm-provider.js'
 import type { InterviewProviderEvent, InterviewStreamRequest } from '../types/interview.js'
+import { resolveActiveModelConfig } from '../services/model-config-resolver.js'
 
 type OpenAICompatibleChunk = {
   choices?: Array<{
@@ -22,9 +22,9 @@ const extractContentDelta = (payload: OpenAICompatibleChunk) => {
     .join('') || ''
 }
 
-const createOpenAICompatibleUrl = () => {
-  const baseUrl = backendEnv.remoteBaseUrl.replace(/\/+$/, '')
-  return `${ baseUrl }/chat/completions`
+const createOpenAICompatibleUrl = (baseUrl: string) => {
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, '')
+  return `${ normalizedBaseUrl }/chat/completions`
 }
 
 export class RemoteLLMProvider implements InterviewProvider {
@@ -32,37 +32,51 @@ export class RemoteLLMProvider implements InterviewProvider {
     request: InterviewStreamRequest,
     options?: InterviewProviderStreamOptions
   ): AsyncGenerator<InterviewProviderEvent, void, undefined> {
-    if (!backendEnv.remoteApiKey) {
+    let runtimeModelConfig
+
+    try {
+      runtimeModelConfig = resolveActiveModelConfig(request.modelId)
+    }
+    catch (error) {
+      yield {
+        type: 'error',
+        code: 'REMOTE_MODEL_CONFIG_MISSING',
+        message: error instanceof Error ? error.message : 'Remote model config is missing.'
+      }
+      return
+    }
+
+    if (!runtimeModelConfig.supportsStream) {
+      yield {
+        type: 'error',
+        code: 'REMOTE_MODEL_STREAM_UNSUPPORTED',
+        message: `当前模型 ${ runtimeModelConfig.displayName } 未开启流式能力，无法用于模拟面试。`
+      }
+      return
+    }
+
+    if (!runtimeModelConfig.apiKey) {
       yield {
         type: 'error',
         code: 'REMOTE_API_KEY_MISSING',
-        message: 'INTERVIEW_REMOTE_API_KEY is not configured.'
+        message: `当前模型 ${ runtimeModelConfig.displayName } 缺少 apiKey（接口密钥）配置。`
       }
       return
     }
 
-    if (!backendEnv.remoteModel) {
-      yield {
-        type: 'error',
-        code: 'REMOTE_MODEL_MISSING',
-        message: 'INTERVIEW_REMOTE_MODEL is not configured.'
-      }
-      return
-    }
-
-    const response = await fetch(createOpenAICompatibleUrl(), {
+    const response = await fetch(createOpenAICompatibleUrl(runtimeModelConfig.baseUrl), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${ backendEnv.remoteApiKey }`
+        Authorization: `Bearer ${ runtimeModelConfig.apiKey }`
       },
       signal: options?.signal,
       body: JSON.stringify({
-        model: backendEnv.remoteModel,
+        model: runtimeModelConfig.modelName,
         stream: true,
         messages: buildInterviewLlmMessages(request),
         temperature: 0.7,
-        enable_thinking: backendEnv.remoteEnableThinking
+        enable_thinking: runtimeModelConfig.enableThinking
       })
     })
 

@@ -35,6 +35,17 @@
 - `done`
 - `error`
 
+当前 `remote`（远程模型）模式会优先读取后台模型管理中已启用的默认模型；如果后台没有可用模型，才回退到 `INTERVIEW_REMOTE_*`（远程模型环境变量）配置。
+
+### `GET /api/models/enabled`
+
+返回用户侧可见的已启用模型列表，只包含安全字段：
+
+- `modelId`（模型标识）
+- `displayName`（展示名称）
+- `provider`（模型供应商）
+- `isDefault`（是否默认）
+
 ### `GET /api/interview/sessions`
 
 返回最小历史会话列表，供历史页和报告页读取。

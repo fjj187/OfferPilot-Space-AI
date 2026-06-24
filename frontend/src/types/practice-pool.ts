@@ -43,6 +43,7 @@ export interface PracticeQuestionPool {
 export interface GeneratePracticePoolPayload {
   sessionId: string
   reportId?: string
+  modelId?: string
   questionCount: number
   plan: PersistedPracticePlan
   questionReviews?: Array<{

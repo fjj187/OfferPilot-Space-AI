@@ -81,7 +81,8 @@ export function usePracticeQuestionPoolState() {
   const preparePracticeQuestions = async (
     report: PersistedReportSummary,
     plan: PersistedPracticePlan,
-    questionCount: number
+    questionCount: number,
+    modelId?: string
   ): Promise<PreparePracticeResult> => {
     if (!report.sessionId) {
       return {
@@ -96,7 +97,7 @@ export function usePracticeQuestionPoolState() {
       return inflight
     }
 
-    const task = preparePracticeQuestionsTask(report, plan, questionCount)
+    const task = preparePracticeQuestionsTask(report, plan, questionCount, modelId)
     inflightPrepareBySession.set(sessionId, task)
     try {
       return await task
@@ -110,7 +111,8 @@ export function usePracticeQuestionPoolState() {
   const preparePracticeQuestionsTask = async (
     report: PersistedReportSummary,
     plan: PersistedPracticePlan,
-    questionCount: number
+    questionCount: number,
+    modelId?: string
   ): Promise<PreparePracticeResult> => {
     if (!isPracticePoolApiAvailable()) {
       return {
@@ -141,6 +143,7 @@ export function usePracticeQuestionPoolState() {
       const result = await generatePracticePool({
         sessionId: report.sessionId,
         reportId: report.id,
+        modelId,
         questionCount,
         plan,
         questionReviews: report.questionReviews?.map(item => ({

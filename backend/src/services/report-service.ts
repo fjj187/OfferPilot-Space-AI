@@ -11,6 +11,9 @@ import type {
   InterviewReportListItem,
   StoredInterviewReportSummary
 } from '../types/report.js'
+import { buildReportLlmMessages } from '../utils/build-report-llm-messages.js'
+import { completeRemoteLlmJson, isRemoteLlmConfigured } from '../utils/complete-remote-llm-json.js'
+import { parseReportLlmJson } from '../utils/parse-report-llm-json.js'
 
 const topicLabelMap: Record<string, string> = {
   vue3: 'Vue 3',
@@ -72,13 +75,6 @@ const practiceZoneByTopic: Record<string, string> = {
   scenario: 'engineering'
 }
 
-const practiceFocusAreaLabelMap: Record<string, string> = {
-  structure: '结构表达',
-  case_detail: '案例细节',
-  result_metric: '结果指标',
-  principle_depth: '原理追问'
-}
-
 const buildReportListItem = (report: StoredInterviewReportSummary): InterviewReportListItem => ({
   id: report.id,
   sessionId: report.sessionId,
@@ -92,6 +88,158 @@ const buildReportListItem = (report: StoredInterviewReportSummary): InterviewRep
   createdAt: report.createdAt,
   updatedAt: report.updatedAt
 })
+
+const buildLocalReport = (
+  payload: GenerateInterviewReportRequest,
+  existing: StoredInterviewReportSummary | null,
+  sessions: ReturnType<typeof getStoredInterviewSessionsBySessionId>,
+  now: string
+): StoredInterviewReportSummary => {
+  const allMessages = sessions.flatMap(session => session.messages.map(message => ({
+    ...message,
+    threadId: session.threadId,
+    questionTitle: session.questionTitle
+  })))
+
+  const userMessages = allMessages.filter(item => item.role === 'user')
+  const feedbackMessages = allMessages.filter(item => item.role === 'assistant')
+  const latestAnswer = userMessages[userMessages.length - 1]?.content || ''
+  const latestFeedback = feedbackMessages[feedbackMessages.length - 1]?.content || ''
+  const answerLength = latestAnswer.trim().length
+
+  const topic = payload.topic?.trim() || sessions[0]?.topic || 'vue3'
+  const topicLabel = topicLabelMap[topic] || topic
+  const source = payload.source?.trim() || 'mock-interview-space'
+  const sourceDocumentName = payload.sourceDocumentName?.trim() || ''
+  const sourceLabel = sourceDocumentName || '当前训练上下文'
+  const weaknessTags = payload.weaknessTags?.length
+    ? [...payload.weaknessTags]
+    : []
+  const primaryWeakness = payload.primaryWeakness?.trim()
+    || weaknessTags[0]
+    || '当前还没有形成稳定弱项'
+
+  const answeredCount = typeof payload.answeredCount === 'number'
+    ? payload.answeredCount
+    : sessions.filter(session => session.messages.some(item => item.role === 'user')).length
+
+  const totalCount = typeof payload.totalCount === 'number' && payload.totalCount > 0
+    ? payload.totalCount
+    : Math.max(sessions.length, answeredCount, 1)
+
+  const answeredSummary = `${ answeredCount } / ${ totalCount }`
+  const questionTitle = sessions[sessions.length - 1]?.questionTitle
+    || sessions[0]?.questionTitle
+    || topicLabel
+
+  const answerSnapshot = sessions.map((session) => {
+    const answerMessage = [...session.messages].reverse().find(item => item.role === 'user')
+    const answerText = normalizeSnippet(answerMessage?.content || '', 88)
+    return `${ session.questionTitle }: ${ answerText || '未作答' }`
+  })
+
+  const summaryHeadline = `围绕 ${ sourceLabel } 的 ${ topicLabel } 训练已形成阶段总结`
+  const summaryBody = payload.summaryBody?.trim() || [
+    `本轮围绕“${ questionTitle }”共展开 ${ Math.max(sessions.length, totalCount) } 题，当前已完成 ${ answeredSummary }。`,
+    latestAnswer
+      ? `最近一次作答摘录为“${ normalizeSnippet(latestAnswer, 90) }”，当前最明显的短板是“${ primaryWeakness }”。`
+      : `本轮已经浏览完题目，但还存在未作答内容，当前最明显的短板先记为“${ primaryWeakness }”。`
+  ].join('')
+
+  const suggestedFocus = payload.suggestedFocus?.length
+    ? [...payload.suggestedFocus]
+    : [
+        answerLength < 80 ? '下一轮回答尽量按“结论 -> 拆分 -> 结果”三段式展开，避免答案过短。' : '',
+        latestFeedback ? `优先处理最近一次反馈暴露的问题：${ normalizeSnippet(latestFeedback, 72) }` : '',
+        sourceDocumentName ? `下一轮继续围绕《${ sourceDocumentName }》补练，把资料上下文真正转成可表达内容。` : '',
+        answeredCount < totalCount ? '当前轮次还有未作答题目，这份报告会先按已展开题目生成阶段性结果。' : ''
+      ].filter(Boolean)
+
+  const weaknessFocusAreas = payload.weaknessFocusAreas?.length
+    ? [...payload.weaknessFocusAreas]
+    : resolvePracticeFocusAreas(latestAnswer, latestFeedback, primaryWeakness)
+  const practiceQuestionType = resolvePracticeQuestionType(primaryWeakness)
+  const practiceDifficulty = resolvePracticeDifficulty(answerLength, weaknessTags.length)
+
+  return {
+    id: `report-${ payload.sessionId }`,
+    sessionId: payload.sessionId,
+    modelId: payload.modelId?.trim() || existing?.modelId,
+    owner: sessions[sessions.length - 1]?.owner || sessions[0]?.owner,
+    threadId: sessions[sessions.length - 1]?.threadId,
+    topic,
+    source,
+    sourceDocumentId: payload.sourceDocumentId?.trim() || undefined,
+    sourceDocumentName: sourceDocumentName || undefined,
+    sourceDocumentExcerpt: payload.sourceDocumentExcerpt?.trim() || undefined,
+    questionTitle,
+    summaryHeadline,
+    summaryBody,
+    weaknessTags,
+    primaryWeakness,
+    weaknessFocusAreas,
+    answeredCount,
+    totalCount,
+    answerSnapshot: [
+      ...answerSnapshot,
+      latestFeedback ? `系统反馈: ${ normalizeSnippet(latestFeedback, 72) }` : ''
+    ].filter(Boolean),
+    questionReviews: payload.questionReviews?.length ? payload.questionReviews.map(item => ({ ...item })) : undefined,
+    suggestedFocus,
+    practicePlan: {
+      weaknessTag: primaryWeakness,
+      questionType: practiceQuestionType,
+      difficulty: practiceDifficulty,
+      zone: practiceZoneByTopic[topic] || 'vue'
+    },
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
+  }
+}
+
+const tryEnhanceReportWithRemoteLlm = async (
+  payload: GenerateInterviewReportRequest,
+  localReport: StoredInterviewReportSummary
+) => {
+  if (!isRemoteLlmConfigured(payload.modelId)) return localReport
+
+  const messages = buildReportLlmMessages(payload, {
+    topicLabel: topicLabelMap[localReport.topic] || localReport.topic,
+    sourceLabel: localReport.sourceDocumentName || '当前训练上下文',
+    questionTitle: localReport.questionTitle || (topicLabelMap[localReport.topic] || localReport.topic),
+    answeredCount: localReport.answeredCount,
+    totalCount: localReport.totalCount,
+    answerSnapshot: localReport.answerSnapshot || [],
+    latestAnswer: payload.questionReviews?.[payload.questionReviews.length - 1]?.userAnswer || '',
+    latestFeedback: payload.questionReviews?.[payload.questionReviews.length - 1]?.aiFeedback || '',
+    primaryWeakness: localReport.primaryWeakness || ''
+  })
+
+  const raw = await completeRemoteLlmJson(messages, {
+    modelId: payload.modelId
+  })
+
+  const enhanced = parseReportLlmJson(raw, {
+    summaryHeadline: localReport.summaryHeadline,
+    summaryBody: localReport.summaryBody,
+    primaryWeakness: localReport.primaryWeakness,
+    weaknessTags: localReport.weaknessTags,
+    weaknessFocusAreas: localReport.weaknessFocusAreas,
+    suggestedFocus: localReport.suggestedFocus,
+    practicePlan: localReport.practicePlan
+  })
+
+  return {
+    ...localReport,
+    summaryHeadline: enhanced.summaryHeadline,
+    summaryBody: enhanced.summaryBody,
+    primaryWeakness: enhanced.primaryWeakness,
+    weaknessTags: enhanced.weaknessTags,
+    weaknessFocusAreas: enhanced.weaknessFocusAreas,
+    suggestedFocus: enhanced.suggestedFocus,
+    practicePlan: enhanced.practicePlan
+  } satisfies StoredInterviewReportSummary
+}
 
 export class ReportService {
   listReports(owner?: string): InterviewReportListItem[] {
@@ -109,7 +257,7 @@ export class ReportService {
     return report
   }
 
-  generateReport(payload: GenerateInterviewReportRequest): GenerateInterviewReportResponse {
+  async generateReport(payload: GenerateInterviewReportRequest): Promise<GenerateInterviewReportResponse> {
     const sessionId = payload.sessionId.trim()
     if (!sessionId) {
       throw new Error('sessionId is required.')
@@ -118,107 +266,24 @@ export class ReportService {
     const existing = getStoredInterviewReportBySessionId(sessionId)
     const sessions = getStoredInterviewSessionsBySessionId(sessionId)
     const now = new Date().toISOString()
-
-    const allMessages = sessions.flatMap(session => session.messages.map(message => ({
-      ...message,
-      threadId: session.threadId,
-      questionTitle: session.questionTitle
-    })))
-
-    const userMessages = allMessages.filter(item => item.role === 'user')
-    const feedbackMessages = allMessages.filter(item => item.role === 'assistant')
-    const latestAnswer = userMessages[userMessages.length - 1]?.content || ''
-    const latestFeedback = feedbackMessages[feedbackMessages.length - 1]?.content || ''
-    const answerLength = latestAnswer.trim().length
-
-    const topic = payload.topic?.trim() || sessions[0]?.topic || 'vue3'
-    const topicLabel = topicLabelMap[topic] || topic
-    const source = payload.source?.trim() || 'mock-interview-space'
-    const sourceDocumentName = payload.sourceDocumentName?.trim() || ''
-    const sourceLabel = sourceDocumentName || '当前训练上下文'
-    const weaknessTags = payload.weaknessTags?.length
-      ? [...payload.weaknessTags]
-      : []
-    const primaryWeakness = payload.primaryWeakness?.trim()
-      || weaknessTags[0]
-      || '当前还没有形成稳定弱项'
-
-    const answeredCount = typeof payload.answeredCount === 'number'
-      ? payload.answeredCount
-      : sessions.filter(session => session.messages.some(item => item.role === 'user')).length
-
-    const totalCount = typeof payload.totalCount === 'number' && payload.totalCount > 0
-      ? payload.totalCount
-      : Math.max(sessions.length, answeredCount, 1)
-
-    const answeredSummary = `${ answeredCount } / ${ totalCount }`
-    const questionTitle = sessions[sessions.length - 1]?.questionTitle
-      || sessions[0]?.questionTitle
-      || topicLabel
-
-    const answerSnapshot = sessions.map((session) => {
-      const answerMessage = [...session.messages].reverse().find(item => item.role === 'user')
-      const answerText = normalizeSnippet(answerMessage?.content || '', 88)
-      return `${ session.questionTitle }: ${ answerText || '未作答' }`
-    })
-
-    const summaryHeadline = `围绕 ${ sourceLabel } 的 ${ topicLabel } 训练已形成阶段性结果`
-    const summaryBody = [
-      `本轮围绕“${ questionTitle }”共展开 ${ Math.max(sessions.length, totalCount) } 题，当前已完成 ${ answeredSummary }。`,
-      latestAnswer
-        ? `最近一次作答摘录为“${ normalizeSnippet(latestAnswer, 90) }”，当前最明显的短板是“${ primaryWeakness }”。`
-        : `本轮已经浏览完题目，但还有未作答内容，当前最明显的短板先记为“${ primaryWeakness }”。`
-    ].join('')
-
-    const suggestedFocus = [
-      answerLength < 80 ? '下一轮回答尽量按“结论 -> 拆分 -> 结果”三段式展开，避免答案过短。' : '',
-      latestFeedback ? `优先处理最近一次反馈暴露的问题：${ normalizeSnippet(latestFeedback, 72) }` : '',
-      sourceDocumentName ? `下一轮继续围绕《${ sourceDocumentName }》补练，把资料上下文真正转成可表达内容。` : '',
-      answeredCount < totalCount ? '当前轮次还有未作答题目，这份报告会先按已展开题目生成阶段性结果。' : ''
-    ].filter(Boolean)
-
-    const weaknessFocusAreas = resolvePracticeFocusAreas(latestAnswer, latestFeedback, primaryWeakness)
-    const focusArea = weaknessFocusAreas[0]
-    const focusAreaText = focusArea ? (practiceFocusAreaLabelMap[focusArea] || focusArea) : '当前弱项'
-    const practiceQuestionType = resolvePracticeQuestionType(primaryWeakness)
-    const practiceDifficulty = resolvePracticeDifficulty(answerLength, weaknessTags.length)
-
-    const report: StoredInterviewReportSummary = {
-      id: `report-${ sessionId }`,
-      sessionId,
-      owner: sessions[sessions.length - 1]?.owner || sessions[0]?.owner,
-      threadId: sessions[sessions.length - 1]?.threadId,
-      topic,
-      source,
-      sourceDocumentId: payload.sourceDocumentId?.trim() || undefined,
-      sourceDocumentName: sourceDocumentName || undefined,
-      questionTitle,
-      summaryHeadline,
-      summaryBody,
-      weaknessTags,
-      primaryWeakness,
-      weaknessFocusAreas,
-      answeredCount,
-      totalCount,
-      answerSnapshot: [
-        ...answerSnapshot,
-        latestFeedback ? `系统反馈: ${ normalizeSnippet(latestFeedback, 72) }` : ''
-      ].filter(Boolean),
-      suggestedFocus,
-      practicePlan: {
-        weaknessTag: primaryWeakness,
-        questionType: practiceQuestionType,
-        difficulty: practiceDifficulty,
-        zone: practiceZoneByTopic[topic] || 'vue'
-      },
-      createdAt: existing?.createdAt || now,
-      updatedAt: now
+    const normalizedPayload: GenerateInterviewReportRequest = {
+      ...payload,
+      sessionId
     }
 
-    upsertStoredInterviewReport(report)
+    const localReport = buildLocalReport(normalizedPayload, existing, sessions, now)
+
+    let finalReport = localReport
+    try {
+      finalReport = await tryEnhanceReportWithRemoteLlm(normalizedPayload, localReport)
+    } catch (error) {
+      console.warn('[report-service] remote report generation fallback to local summary:', error)
+    }
+
+    upsertStoredInterviewReport(finalReport)
 
     return {
-      report,
+      report: finalReport,
       created: !existing
     }
   }

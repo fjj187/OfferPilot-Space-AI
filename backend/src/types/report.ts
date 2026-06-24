@@ -7,6 +7,7 @@ export interface StoredInterviewReportSummary {
   /** Stable report id, e.g. report-{sessionId} */
   id: string
   sessionId: string
+  modelId?: string
   owner?: string
   /**
    * Optional primary thread for this round.
@@ -17,6 +18,7 @@ export interface StoredInterviewReportSummary {
   source: string
   sourceDocumentId?: string
   sourceDocumentName?: string
+  sourceDocumentExcerpt?: string
   questionTitle?: string
   summaryHeadline: string
   summaryBody: string
@@ -26,6 +28,7 @@ export interface StoredInterviewReportSummary {
   answeredCount: number
   totalCount: number
   answerSnapshot?: string[]
+  questionReviews?: ReportQuestionReviewItem[]
   suggestedFocus?: string[]
   practicePlan?: {
     weaknessTag: string
@@ -35,6 +38,14 @@ export interface StoredInterviewReportSummary {
   }
   createdAt: string
   updatedAt: string
+}
+
+export interface ReportQuestionReviewItem {
+  questionId: string
+  questionTitle: string
+  userAnswer: string
+  referenceAnswer?: string
+  aiFeedback?: string
 }
 
 export interface InterviewReportListItem {
@@ -53,15 +64,21 @@ export interface InterviewReportListItem {
 
 export interface GenerateInterviewReportRequest {
   sessionId: string
+  modelId?: string
   /** Round metadata from frontend; backend may also infer from stored sessions */
   topic?: string
   source?: string
   sourceDocumentId?: string
   sourceDocumentName?: string
+  sourceDocumentExcerpt?: string
   answeredCount?: number
   totalCount?: number
+  summaryBody?: string
   weaknessTags?: string[]
+  weaknessFocusAreas?: string[]
   primaryWeakness?: string
+  questionReviews?: ReportQuestionReviewItem[]
+  suggestedFocus?: string[]
 }
 
 export interface GenerateInterviewReportResponse {

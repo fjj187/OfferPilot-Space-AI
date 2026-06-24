@@ -27,6 +27,12 @@ export const listAdminModelsController = (_request: Request, response: Response)
   })
 }
 
+export const listEnabledModelsController = (_request: Request, response: Response) => {
+  response.json({
+    models: adminService.listEnabledModels()
+  })
+}
+
 export const createAdminModelController = (request: Request, response: Response) => {
   try {
     response.json({

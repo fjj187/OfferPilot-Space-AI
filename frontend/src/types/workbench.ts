@@ -107,6 +107,7 @@ export interface PersistedLibraryDocument extends PersistedTrainingDocumentCore 
 export interface PersistedWorkbenchContext {
   activeTopic: PersistedTopicKey
   activeDocumentId: string
+  selectedModelId?: string
   currentMode?: PersistedInterviewMode
   sourcePage?: string
   practicePlan?: PersistedPracticePlan | null
@@ -164,6 +165,7 @@ export interface PersistedReportQuestionReviewItem {
 export interface PersistedReportSummary {
   id: string
   sessionId: string
+  modelId?: string
   topic: PersistedTopicKey
   source: string
   sourceDocumentId?: string
