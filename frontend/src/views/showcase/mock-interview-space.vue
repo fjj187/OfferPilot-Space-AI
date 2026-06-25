@@ -58,9 +58,10 @@ interface OrbitSlot {
 
 const route = useRoute()
 
-const isCosmosBigBangPending = ref(false)
+const isWelcomeEntranceInitial = route.query.welcome === '1'
+const isCosmosBigBangPending = ref(isWelcomeEntranceInitial)
 const isCosmosBigBangPlaying = ref(false)
-const isCosmosContentRevealed = ref(route.query.welcome !== '1')
+const isCosmosContentRevealed = ref(!isWelcomeEntranceInitial)
 
 let bigBangOverlayResolver: (() => void) | null = null
 
@@ -884,7 +885,7 @@ const isScrollCapsuleVisible = ref(true)
 const scrollCapsuleHideLock = ref(false)
 const forceScrollCapsuleVisible = ref(false)
 /** 入场 animation 结束后置 true，避免 forwards 占用 opacity/transform 导致滚动渐隐失效 */
-const isScrollCapsuleRevealSettled = ref(route.query.welcome !== '1')
+const isScrollCapsuleRevealSettled = ref(!isWelcomeEntranceInitial)
 const mockSceneResetVersion = ref(0)
 
 let scrollCapsuleRevealTimer: ReturnType<typeof setTimeout> | null = null
@@ -2012,6 +2013,7 @@ onBeforeUnmount(() => {
 
           <SpaceVisualStage
             ref="visualStageRef"
+            :class="{ 'is-big-bang-hidden': isCosmosBigBangPending && !isCosmosBigBangPlaying }"
             :active-scene-index-by-slot="activeSceneIndexBySlot"
             :center-slot="centerSlot"
             :last-orbit-direction="lastOrbitDirection"
@@ -2259,6 +2261,7 @@ onBeforeUnmount(() => {
 
 .cosmos-gate-root.is-big-bang-active:not(.is-content-revealed) {
   .copy-column,
+  .visual-column,
   .orbit-rail,
   .content-stack {
     opacity: 0;

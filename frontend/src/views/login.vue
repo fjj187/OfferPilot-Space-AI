@@ -10,6 +10,7 @@ import { useRoute } from 'vue-router'
 
 const route = useRoute()
 const overviewScene = scenes[0]!
+const isNavigatingAfterLogin = ref(false)
 
 /** 与宇宙页登录门控一致的静止顶栏样式 */
 const loginHeaderStyle: CSSProperties = {
@@ -34,6 +35,7 @@ const loginPageStyle = computed<CSSProperties>(() => ({
 } as CSSProperties))
 
 const navigateAfterLogin = () => {
+  isNavigatingAfterLogin.value = true
   const redirect = resolveSafeRedirect(route.query.redirect)
   if (redirect) {
     if (redirect.startsWith('/showcase/mock-interview-space')) {
@@ -82,8 +84,17 @@ const goAdminLogin = () => {
 
     <SpaceLoginHero
       class="login-gate-layer"
+      :class="{ 'is-login-transitioning': isNavigatingAfterLogin }"
       @success="handleLoginSuccess"
     />
+
+    <div
+      v-if="isNavigatingAfterLogin"
+      class="login-transition-mask"
+      aria-hidden="true"
+    >
+      <span class="login-transition-core"></span>
+    </div>
 
     <button
       class="admin-entry-button"
@@ -133,5 +144,45 @@ const goAdminLogin = () => {
   cursor: pointer;
   backdrop-filter: blur(14px);
   box-shadow: 0 12px 30px rgb(0 0 0 / 0.24);
+}
+
+.login-gate-layer.is-login-transitioning {
+  opacity: 0;
+  transform: scale(1.015);
+  pointer-events: none;
+  transition:
+    opacity 0.22s ease,
+    transform 0.42s ease;
+}
+
+.login-transition-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  background: #03060e;
+  pointer-events: none;
+}
+
+.login-transition-core {
+  width: 18vmax;
+  height: 18vmax;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgb(255 255 255 / 0.92) 0%, rgb(118 247 234 / 0.58) 22%, transparent 68%);
+  animation: login-transition-pulse 0.72s ease-out infinite;
+}
+
+@keyframes login-transition-pulse {
+  0% {
+    opacity: 0.78;
+    transform: scale(0.72);
+  }
+
+  100% {
+    opacity: 0.18;
+    transform: scale(1.28);
+  }
 }
 </style>
