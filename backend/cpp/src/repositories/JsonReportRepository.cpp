@@ -1,6 +1,6 @@
 #include "repositories/JsonReportRepository.hpp"
 
-void to_json(nlohmann::json& j, const PracticePlanSnapshot& p) {
+inline void to_json(nlohmann::json& j, const PracticePlanSnapshot& p) {
     j = nlohmann::json{
         {"weaknessTag", p.weaknessTag},
         {"questionType", p.questionType},
@@ -9,14 +9,14 @@ void to_json(nlohmann::json& j, const PracticePlanSnapshot& p) {
     };
 }
 
-void from_json(const nlohmann::json& j, PracticePlanSnapshot& p) {
+inline void from_json(const nlohmann::json& j, PracticePlanSnapshot& p) {
     j.at("weaknessTag").get_to(p.weaknessTag);
     j.at("questionType").get_to(p.questionType);
     j.at("difficulty").get_to(p.difficulty);
     j.at("zone").get_to(p.zone);
 }
 
-void to_json(nlohmann::json& j, const InterviewReportEntity& r) {
+inline void to_json(nlohmann::json& j, const InterviewReportEntity& r) {
     j = nlohmann::json{
         {"id", r.id},
         {"sessionId", r.sessionId},
@@ -41,7 +41,7 @@ void to_json(nlohmann::json& j, const InterviewReportEntity& r) {
     };
 }
 
-void from_json(const nlohmann::json& j, InterviewReportEntity& r) {
+inline void from_json(const nlohmann::json& j, InterviewReportEntity& r) {
     j.at("id").get_to(r.id);
     j.at("sessionId").get_to(r.sessionId);
     if (j.contains("threadId") && !j.at("threadId").is_null()) {

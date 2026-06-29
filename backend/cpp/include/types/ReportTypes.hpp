@@ -48,6 +48,14 @@ struct InterviewReportSummary : public TimestampedRecord {
     std::vector<std::string> weaknessTags;
 };
 
+struct ReportQuestionReview {
+    std::string questionId;
+    std::string questionTitle;
+    std::string userAnswer;
+    std::optional<std::string> referenceAnswer;
+    std::optional<std::string> aiFeedback;
+};
+
 // 生成报告请求
 struct GenerateReportRequest {
     std::string sessionId;
@@ -59,6 +67,12 @@ struct GenerateReportRequest {
     std::optional<int> totalCount;
     std::optional<std::vector<std::string>> weaknessTags;
     std::optional<std::string> primaryWeakness;
+    std::optional<std::string> modelId;
+    std::optional<std::string> summaryBody;
+    std::optional<std::vector<std::string>> weaknessFocusAreas;
+    std::optional<std::vector<std::string>> suggestedFocus;
+    std::optional<std::string> sourceDocumentExcerpt;
+    std::optional<std::vector<ReportQuestionReview>> questionReviews;
 };
 
 // 生成报告结果

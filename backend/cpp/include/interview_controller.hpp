@@ -4,10 +4,11 @@
 #include "httplib.h"
 #include "json.hpp"
 #include "services/InterviewService.hpp"
+#include "services/ReportService.hpp"
 
 class InterviewController {
 public:
-    explicit InterviewController(InterviewService& service) : m_service(service) {};
+    explicit InterviewController(InterviewService& service,ReportService& reportService) : m_service(service),m_reportService(reportService) {};
     void streamInterview(const httplib::Request& req, httplib::Response& res);
     void generateReport(const httplib::Request& req, httplib::Response& res);
     void getReport(const httplib::Request& req, httplib::Response& res);
@@ -21,4 +22,5 @@ private:
     InterviewStreamRequest parseStreamRequest(const nlohmann::json& body) const;
     static std::string serializeSseEvent(const std::string &eventName,const std::string &data);
     InterviewService& m_service;
+    ReportService& m_reportService;
 };

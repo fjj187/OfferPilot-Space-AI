@@ -11,4 +11,8 @@ public:
     std::string buildSystemPrompt() const;
     std::string buildUserPrompt(const InterviewSessionDetail& detail,
                                 const GenerateReportRequest& request) const;
+private:
+    std::string buildMessageDigest(const InterviewSessionDetail& detail) const;
+    std::string buildReviewDigest(const GenerateReportRequest& request) const;
+    static std::string truncateText(const std::string& text, size_t maxLen);
 };

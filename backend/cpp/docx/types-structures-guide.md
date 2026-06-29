@@ -717,3 +717,55 @@ struct BackendConfig {
 - `InterviewSessionDetail`
 - `ApiError`
 
+---
+
+## 9. 报告生成补充说明
+
+这一段专门给 `GenerateReportRequest` 和 `ReportPromptBuilder` 用。你现在要做的事情，不是“让 AI 随便写”，而是先把输入结构固定下来，再把 prompt 约束住，最后再让 `ReportService` 去接 AI。
+
+### 9.1 `GenerateReportRequest` 应该包含什么
+
+建议最终结构是：
+```cpp
+struct ReportQuestionReview {
+    std::string questionId;
+    std::string questionTitle;
+    std::string userAnswer;
+    std::optional<std::string> referenceAnswer;
+    std::optional<std::string> aiFeedback;
+};
+
+struct GenerateReportRequest {
+    std::string sessionId;
+    std::optional<std::string> topic;
+    std::optional<std::string> source;
+    std::optional<std::string> sourceDocumentId;
+    std::optional<std::string> sourceDocumentName;
+    std::optional<int> answeredCount;
+    std::optional<int> totalCount;
+    std::optional<std::vector<std::string>> weaknessTags;
+    std::optional<std::string> primaryWeakness;
+    std::optional<std::string> modelId;
+    std::optional<std::string> summaryBody;
+    std::optional<std::vector<std::string>> weaknessFocusAreas;
+    std::optional<std::vector<std::string>> suggestedFocus;
+    std::optional<std::string> sourceDocumentExcerpt;
+    std::optional<std::vector<ReportQuestionReview>> questionReviews;
+};
+```
+
+字段职责很明确：
+- `sessionId`：报告主键来源，必填
+- `topic`：主题标签，可选
+- `source`：来源，可选
+- `sourceDocumentId` / `sourceDocumentName`：资料定位信息
+- `answeredCount` / `totalCount`：进度信息
+- `weaknessTags` / `primaryWeakness`：弱项信息
+- `modelId`：选择哪套模型配置
+- `summaryBody`：前端本地摘要
+- `weaknessFocusAreas`：弱项关注维度
+- `suggestedFocus`：下一轮训练建议
+- `sourceDocumentExcerpt`：资料片段
+- `questionReviews`：逐题复盘输入
+
+
