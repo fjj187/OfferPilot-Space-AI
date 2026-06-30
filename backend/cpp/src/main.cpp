@@ -9,8 +9,13 @@
 #include "Client/OpenAIReportAiClient.hpp"
 #include "repositories/JsonSessionRepository.hpp"
 #include "repositories/JsonReportRepository.hpp"
+#include "repositories/JsonAuthUserRepository.hpp"
+#include "repositories/JsonAuthSessionRepository.hpp"
 #include "services/InterviewService.hpp"
 #include "services/ReportService.hpp"
+#include "services/AuthService.hpp"
+#include "Controller/AuthController.hpp"
+#include "Routes/AuthRoutes.hpp"
 #include "interview_controller.hpp"
 #include "InterviewRoutes.hpp"
 
@@ -39,6 +44,10 @@ int main() {
     JsonSessionRepository sessionRepo("data/interview_sessions.json");
     JsonReportRepository reportRepo("data/interview_reports.json");
 
+    JsonAuthUserRepository authUserRepo("data/auth_users.json");
+    JsonAuthSessionRepository authSessionRepo("data/auth_sessions.json");
+    PasswordHasher passwordHasher;
+
     std::unique_ptr<InterviewProvider> interviewProvider;
     const bool useMock = envOr("USE_MOCK_INTERVIEW_PROVIDER") == "1";
 
@@ -62,10 +71,22 @@ int main() {
     InterviewService interviewService(*interviewProvider, sessionRepo);
     ReportService reportService(sessionRepo, reportRepo, reportAiClient);
 
+    AuthService authService(
+        authUserRepo,
+        authSessionRepo,
+        passwordHasher,
+        std::stoi(envOr("AUTH_TOKEN_TTL_SECONDS", "86400"))
+    );
+
     InterviewController controller(interviewService, reportService);
     InterviewRoutes routes(httpServer, controller);
 
+    AuthController authController(authService);
+    AuthRoutes authRoutes(httpServer, authController);
+    authRoutes.registerRoutes();
+
     routes.registerRoutes();
+
     httpServer.start();
     return 0;
 }

@@ -10,3 +10,12 @@ struct AuthUserRecord {
     bool enabled;
 };
 
+struct AuthSessionRecord{
+    std::string token;
+    std::string username;
+    std::string role;
+    std::string displayName;
+    std::string expiresAt;
+    std::string createdAt;
+};
+

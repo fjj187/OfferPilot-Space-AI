@@ -33,7 +33,7 @@ const requestAuthApi = async <T>(
   method: 'get' | 'post',
   payload?: unknown,
   config?: AxiosRequestConfig
-): Promise<T | null> => {
+): Promise<IRequestData | null> => {
   const apiBase = resolveAuthApiBase()
   if (!apiBase) return null
 
@@ -54,7 +54,7 @@ const requestAuthApi = async <T>(
     return null
   }
 
-  return response.data as T
+  return response
 }
 
 export const setAuthToken = (token: string) => {
@@ -70,7 +70,7 @@ export const clearAuthToken = () => {
 export const getAuthToken = () => Cookie.get(AUTH_TOKEN_COOKIE_KEY) || ''
 
 export const loginByApi = async (username: string, password: string): Promise<{ session: AuthSession, token: string } | null> => {
-  const payload = await requestAuthApi<LoginResponse>(
+  const response = await requestAuthApi(
     '/login',
     'post',
     {
@@ -81,24 +81,24 @@ export const loginByApi = async (username: string, password: string): Promise<{ 
       requestName: 'loginByApi'
     }
   )
-  if (!payload?.token || !payload.user?.username || !payload.user?.role) {
+  const body = response?.data as LoginResponse | undefined
+
+  if (!body?.token || !body.user?.username || !body.user?.role) {
     return null
   }
 
   return {
-    token: payload.token,
+    token: body.token,
     session: {
-      username: payload.user.username,
-      role: payload.user.role,
-      displayName: payload.user.displayName
+      username: body.user.username,
+      role: body.user.role,
+      displayName: body.user.displayName
     }
   }
 }
 
 export const fetchCurrentAuthSession = async (): Promise<AuthSession | null> => {
-  const payload = await requestAuthApi<{
-    user?: AuthSession
-  }>(
+  const response = await requestAuthApi(
     '/me',
     'get',
     undefined,
@@ -107,9 +107,11 @@ export const fetchCurrentAuthSession = async (): Promise<AuthSession | null> => 
     }
   )
 
-  if (!payload) {
+  if (!response) {
     return null
   }
 
-  return payload.user?.username ? payload.user : null
+  const body = response.data as { user?: AuthSession } | undefined
+
+  return body?.user?.username ? body.user : null
 }
