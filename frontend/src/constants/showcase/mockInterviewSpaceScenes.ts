@@ -87,10 +87,10 @@ export const scenes: SceneItem[] = [
       atmosphere: 'rgba(205, 212, 255, 0.5)',
       ring: 'rgba(194, 203, 255, 0.18)'
     },
-    shellBackground: 'linear-gradient(126deg, #120d24 0%, #261545 42%, #42254e 72%, #09070c 100%)',
-    glowA: 'radial-gradient(circle at 4% 6%, rgba(103, 121, 255, 0.42) 0%, rgba(103, 121, 255, 0) 34%)',
-    glowB: 'radial-gradient(circle at 78% 18%, rgba(255, 205, 142, 0.18) 0%, rgba(255, 205, 142, 0) 28%)',
-    nebula: 'linear-gradient(112deg, rgba(42, 24, 70, 0.86) 0%, rgba(61, 19, 65, 0.44) 42%, rgba(7, 6, 10, 0.72) 100%)',
+    shellBackground: 'linear-gradient(126deg, #00383c 0%, #00545b 38%, #006368 70%, #022d34 100%)',
+    glowA: 'radial-gradient(circle at 8% 8%, rgba(0, 145, 151, 0.38) 0%, rgba(0, 145, 151, 0.16) 17%, rgba(0, 145, 151, 0) 36%)',
+    glowB: 'radial-gradient(circle at 84% 62%, rgba(24, 103, 116, 0.24) 0%, rgba(24, 103, 116, 0.08) 18%, rgba(24, 103, 116, 0) 42%)',
+    nebula: 'radial-gradient(circle at 10% 10%, rgba(0, 128, 134, 0.18) 0%, rgba(0, 128, 134, 0.07) 18%, rgba(0, 128, 134, 0) 36%), linear-gradient(118deg, rgba(0, 58, 64, 0.72) 0%, rgba(0, 84, 88, 0.48) 45%, rgba(3, 55, 65, 0.42) 100%)',
     planetSize: '33vw',
     planetRight: '-5vw',
     planetBottom: '-7vh'
@@ -183,10 +183,10 @@ export const scenes: SceneItem[] = [
       atmosphere: 'rgba(168, 158, 255, 0.54)',
       ring: 'rgba(152, 140, 255, 0.18)'
     },
-    shellBackground: 'linear-gradient(128deg, #8d0718 0%, #b51a20 30%, #c94912 62%, #d97c16 100%)',
-    glowA: 'radial-gradient(circle at 6% 4%, rgba(94, 255, 235, 0.44) 0%, rgba(94, 255, 235, 0.08) 18%, rgba(94, 255, 235, 0) 34%)',
-    glowB: 'radial-gradient(circle at 82% 72%, rgba(34, 168, 150, 0.18) 0%, rgba(34, 168, 150, 0.08) 16%, rgba(34, 168, 150, 0) 34%)',
-    nebula: 'radial-gradient(circle at 74% 62%, rgba(89, 121, 132, 0.12) 0%, rgba(89, 121, 132, 0.06) 16%, rgba(89, 121, 132, 0) 34%), linear-gradient(118deg, rgba(145, 12, 34, 0.56) 0%, rgba(181, 44, 20, 0.32) 44%, rgba(223, 123, 18, 0.18) 100%)',
+    shellBackground: 'linear-gradient(126deg, #120d24 0%, #261545 42%, #42254e 72%, #09070c 100%)',
+    glowA: 'radial-gradient(circle at 4% 6%, rgba(103, 121, 255, 0.42) 0%, rgba(103, 121, 255, 0) 34%)',
+    glowB: 'radial-gradient(circle at 78% 18%, rgba(255, 205, 142, 0.18) 0%, rgba(255, 205, 142, 0) 28%)',
+    nebula: 'linear-gradient(112deg, rgba(42, 24, 70, 0.86) 0%, rgba(61, 19, 65, 0.44) 42%, rgba(7, 6, 10, 0.72) 100%)',
     planetSize: '34vw',
     planetRight: '-5vw',
     planetBottom: '-8vh'

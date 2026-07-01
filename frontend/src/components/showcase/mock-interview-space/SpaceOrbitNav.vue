@@ -120,9 +120,10 @@ defineEmits<{
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(100vh - 250px);
-  z-index: 8;
+  top: calc(100vh - 300px);
+  z-index: 60;
   height: 250px;
+  pointer-events: none;
 }
 
 .orbit-svg {
@@ -146,6 +147,7 @@ defineEmits<{
   gap: 18px;
   transform: translate(-50%, -50%);
   z-index: 4;
+  pointer-events: auto;
 }
 
 .orbit-arrow,

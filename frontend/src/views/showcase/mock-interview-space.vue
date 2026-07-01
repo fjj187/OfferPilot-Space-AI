@@ -14,6 +14,7 @@ import {
 import SpaceContentPanel from '@/components/showcase/mock-interview-space/SpaceContentPanel.vue'
 import SpaceHeader from '@/components/showcase/mock-interview-space/SpaceHeader.vue'
 import SpaceCosmosBigBang from '@/components/showcase/mock-interview-space/SpaceCosmosBigBang.vue'
+import SpaceGpuBackdrop from '@/components/showcase/mock-interview-space/SpaceGpuBackdrop.vue'
 import router from '@/router'
 import { useRoute } from 'vue-router'
 import SpaceOrbitNav from '@/components/showcase/mock-interview-space/SpaceOrbitNav.vue'
@@ -834,7 +835,7 @@ const sceneIndexById = scenes.reduce<Record<string, number>>((map, scene, index)
 
 const findSceneIndexById = (id: string) => sceneIndexById[id] ?? -1
 
-const transitionMs = 420
+const transitionMs = 840
 const centerSlot = 2
 const orbitMotionTransition = `left ${ transitionMs }ms cubic-bezier(0.2, 0.9, 0.24, 1.02), top ${ transitionMs }ms cubic-bezier(0.2, 0.9, 0.24, 1.02), opacity 0.3s ease`
 
@@ -931,7 +932,6 @@ const cosmosRestingHeaderStyle = {
 } as CSSProperties
 
 const sceneShellStyle = computed<CSSProperties>(() => ({
-  background: activeScene.value.shellBackground,
   '--scene-line': activeScene.value.theme.line,
   '--scene-primary': activeScene.value.theme.primary,
   '--scene-secondary': activeScene.value.theme.secondary,
@@ -961,6 +961,26 @@ const headerStyle = computed<CSSProperties>(() => {
 
 const syncVisualLayers = (immediate = false) => {
   visualStageRef.value?.syncVisualLayers(immediate)
+}
+
+let sceneLayoutRefreshFrame: number | null = null
+
+const cancelSceneLayoutRefresh = () => {
+  if (sceneLayoutRefreshFrame === null) return
+  window.cancelAnimationFrame(sceneLayoutRefreshFrame)
+  sceneLayoutRefreshFrame = null
+}
+
+const scheduleSceneLayoutRefresh = () => {
+  cancelSceneLayoutRefresh()
+  sceneLayoutRefreshFrame = window.requestAnimationFrame(() => {
+    sceneLayoutRefreshFrame = window.requestAnimationFrame(() => {
+      sceneLayoutRefreshFrame = null
+      refreshScrollMetrics()
+      updateHeaderFade()
+      updateScrollCapsuleVisibility()
+    })
+  })
 }
 
 /** 星球层默认 opacity 为 0，必须在 SpaceVisualStage 挂载后同步一次 */
@@ -1805,9 +1825,7 @@ watch(orderedSceneIndexes, async () => {
 
 watch(displayScene, async () => {
   await nextTick()
-  refreshScrollMetrics()
-  updateHeaderFade()
-  updateScrollCapsuleVisibility()
+  scheduleSceneLayoutRefresh()
 })
 
 watch(
@@ -1915,6 +1933,7 @@ onBeforeUnmount(() => {
     window.clearTimeout(libraryListTransitionTimer)
     libraryListTransitionTimer = null
   }
+  cancelSceneLayoutRefresh()
   clearTransitionTimers()
   window.removeEventListener('resize', handleVisualResize)
   visualStageRef.value?.clearVisualLayerTweens()
@@ -1934,6 +1953,11 @@ onBeforeUnmount(() => {
     }"
     :style="sceneShellStyle"
   >
+    <SpaceGpuBackdrop
+      :is-performance-mode="isUserScrolling || isFastOrbitTransition || isAutoScrolling"
+      :scene-id="activeScene.id"
+    />
+
     <input
       ref="refFileInput"
       type="file"
@@ -2226,8 +2250,8 @@ onBeforeUnmount(() => {
   /* 登录后仍可滚动，但不占位显示滚动条，避免内容区被挤窄 */
   scrollbar-width: none;
   -ms-overflow-style: none;
-  transition: background var(--scene-takeover-duration) var(--ease-orbit);
-  background-color: #071123;
+  transition: none;
+  background: #070c15;
 
   &::-webkit-scrollbar {
     display: none;
@@ -2244,6 +2268,8 @@ onBeforeUnmount(() => {
 }
 
 .showcase-body {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -2331,6 +2357,11 @@ onBeforeUnmount(() => {
 }
 
 .hero-stage {
+  --hero-planet-center-x: calc(50vw + 16vw);
+  --hero-planet-radius: calc(min(18vw, 360px) * 1.38 / 2);
+  --hero-copy-gap: 100px;
+  --hero-copy-width: min(520px, calc(var(--hero-planet-center-x) - var(--hero-planet-radius) - var(--hero-copy-gap) - 34px));
+
   position: relative;
   z-index: 2;
   display: grid;
@@ -2340,16 +2371,26 @@ onBeforeUnmount(() => {
   padding: 10px 34px 240px;
 }
 
+.hero-stage > .visual-column {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
 .copy-column {
   position: relative;
+  z-index: 3;
+  grid-column: 1 / -1;
+  grid-row: 1;
   padding-top: 12px;
   min-height: 420px;
+  pointer-events: none;
 }
 
 .copy-inner {
   position: absolute;
-  inset: 0 auto auto 0;
-  width: min(520px, 100%);
+  top: 80px;
+  right: calc(100vw - var(--hero-planet-center-x) + var(--hero-planet-radius) + var(--hero-copy-gap) - 100px);
+  width: max(320px, var(--hero-copy-width));
 }
 
 .copy-column h1 {
@@ -2388,28 +2429,36 @@ onBeforeUnmount(() => {
 .scene-copy-enter-active {
   transition:
     opacity 0.42s var(--ease-orbit),
-    transform 0.42s var(--ease-orbit),
-    filter 0.42s var(--ease-orbit);
+    transform 0.42s var(--ease-orbit);
 }
 
 .scene-copy-leave-active {
   transition:
     opacity 0.24s ease,
-    transform 0.24s ease,
-    filter 0.24s ease;
+    transform 0.24s ease;
 }
 
 .scene-copy-enter-from,
 .scene-copy-leave-to {
   opacity: 0;
-  filter: blur(5px);
-  transform: translateY(10px);
+  transform: translate3d(0, 10px, 0);
+}
+
+.scene-copy-enter-active .copy-inner,
+.scene-copy-leave-active .copy-inner {
+  will-change: opacity, transform;
+  backface-visibility: hidden;
 }
 
 @media (max-width: 1100px) {
   .hero-stage {
     grid-template-columns: 1fr;
     padding-bottom: 320px;
+  }
+
+  .copy-inner {
+    inset: 0 auto auto 0;
+    width: min(520px, 100%);
   }
 
 }

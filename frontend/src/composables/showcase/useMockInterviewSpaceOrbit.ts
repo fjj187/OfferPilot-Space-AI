@@ -40,7 +40,9 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
   const resolveInitialOrbitOrder = () => {
     const sceneCount = options.scenes.length
     const initialIndex = options.initialActiveIndex ?? 0
-    return Array.from({ length: sceneCount }, (_, orderIndex) => {
+    return Array.from({
+      length: sceneCount
+    }, (_, orderIndex) => {
       const offset = orderIndex - options.centerSlot
       return (initialIndex + offset + sceneCount) % sceneCount
     })

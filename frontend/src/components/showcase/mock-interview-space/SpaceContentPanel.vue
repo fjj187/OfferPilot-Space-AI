@@ -392,10 +392,11 @@ onBeforeUnmount(() => {
 <style lang="scss" scoped>
 .content-stack {
   position: relative;
-  z-index: 3;
-  padding: 240px 34px 120px;
+  z-index: 42;
+  padding: 440px 34px 120px;
   margin-top: -241px;
   background: transparent;
+  text-shadow: 0 2px 14px rgb(5 8 20 / 0.72);
 }
 
 .content-panel {
@@ -422,7 +423,7 @@ onBeforeUnmount(() => {
 
 .panel-swap-shell {
   position: relative;
-  z-index: 2;
+  z-index: 43;
   min-height: 560px;
 }
 
