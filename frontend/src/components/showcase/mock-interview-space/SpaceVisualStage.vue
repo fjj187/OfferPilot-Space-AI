@@ -52,7 +52,7 @@ let visualTimeline: gsap.core.Timeline | null = null
 
 const planetTextureMap: Partial<Record<SceneItem['id'], PlanetTextureConfig>> = {
   overview: {
-    src: '/DroitStock_630232299_Medium.jpg',
+    src: `${import.meta.env.BASE_URL}DroitStock_630232299_Medium.jpg`,
     imageStyle: {
       objectPosition: '50% 46%',
       transform: 'translate(-50%, -50%) scale(2.18)',
@@ -60,7 +60,7 @@ const planetTextureMap: Partial<Record<SceneItem['id'], PlanetTextureConfig>> = 
     }
   },
   mock: {
-    src: '/DroitStock_1493827434_Medium.jpg',
+    src: `${import.meta.env.BASE_URL}DroitStock_1493827434_Medium.jpg`,
     imageStyle: {
       objectPosition: '50% 50%',
       transform: 'translate(-50%, -50%) scale(1.1)',
@@ -68,7 +68,7 @@ const planetTextureMap: Partial<Record<SceneItem['id'], PlanetTextureConfig>> = 
     }
   },
   library: {
-    src: '/DroitStock_923338027_Medium.jpg',
+    src: `${import.meta.env.BASE_URL}DroitStock_923338027_Medium.jpg`,
     imageStyle: {
       objectPosition: '45% 48%',
       transform: 'translate(-50%, -50%) scale(1.38)',
@@ -76,7 +76,7 @@ const planetTextureMap: Partial<Record<SceneItem['id'], PlanetTextureConfig>> = 
     }
   },
   feedback: {
-    src: '/PIA18033~orig.jpg',
+    src: `${import.meta.env.BASE_URL}PIA18033~orig.jpg`,
     imageStyle: {
       objectPosition: '50% 52%',
       transform: 'translate(-50%, -50%) scale(1.22)',
@@ -84,7 +84,7 @@ const planetTextureMap: Partial<Record<SceneItem['id'], PlanetTextureConfig>> = 
     }
   },
   report: {
-    src: '/DroitStock_55808438_Medium.jpg',
+    src: `${import.meta.env.BASE_URL}DroitStock_55808438_Medium.jpg`,
     imageStyle: {
       objectPosition: '50% 54%',
       transform: 'translate(-50%, -50%) scale(1.48)',

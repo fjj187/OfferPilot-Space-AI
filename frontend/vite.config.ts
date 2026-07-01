@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: env.VITE_ROUTER_MODE === 'hash'
-      ? ''
+      ? './'
       : '/',
     server: {
       port: 2048,
