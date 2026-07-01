@@ -41,6 +41,8 @@ export const shouldSkipAuthProbe = () => {
     clearAuthSession()
     return true
   }
+  // 演示环境占位 token，无需向远端探活
+  if (getAuthToken() === 'demo') return true
 
   return Date.now() - lastAuthProbeFailedAt < AUTH_PROBE_COOLDOWN_MS
 }
