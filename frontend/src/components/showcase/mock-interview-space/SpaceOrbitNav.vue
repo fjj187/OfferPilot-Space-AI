@@ -9,6 +9,8 @@ interface OrbitGhostItem {
 
 defineProps<{
   autoplay: boolean
+  contentRevealed?: boolean
+  hidden?: boolean
   isFastOrbitTransition: boolean
   isOrbitPlayBursting: boolean
   isPlayReady: boolean
@@ -30,7 +32,11 @@ defineEmits<{
 <template>
   <section
     class="orbit-rail"
-    :class="{ 'is-fast-orbit-transition': isFastOrbitTransition }"
+    :class="{
+      'is-content-revealed': contentRevealed,
+      'is-fast-orbit-transition': isFastOrbitTransition,
+      'is-hidden': hidden
+    }"
   >
     <svg
       class="orbit-svg"
@@ -53,6 +59,7 @@ defineEmits<{
         type="button"
         class="orbit-play"
         :class="{
+          'is-autoplaying': autoplay,
           'is-ready': isPlayReady,
           'is-bursting': isOrbitPlayBursting
         }"
@@ -120,7 +127,7 @@ defineEmits<{
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(100vh - 300px);
+  top: calc(var(--page-viewport-height, 100vh) - 300px);
   z-index: 60;
   height: 250px;
   pointer-events: none;
@@ -146,7 +153,7 @@ defineEmits<{
   align-items: center;
   gap: 18px;
   transform: translate(-50%, -50%);
-  z-index: 4;
+  z-index: 80;
   pointer-events: auto;
 }
 
@@ -188,6 +195,39 @@ defineEmits<{
     background 0.22s ease,
     box-shadow 0.22s ease,
     transform 0.22s ease;
+}
+
+.orbit-play::before {
+  position: absolute;
+  inset: -9px;
+  border: 1px solid rgb(167 206 255 / 0.28);
+  border-radius: inherit;
+  opacity: 0;
+  content: '';
+  pointer-events: none;
+}
+
+.orbit-rail.is-hidden {
+  opacity: 0;
+  transform: translateY(20px) scale(0.97);
+  pointer-events: none;
+}
+
+.orbit-rail.is-content-revealed {
+  animation: cosmosOrbitRailReveal 0.82s var(--ease-orbit) 0.08s forwards;
+}
+
+.orbit-play.is-autoplaying {
+  border-color: rgb(167 206 255 / 0.68);
+  background: rgb(110 169 255 / 0.1);
+  box-shadow:
+    0 0 0 1px rgb(167 206 255 / 0.14),
+    0 0 18px rgb(87 159 255 / 0.16),
+    inset 0 1px 0 rgb(255 255 255 / 0.18);
+}
+
+.orbit-play.is-autoplaying::before {
+  animation: orbitPlayAutoplayPulse 1.8s ease-out infinite;
 }
 
 .orbit-play.is-ready {
@@ -322,6 +362,35 @@ defineEmits<{
   100% {
     opacity: 0;
     transform: scale(1.7);
+  }
+}
+
+@keyframes orbitPlayAutoplayPulse {
+  0% {
+    opacity: 0.62;
+    transform: scale(0.78);
+  }
+
+  72% {
+    opacity: 0.16;
+    transform: scale(1.42);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.58);
+  }
+}
+
+@keyframes cosmosOrbitRailReveal {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 

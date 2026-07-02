@@ -1,6 +1,9 @@
 <script lang="tsx" setup>
 defineProps<{
+  contentRevealed?: boolean
   isUserScrolling: boolean
+  revealSettled?: boolean
+  shellHidden?: boolean
   visible?: boolean
 }>()
 
@@ -13,8 +16,15 @@ defineEmits<{
   <button
     type="button"
     class="scroll-capsule"
-    :class="{ 'is-user-scrolling': isUserScrolling, 'is-hidden': visible === false }"
+    :class="{
+      'is-content-revealed': contentRevealed,
+      'is-hidden': visible === false,
+      'is-reveal-settled': revealSettled,
+      'is-shell-hidden': shellHidden,
+      'is-user-scrolling': isUserScrolling
+    }"
     aria-label="Scroll to content"
+    :aria-hidden="visible === false"
     @click="$emit('scroll')"
   >
     <span class="scroll-capsule-arrow i-lucide-arrow-down"></span>
@@ -26,7 +36,7 @@ defineEmits<{
   position: fixed;
   top: 50%;
   right: 54px;
-  z-index: 26;
+  z-index: 80;
   display: grid;
   place-items: start center;
   width: 28px;
@@ -45,8 +55,14 @@ defineEmits<{
   -webkit-backdrop-filter: blur(8px);
   cursor: pointer;
   transform: translateY(-50%);
+  visibility: visible;
   overflow: hidden;
-  transition: transform 0.24s ease, border-color 0.24s ease, background 0.24s ease, opacity 0.24s ease;
+  transition:
+    transform 0.24s ease,
+    border-color 0.24s ease,
+    background 0.24s ease,
+    opacity 0.24s ease,
+    visibility 0s linear 0s;
 }
 
 .scroll-capsule:hover {
@@ -63,10 +79,32 @@ defineEmits<{
   box-shadow: 0 10px 24px rgb(5 16 31 / 0.18);
 }
 
+.scroll-capsule.is-shell-hidden {
+  opacity: 0;
+  transform: translateY(calc(-50% + 20px)) scale(0.97);
+  pointer-events: none;
+}
+
+.scroll-capsule.is-content-revealed:not(.is-reveal-settled):not(.is-hidden) {
+  animation: cosmos-scroll-capsule-reveal 0.62s var(--ease-orbit) 0.2s both;
+}
+
+.scroll-capsule.is-reveal-settled,
+.scroll-capsule.is-hidden {
+  animation: none;
+}
+
 .scroll-capsule.is-hidden {
   opacity: 0;
   pointer-events: none;
   transform: translateY(calc(-50% + 10px)) scale(0.92);
+  visibility: hidden;
+  transition:
+    transform 0.24s ease,
+    border-color 0.24s ease,
+    background 0.24s ease,
+    opacity 0.24s ease,
+    visibility 0s linear 0.24s;
 }
 
 .scroll-capsule-arrow {
@@ -76,6 +114,18 @@ defineEmits<{
 
 .scroll-capsule:hover .scroll-capsule-arrow {
   transform: translateY(18px);
+}
+
+@keyframes cosmos-scroll-capsule-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-50% + 20px)) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
 }
 
 @media (max-width: 1100px) {

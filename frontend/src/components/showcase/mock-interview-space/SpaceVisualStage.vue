@@ -52,7 +52,7 @@ let visualTimeline: gsap.core.Timeline | null = null
 
 const planetTextureMap: Partial<Record<SceneItem['id'], PlanetTextureConfig>> = {
   overview: {
-    src: `${import.meta.env.BASE_URL}DroitStock_630232299_Medium.jpg`,
+    src: `${ import.meta.env.BASE_URL }DroitStock_630232299_Medium.jpg`,
     imageStyle: {
       objectPosition: '50% 46%',
       transform: 'translate(-50%, -50%) scale(2.18)',
@@ -60,7 +60,7 @@ const planetTextureMap: Partial<Record<SceneItem['id'], PlanetTextureConfig>> = 
     }
   },
   mock: {
-    src: `${import.meta.env.BASE_URL}DroitStock_1493827434_Medium.jpg`,
+    src: `${ import.meta.env.BASE_URL }DroitStock_1493827434_Medium.jpg`,
     imageStyle: {
       objectPosition: '50% 50%',
       transform: 'translate(-50%, -50%) scale(1.1)',
@@ -68,7 +68,7 @@ const planetTextureMap: Partial<Record<SceneItem['id'], PlanetTextureConfig>> = 
     }
   },
   library: {
-    src: `${import.meta.env.BASE_URL}DroitStock_923338027_Medium.jpg`,
+    src: `${ import.meta.env.BASE_URL }DroitStock_923338027_Medium.jpg`,
     imageStyle: {
       objectPosition: '45% 48%',
       transform: 'translate(-50%, -50%) scale(1.38)',
@@ -76,7 +76,7 @@ const planetTextureMap: Partial<Record<SceneItem['id'], PlanetTextureConfig>> = 
     }
   },
   feedback: {
-    src: `${import.meta.env.BASE_URL}PIA18033~orig.jpg`,
+    src: `${ import.meta.env.BASE_URL }PIA18033~orig.jpg`,
     imageStyle: {
       objectPosition: '50% 52%',
       transform: 'translate(-50%, -50%) scale(1.22)',
@@ -84,7 +84,7 @@ const planetTextureMap: Partial<Record<SceneItem['id'], PlanetTextureConfig>> = 
     }
   },
   report: {
-    src: `${import.meta.env.BASE_URL}DroitStock_55808438_Medium.jpg`,
+    src: `${ import.meta.env.BASE_URL }DroitStock_55808438_Medium.jpg`,
     imageStyle: {
       objectPosition: '50% 54%',
       transform: 'translate(-50%, -50%) scale(1.48)',
@@ -94,8 +94,7 @@ const planetTextureMap: Partial<Record<SceneItem['id'], PlanetTextureConfig>> = 
 }
 
 const resolveVisualSlotProfiles = (stageWidth: number, stageHeight: number): VisualSlot[] => {
-  const viewportWidth = typeof window === 'undefined' ? stageWidth : window.innerWidth
-  const widthUnit = Math.max(stageWidth, viewportWidth, 360)
+  const widthUnit = Math.max(stageWidth, 360)
   const heightUnit = Math.min(Math.max(stageHeight, 320), 720)
   const compactRatio = stageWidth < 760 ? 0.82 : 1
 
@@ -159,7 +158,9 @@ const planetStyleFor = (scene: SceneItem, sceneIndex: number): CSSProperties => 
   const isLowerRightPlanet = slotIndex === 4
   const isEarthSizedPlanet = scene.id === 'feedback' || scene.id === 'report'
   const hasTexture = Boolean(planetTextureMap[scene.id])
-  const size = isEarthSizedPlanet ? 'min(21vw, 420px)' : 'min(18vw, 360px)'
+  const size = isEarthSizedPlanet
+    ? 'min(calc(var(--page-viewport-width, 100vw) * 0.21), 420px)'
+    : 'min(calc(var(--page-viewport-width, 100vw) * 0.18), 360px)'
 
   return {
     width: size,
@@ -445,8 +446,8 @@ defineExpose({
   position: absolute;
   left: 50%;
   top: 50%;
-  width: calc(100vw + 18px);
-  height: min(58vw, 680px);
+  width: calc(var(--page-viewport-width, 100vw) + 18px);
+  height: min(calc(var(--page-viewport-width, 100vw) * 0.58), 680px);
   pointer-events: none;
   opacity: 0.38;
   transform: translate(-50%, -48%);

@@ -360,6 +360,9 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
       if (orbitOptions?.scrollToContent) {
         options.scrollToSceneContent(0)
       }
+      if (!orbitOptions?.pauseAutoplay && autoplay.value) {
+        startAutoplay()
+      }
       return
     }
     navigateToScene(index, orbitOptions)
@@ -375,6 +378,16 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
         requestSceneChange((activeIndex.value + 1) % options.scenes.length)
       }
     }, 120)
+  }
+
+  const resumeAutoplay = (burst = true) => {
+    resumeAutoplayFromOrbitControl(burst)
+    startAutoplay()
+  }
+
+  const prepareAutoplay = (burst = false) => {
+    resumeAutoplayFromOrbitControl(burst)
+    clearAutoplay()
   }
 
   const goToNext = () => {
@@ -404,8 +417,7 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
       return
     }
 
-    resumeAutoplayFromOrbitControl(true)
-    startAutoplay()
+    resumeAutoplay(true)
   }
 
   const orbitClass = (index: number) => ({
@@ -510,7 +522,9 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
     orderedSceneIndexes,
     pauseAutoplay,
     pauseAutoplayFromContent,
+    prepareAutoplay,
     requestSceneChange,
+    resumeAutoplay,
     snapToScene,
     startAutoplay,
     toggleAutoplay

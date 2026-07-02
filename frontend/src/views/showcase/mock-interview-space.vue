@@ -881,6 +881,8 @@ const contentPanelRef = ref<HTMLElement | null>(null)
 const contentLeadRef = ref<HTMLElement | null>(null)
 const visualStageRef = ref<InstanceType<typeof SpaceVisualStage> | null>(null)
 const headerRef = ref<HTMLElement | null>(null)
+const pageViewportWidth = ref(0)
+const pageViewportHeight = ref(0)
 const isReportPreviewVisible = ref(false)
 const isScrollCapsuleVisible = ref(true)
 const scrollCapsuleHideLock = ref(false)
@@ -936,7 +938,13 @@ const sceneShellStyle = computed<CSSProperties>(() => ({
   '--scene-primary': activeScene.value.theme.primary,
   '--scene-secondary': activeScene.value.theme.secondary,
   '--scene-dot': activeScene.value.theme.dot,
-  '--scene-dot-active': activeScene.value.theme.activeDot
+  '--scene-dot-active': activeScene.value.theme.activeDot,
+  '--page-viewport-width': pageViewportWidth.value > 0
+    ? `${ pageViewportWidth.value }px`
+    : '100vw',
+  '--page-viewport-height': pageViewportHeight.value > 0
+    ? `${ pageViewportHeight.value }px`
+    : '100vh'
 } as CSSProperties))
 
 const headerStyle = computed<CSSProperties>(() => {
@@ -963,6 +971,12 @@ const syncVisualLayers = (immediate = false) => {
   visualStageRef.value?.syncVisualLayers(immediate)
 }
 
+const syncPageViewportSize = () => {
+  const pageElement = pageRef.value
+  pageViewportWidth.value = pageElement?.clientWidth || window.innerWidth || 0
+  pageViewportHeight.value = pageElement?.clientHeight || window.innerHeight || 0
+}
+
 let sceneLayoutRefreshFrame: number | null = null
 
 const cancelSceneLayoutRefresh = () => {
@@ -986,6 +1000,7 @@ const scheduleSceneLayoutRefresh = () => {
 /** 星球层默认 opacity 为 0，必须在 SpaceVisualStage 挂载后同步一次 */
 const bootstrapVisualStage = () => {
   requestAnimationFrame(() => {
+    syncPageViewportSize()
     refreshScrollMetrics()
     syncVisualLayers(true)
     updateScrollCapsuleVisibility()
@@ -1038,10 +1053,11 @@ const {
   orderedSceneIndexes,
   pauseAutoplay,
   pauseAutoplayFromContent,
+  prepareAutoplay,
   requestSceneChange,
+  resumeAutoplay,
   snapToScene,
-  startAutoplay,
-  toggleAutoplay
+  startAutoplay
 } = useMockInterviewSpaceOrbit({
   scenes,
   initialActiveIndex: initialSceneIndex >= 0 ? initialSceneIndex : 0,
@@ -1078,6 +1094,15 @@ const {
 const isOrbitPlayReady = computed(() => !autoplay.value && (!autoplayPausedByContent.value || hasReturnedToOrbitZone()))
 
 orbitScrollToSceneContent = (...args) => scrollToSceneContent(...args)
+
+const handleOrbitAutoplayToggle = () => {
+  if (autoplay.value) {
+    pauseAutoplay()
+    return
+  }
+
+  resumeAutoplay()
+}
 
 const resolveHeaderElement = (element: HTMLElement | null) => {
   headerRef.value = element
@@ -1287,6 +1312,9 @@ const openSceneById = async (
     pauseAutoplay: options?.pauseAutoplay ?? true,
     scrollToContent: options?.scrollToContent ?? false
   })
+  if (options?.pauseAutoplay === false) {
+    prepareAutoplay(false)
+  }
 }
 
 const openSceneContent = (sceneId: string) => {
@@ -1755,7 +1783,7 @@ const handleOrbitSceneSelect = (index: number) => {
   const nextScene = scenes[index]
   if (nextScene) {
     void openSceneById(nextScene.id, {
-      pauseAutoplay: true,
+      pauseAutoplay: false,
       scrollToContent: false,
       revealScrollCapsule: true
     })
@@ -1773,6 +1801,7 @@ const handleScrollCapsuleClick = () => {
 }
 
 const handleVisualResize = () => {
+  syncPageViewportSize()
   refreshScrollMetrics()
   syncVisualLayers(true)
   updateScrollCapsuleVisibility()
@@ -1818,6 +1847,7 @@ const handlePageScroll = () => {
 
 watch(orderedSceneIndexes, async () => {
   await nextTick()
+  syncPageViewportSize()
   refreshScrollMetrics()
   syncVisualLayers()
   updateScrollCapsuleVisibility()
@@ -1825,6 +1855,7 @@ watch(orderedSceneIndexes, async () => {
 
 watch(displayScene, async () => {
   await nextTick()
+  syncPageViewportSize()
   scheduleSceneLayoutRefresh()
 })
 
@@ -1834,6 +1865,7 @@ watch(
     const nextSceneId = normalizeRouteSceneQuery(sceneQuery)
     if (!nextSceneId) return
     if (nextSceneId === activeScene.value.id) return
+    if (nextSceneId === displayScene.value.id) return
 
     requestSceneChange(findSceneIndexById(nextSceneId), {
       pauseAutoplay: true,
@@ -1905,6 +1937,7 @@ onMounted(async () => {
     if (pageRef.value) {
       pageRef.value.scrollTop = 0
     }
+    syncPageViewportSize()
     releaseScrollCapsuleReveal()
     scrollCapsuleHideLock.value = false
     isScrollCapsuleVisible.value = true
@@ -2003,7 +2036,10 @@ onBeforeUnmount(() => {
         }"
       >
         <SpaceScrollCapsule
+          :content-revealed="isCosmosContentRevealed"
           :is-user-scrolling="isUserScrolling"
+          :reveal-settled="isScrollCapsuleRevealSettled"
+          :shell-hidden="isCosmosBigBangPending && !isCosmosContentRevealed"
           :visible="isScrollCapsuleVisible"
           @scroll="handleScrollCapsuleClick"
         />
@@ -2049,6 +2085,8 @@ onBeforeUnmount(() => {
 
         <SpaceOrbitNav
           :autoplay="autoplay"
+          :content-revealed="isCosmosContentRevealed"
+          :hidden="isCosmosBigBangPending && !isCosmosContentRevealed"
           :is-fast-orbit-transition="isFastOrbitTransition"
           :is-orbit-play-bursting="isOrbitPlayBursting"
           :is-play-ready="isOrbitPlayReady"
@@ -2060,7 +2098,7 @@ onBeforeUnmount(() => {
           @next="goToNext"
           @prev="goToPrev"
           @select="handleOrbitSceneSelect"
-          @toggle="toggleAutoplay"
+          @toggle="handleOrbitAutoplayToggle"
         />
 
         <SpaceContentPanel
@@ -2241,7 +2279,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 100vh;
+  min-height: var(--page-viewport-height, 100vh);
   height: 100%;
   color: #fff;
   overflow-x: hidden;
@@ -2288,16 +2326,9 @@ onBeforeUnmount(() => {
 .cosmos-gate-root.is-big-bang-active:not(.is-content-revealed) {
   .copy-column,
   .visual-column,
-  .orbit-rail,
   .content-stack {
     opacity: 0;
     transform: translateY(20px) scale(0.97);
-    pointer-events: none;
-  }
-
-  .scroll-capsule {
-    opacity: 0;
-    transform: translateY(calc(-50% + 20px)) scale(0.97);
     pointer-events: none;
   }
 }
@@ -2307,21 +2338,9 @@ onBeforeUnmount(() => {
     animation: cosmos-content-reveal 0.72s var(--ease-orbit) forwards;
   }
 
-  .orbit-rail {
-    animation: cosmos-content-reveal 0.82s var(--ease-orbit) 0.08s forwards;
-  }
-
   .content-stack {
     animation: cosmos-content-reveal 0.88s var(--ease-orbit) 0.14s forwards;
   }
-}
-
-.cosmos-gate-root.is-content-revealed:not(.is-scroll-capsule-reveal-settled) .scroll-capsule {
-  animation: cosmos-scroll-capsule-reveal 0.62s var(--ease-orbit) 0.2s both;
-}
-
-.cosmos-gate-root.is-scroll-capsule-reveal-settled .scroll-capsule {
-  animation: none;
 }
 
 @keyframes cosmos-content-reveal {
@@ -2336,18 +2355,6 @@ onBeforeUnmount(() => {
   }
 }
 
-@keyframes cosmos-scroll-capsule-reveal {
-  from {
-    opacity: 0;
-    transform: translateY(calc(-50% + 20px)) scale(0.97);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(-50%) scale(1);
-  }
-}
-
 .interview-space-showcase.is-auto-scrolling {
   scroll-behavior: auto;
 }
@@ -2357,8 +2364,8 @@ onBeforeUnmount(() => {
 }
 
 .hero-stage {
-  --hero-planet-center-x: calc(50vw + 16vw);
-  --hero-planet-radius: calc(min(18vw, 360px) * 1.38 / 2);
+  --hero-planet-center-x: calc(var(--page-viewport-width, 100vw) * 0.66);
+  --hero-planet-radius: calc(min(calc(var(--page-viewport-width, 100vw) * 0.18), 360px) * 1.38 / 2);
   --hero-copy-gap: 100px;
   --hero-copy-width: min(520px, calc(var(--hero-planet-center-x) - var(--hero-planet-radius) - var(--hero-copy-gap) - 34px));
 
@@ -2367,7 +2374,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: minmax(320px, 520px) 1fr;
   gap: 20px;
-  min-height: calc(100vh - 92px);
+  min-height: calc(var(--page-viewport-height, 100vh) - 92px);
   padding: 10px 34px 240px;
 }
 
@@ -2389,7 +2396,7 @@ onBeforeUnmount(() => {
 .copy-inner {
   position: absolute;
   top: 80px;
-  right: calc(100vw - var(--hero-planet-center-x) + var(--hero-planet-radius) + var(--hero-copy-gap) - 100px);
+  right: calc(var(--page-viewport-width, 100vw) - var(--hero-planet-center-x) + var(--hero-planet-radius) + var(--hero-copy-gap) - 100px);
   width: max(320px, var(--hero-copy-width));
 }
 
