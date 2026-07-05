@@ -1,4 +1,4 @@
-#include "app_config.hpp"
+#include "Config/app_config.hpp"
 
 AppConfig::AppConfig()
 {
@@ -57,7 +57,7 @@ AppConfig& AppConfig::getInstance()
 
 bool AppConfig::isConfigValid()
 {
-    if(httpPort>0&&httpPort<=65535&&dbPort>0&&dbPort<=65535&&dbHost!=""&&dbName!=""&&dbUser!=""&&dbPassword!=""){
+    if(httpPort>0&&httpPort<=65535){
         return true;
     }
     else{

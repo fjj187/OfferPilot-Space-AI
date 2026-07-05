@@ -1,4 +1,4 @@
-#include "InterviewRoutes.hpp"
+#include "Routes/InterviewRoutes.hpp"
 
 InterviewRoutes::InterviewRoutes(HttpServer& httpServer, InterviewController& controller)
     : m_httpServer(httpServer), m_controller(controller) {}
@@ -12,6 +12,16 @@ void InterviewRoutes::registerRoutes() {
     m_httpServer.post("/api/interview/reports/generate",
         [this](const httplib::Request& req, httplib::Response& res) {
             m_controller.generateReport(req, res);
+        });
+
+    m_httpServer.get("/api/interview/reports",
+        [this](const httplib::Request& req, httplib::Response& res) {
+            m_controller.listReports(req, res);
+        });
+
+    m_httpServer.get("/api/interview/reports/:sessionId",
+        [this](const httplib::Request& req, httplib::Response& res) {
+            m_controller.getReport(req, res);
         });
 
     m_httpServer.get("/api/interview/stream",

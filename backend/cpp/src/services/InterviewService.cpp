@@ -2,7 +2,7 @@
 
 #include <utility>
 
-InterviewService::InterviewService(InterviewProvider &provider, JsonSessionRepository &repository):
+InterviewService::InterviewService(InterviewProvider &provider, ISessionRepository &repository):
     m_provider(provider),
     m_sessionRepository(repository) {}
 

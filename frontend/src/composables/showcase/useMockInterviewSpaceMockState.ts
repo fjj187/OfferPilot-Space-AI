@@ -1326,6 +1326,9 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
           questionReviews: localSummary.questionReviews,
           suggestedFocus: localSummary.suggestedFocus
         })
+        if (!generated.aiUsed && generated.fallbackReason) {
+          console.warn('[mock-interview-space] AI report fallback:', generated.fallbackReason)
+        }
         summary = {
           ...generated.report,
           practicePlan: localSummary.practicePlan || generated.report.practicePlan,

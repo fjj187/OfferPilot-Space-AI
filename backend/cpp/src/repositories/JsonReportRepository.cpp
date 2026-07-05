@@ -16,15 +16,39 @@ inline void from_json(const nlohmann::json& j, PracticePlanSnapshot& p) {
     j.at("zone").get_to(p.zone);
 }
 
+inline void to_json(nlohmann::json& j, const ReportQuestionReview& r) {
+    j = nlohmann::json{
+        {"questionId", r.questionId},
+        {"questionTitle", r.questionTitle},
+        {"userAnswer", r.userAnswer},
+        {"referenceAnswer", r.referenceAnswer ? nlohmann::json(*r.referenceAnswer) : nlohmann::json(nullptr)},
+        {"aiFeedback", r.aiFeedback ? nlohmann::json(*r.aiFeedback) : nlohmann::json(nullptr)}
+    };
+}
+
+inline void from_json(const nlohmann::json& j, ReportQuestionReview& r) {
+    r.questionId = j.value("questionId", "");
+    r.questionTitle = j.value("questionTitle", "");
+    r.userAnswer = j.value("userAnswer", "");
+    if (j.contains("referenceAnswer") && !j.at("referenceAnswer").is_null()) {
+        r.referenceAnswer = j.at("referenceAnswer").get<std::string>();
+    }
+    if (j.contains("aiFeedback") && !j.at("aiFeedback").is_null()) {
+        r.aiFeedback = j.at("aiFeedback").get<std::string>();
+    }
+}
+
 inline void to_json(nlohmann::json& j, const InterviewReportEntity& r) {
     j = nlohmann::json{
         {"id", r.id},
         {"sessionId", r.sessionId},
+        {"modelId", r.modelId ? nlohmann::json(*r.modelId) : nlohmann::json(nullptr)},
         {"threadId", r.threadId ? nlohmann::json(*r.threadId) : nlohmann::json(nullptr)},
         {"topic", r.topic},
         {"source", r.source},
         {"sourceDocumentId", r.sourceDocumentId ? nlohmann::json(*r.sourceDocumentId) : nlohmann::json(nullptr)},
         {"sourceDocumentName", r.sourceDocumentName ? nlohmann::json(*r.sourceDocumentName) : nlohmann::json(nullptr)},
+        {"sourceDocumentExcerpt", r.sourceDocumentExcerpt ? nlohmann::json(*r.sourceDocumentExcerpt) : nlohmann::json(nullptr)},
         {"questionTitle", r.questionTitle ? nlohmann::json(*r.questionTitle) : nlohmann::json(nullptr)},
         {"summaryHeadline", r.summaryHeadline},
         {"summaryBody", r.summaryBody},
@@ -34,6 +58,7 @@ inline void to_json(nlohmann::json& j, const InterviewReportEntity& r) {
         {"answeredCount", r.answeredCount},
         {"totalCount", r.totalCount},
         {"answerSnapshot", r.answerSnapshot ? nlohmann::json(*r.answerSnapshot) : nlohmann::json(nullptr)},
+        {"questionReviews", r.questionReviews ? nlohmann::json(*r.questionReviews) : nlohmann::json(nullptr)},
         {"suggestedFocus", r.suggestedFocus ? nlohmann::json(*r.suggestedFocus) : nlohmann::json(nullptr)},
         {"practicePlan", r.practicePlan ? nlohmann::json(*r.practicePlan) : nlohmann::json(nullptr)},
         {"createdAt", r.createdAt},
@@ -44,6 +69,9 @@ inline void to_json(nlohmann::json& j, const InterviewReportEntity& r) {
 inline void from_json(const nlohmann::json& j, InterviewReportEntity& r) {
     j.at("id").get_to(r.id);
     j.at("sessionId").get_to(r.sessionId);
+    if (j.contains("modelId") && !j.at("modelId").is_null()) {
+        r.modelId = j.at("modelId").get<std::string>();
+    }
     if (j.contains("threadId") && !j.at("threadId").is_null()) {
         r.threadId = j.at("threadId").get<std::string>();
     }
@@ -54,6 +82,9 @@ inline void from_json(const nlohmann::json& j, InterviewReportEntity& r) {
     }
     if (j.contains("sourceDocumentName") && !j.at("sourceDocumentName").is_null()) {
         r.sourceDocumentName = j.at("sourceDocumentName").get<std::string>();
+    }
+    if (j.contains("sourceDocumentExcerpt") && !j.at("sourceDocumentExcerpt").is_null()) {
+        r.sourceDocumentExcerpt = j.at("sourceDocumentExcerpt").get<std::string>();
     }
     if (j.contains("questionTitle") && !j.at("questionTitle").is_null()) {
         r.questionTitle = j.at("questionTitle").get<std::string>();
@@ -73,6 +104,9 @@ inline void from_json(const nlohmann::json& j, InterviewReportEntity& r) {
     j.at("totalCount").get_to(r.totalCount);
     if (j.contains("answerSnapshot") && !j.at("answerSnapshot").is_null()) {
         r.answerSnapshot = j.at("answerSnapshot").get<std::vector<std::string>>();
+    }
+    if (j.contains("questionReviews") && !j.at("questionReviews").is_null()) {
+        r.questionReviews = j.at("questionReviews").get<std::vector<ReportQuestionReview>>();
     }
     if (j.contains("suggestedFocus") && !j.at("suggestedFocus").is_null()) {
         r.suggestedFocus = j.at("suggestedFocus").get<std::vector<std::string>>();

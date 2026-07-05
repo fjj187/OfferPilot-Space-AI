@@ -29,7 +29,7 @@ bool MySQLConn::connect(string user, string passwd, string dbName, string ip, un
     return true;
 }
 
-bool MySQLConn::query(const string& sql)
+bool MySQLConn::query(const string& sql) const
 {
     freeResult();
     if (mysql_query(this->conn, sql.c_str()))
@@ -41,7 +41,7 @@ bool MySQLConn::query(const string& sql)
     return true;
 }
 
-bool MySQLConn::update(const string& sql)
+bool MySQLConn::update(const string& sql) const
 {
     freeResult();
     if (mysql_query(this->conn, sql.c_str()))
@@ -52,7 +52,7 @@ bool MySQLConn::update(const string& sql)
     return true;
 }
 
-bool MySQLConn::next()
+bool MySQLConn::next() const
 {
     if (m_result != nullptr)
     {
@@ -62,7 +62,7 @@ bool MySQLConn::next()
     return false;
 }
 
-string MySQLConn::value(int index)
+string MySQLConn::value(int index) const
 {
     int count = mysql_num_fields(m_result);
     if (index >= 0 && index < count)
@@ -75,22 +75,22 @@ string MySQLConn::value(int index)
     return "";
 }
 
-bool MySQLConn::transaction()
+bool MySQLConn::transaction() const
 {
     return mysql_autocommit(this->conn, false) ;
 }
 
-bool MySQLConn::commit()
+bool MySQLConn::commit() const
 {
     return mysql_commit(this->conn) ;
 }
 
-bool MySQLConn::rollback()
+bool MySQLConn::rollback() const
 {
     return mysql_rollback(this->conn) ;
 }
 
-void MySQLConn::freeResult()
+void MySQLConn::freeResult() const
 {
     if (m_result != nullptr)
     {
@@ -99,15 +99,25 @@ void MySQLConn::freeResult()
     }
 }
 
-bool MySQLConn::refreshAlivetime()
+bool MySQLConn::refreshAlivetime() const
 {
     m_alivetime = steady_clock::now();
     return true;
 }
 
-long long MySQLConn::getAlivetime()
+long long MySQLConn::getAlivetime() const
 {
     auto now = steady_clock::now();
     auto duration = duration_cast<seconds>(now - m_alivetime);
     return duration.count();
+}
+
+MYSQL* MySQLConn::raw() const
+{
+    return conn;
+}
+
+bool MySQLConn::isConnected() const
+{
+    return conn != nullptr;
 }

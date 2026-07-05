@@ -13,15 +13,25 @@ struct PracticePlanSnapshot {
     std::string zone;
 };
 
+struct ReportQuestionReview {
+    std::string questionId;
+    std::string questionTitle;
+    std::string userAnswer;
+    std::optional<std::string> referenceAnswer;
+    std::optional<std::string> aiFeedback;
+};
+
 // 报告主体
 struct InterviewReportEntity : public TimestampedRecord {
     std::string id;
     std::string sessionId;
+    std::optional<std::string> modelId;
     std::optional<std::string> threadId;
     std::string topic;
     std::string source;
     std::optional<std::string> sourceDocumentId;
     std::optional<std::string> sourceDocumentName;
+    std::optional<std::string> sourceDocumentExcerpt;
     std::optional<std::string> questionTitle;
     std::string summaryHeadline;
     std::string summaryBody;
@@ -31,6 +41,7 @@ struct InterviewReportEntity : public TimestampedRecord {
     int answeredCount = 0;
     int totalCount = 0;
     std::optional<std::vector<std::string>> answerSnapshot;
+    std::optional<std::vector<ReportQuestionReview>> questionReviews;
     std::optional<std::vector<std::string>> suggestedFocus;
     std::optional<PracticePlanSnapshot> practicePlan;
 };
@@ -46,14 +57,6 @@ struct InterviewReportSummary : public TimestampedRecord {
     int answeredCount = 0;
     int totalCount = 0;
     std::vector<std::string> weaknessTags;
-};
-
-struct ReportQuestionReview {
-    std::string questionId;
-    std::string questionTitle;
-    std::string userAnswer;
-    std::optional<std::string> referenceAnswer;
-    std::optional<std::string> aiFeedback;
 };
 
 // 生成报告请求
@@ -79,6 +82,8 @@ struct GenerateReportRequest {
 struct GenerateReportResult {
     InterviewReportEntity report;
     bool created = false;
+    bool aiUsed = false;
+    std::optional<std::string> fallbackReason;
 };
 
 // 报告生成上下文（内部传递用，字段待实现阶段细化）

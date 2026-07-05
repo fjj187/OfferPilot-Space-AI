@@ -202,6 +202,8 @@ export const generateRemoteInterviewReport = async (payload: GenerateRemoteInter
   const result = await postInterviewReportApi<{
     report: RemoteInterviewReportSummary
     created: boolean
+    aiUsed?: boolean
+    fallbackReason?: string | null
   }>(
     apiBase,
     '/reports/generate',
@@ -213,7 +215,9 @@ export const generateRemoteInterviewReport = async (payload: GenerateRemoteInter
 
   return {
     report: mapRemoteReportToPersisted(result.report),
-    created: result.created
+    created: result.created,
+    aiUsed: result.aiUsed ?? true,
+    fallbackReason: result.fallbackReason || undefined
   }
 }
 

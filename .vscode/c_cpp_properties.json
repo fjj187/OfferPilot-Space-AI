@@ -3,6 +3,13 @@
     {
       "name": "Win32",
       "includePath": [
+        "${workspaceFolder}/backend/cpp/include",
+        "${workspaceFolder}/backend/cpp/include/**",
+        "${workspaceFolder}/backend/cpp/src",
+        "${workspaceFolder}/backend/cpp/src/**",
+        "${workspaceFolder}/backend/cpp/third_part",
+        "${workspaceFolder}/backend/cpp/third_part/**",
+        "${workspaceFolder}/backend/cpp",
         "${workspaceFolder}/**",
         "C:\\Program Files\\MySQL\\MySQL Server 8.0\\include"
       ],

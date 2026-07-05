@@ -5,12 +5,12 @@
 #include <string>
 
 #include "providers/InterviewProvider.hpp"
-#include "repositories/JsonSessionRepository.hpp"
+#include "repositories/ISessionRepository.hpp"
 
 
 class InterviewService {
 public:
-    InterviewService(InterviewProvider& provider, JsonSessionRepository& repository);
+    InterviewService(InterviewProvider& provider, ISessionRepository& repository);
     void streamInterview(const InterviewStreamRequest& request, 
                          std::function<void(const InterviewStreamEvent&)> callback,
                          std::shared_ptr<ProviderContext> context = nullptr);
@@ -23,5 +23,5 @@ private:
     bool recordUserMessage(const InterviewStreamRequest& request);
     bool recordAssistantMessage(const InterviewStreamRequest& request, const std::string& assistantContent);
     InterviewProvider& m_provider;
-    JsonSessionRepository& m_sessionRepository;
+    ISessionRepository& m_sessionRepository;
 };

@@ -2,7 +2,7 @@
 #include <string>
 
 #include "http_server.hpp"
-#include "interview_controller.hpp"
+#include "Controller/interview_controller.hpp"
 
 class InterviewRoutes {
 public:

@@ -1,6 +1,35 @@
 #include "services/ReportService.hpp"
 
-ReportService::ReportService(JsonSessionRepository& sessionRepo,
+#include <chrono>
+#include <ctime>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+
+namespace {
+std::string currentTimestampUtc() {
+    const auto now = std::chrono::system_clock::now();
+    const auto tt = std::chrono::system_clock::to_time_t(now);
+    std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm, &tt);
+#else
+    gmtime_r(&tt, &tm);
+#endif
+
+    std::ostringstream oss;
+    oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+    return oss.str();
+}
+
+void applyRequestMetadata(InterviewReportEntity& report, const GenerateReportRequest& request) {
+    report.modelId = request.modelId;
+    report.sourceDocumentExcerpt = request.sourceDocumentExcerpt;
+    report.questionReviews = request.questionReviews;
+}
+}
+
+ReportService::ReportService(ISessionRepository& sessionRepo,
                   IReportRepository& reportRepo,
                   IReportAiClient& aiClient)
                   :m_sessionRepo(sessionRepo),
@@ -34,10 +63,13 @@ GenerateReportResult ReportService::generateReport(const GenerateReportRequest& 
     std::string rawJson;
     bool aiSucceeded = true;
     std::string parseError;
+    std::string fallbackReason;
     try {
         rawJson = m_aiClient.generateJson(systemPrompt, userPrompt);
-    } catch (const std::exception&) {
+    } catch (const std::exception& e) {
         aiSucceeded = false;
+        fallbackReason = e.what();
+        std::cerr << "[ReportService] AI report generation failed: " << fallbackReason << std::endl;
     }
 
     // 7. 解析 AI 结果，失败则 fallback
@@ -47,27 +79,37 @@ GenerateReportResult ReportService::generateReport(const GenerateReportRequest& 
         if (parsed.has_value()) {
             report = std::move(*parsed);
         } else {
+            aiSucceeded = false;
+            fallbackReason = "Model output is not valid report JSON: " + parseError;
+            std::cerr << "[ReportService] AI report parse failed: " << fallbackReason << std::endl;
             report = buildFallbackReport(session, request);
         }
     } else {
         report = buildFallbackReport(session, request);
     }
+    applyRequestMetadata(report, request);
 
     // 8. 如果已有报告，保留原 id / createdAt
+    const auto now = currentTimestampUtc();
     if (existing.has_value()) {
         report.id = existing->id;
         report.createdAt = existing->createdAt;
+        report.updatedAt = now;
+    } else {
+        report.createdAt = now;
+        report.updatedAt = now;
     }
 
-    // 9. 保存更新时间
-    report.updatedAt = report.createdAt.empty() ? report.updatedAt : report.updatedAt;
-
-    // 10. 落库
+    // 9. 落库
     m_reportRepo.upsertReport(report);
 
     GenerateReportResult result;
     result.report = std::move(report);
     result.created = !existing.has_value();
+    result.aiUsed = aiSucceeded;
+    if (!aiSucceeded && !fallbackReason.empty()) {
+        result.fallbackReason = fallbackReason;
+    }
     return result;
 }
 
@@ -88,6 +130,9 @@ std::optional<InterviewReportEntity> ReportService::parseAiResultToEntity(
         report.source = request.source.value_or("mock-interview-space");
         report.sourceDocumentId = request.sourceDocumentId;
         report.sourceDocumentName = request.sourceDocumentName;
+        report.modelId = request.modelId;
+        report.sourceDocumentExcerpt = request.sourceDocumentExcerpt;
+        report.questionReviews = request.questionReviews;
         report.questionTitle = session.questionTitle;
 
         report.summaryHeadline = j.value("summaryHeadline", "");
@@ -146,6 +191,9 @@ InterviewReportEntity ReportService::buildFallbackReport(
     report.source = request.source.value_or("mock-interview-space");
     report.sourceDocumentId = request.sourceDocumentId;
     report.sourceDocumentName = request.sourceDocumentName;
+    report.modelId = request.modelId;
+    report.sourceDocumentExcerpt = request.sourceDocumentExcerpt;
+    report.questionReviews = request.questionReviews;
     report.questionTitle = session.questionTitle;
 
     report.answeredCount = request.answeredCount.value_or(session.messageCount / 2);
