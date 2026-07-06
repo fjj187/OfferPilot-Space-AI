@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include "repositories/IReportRepository.hpp"
-#include "MySQLConn.hpp"
+#include "Pool/MySQLConnectionPool.hpp"
 #include <sstream>
 #include <iomanip>
 #include <ctime>
@@ -12,7 +12,8 @@
 
 class MySQLReportRepository : public IReportRepository {
 public:
-    explicit MySQLReportRepository(MySQLConn& conn);
+    // 报表仓储从连接池借连接，避免单连接并发争用。
+    explicit MySQLReportRepository(MySQLConnectionPool& pool);
 
     bool upsertReport(const InterviewReportEntity& report) override;//实现IReportRepository接口中的upsertReport方法，用于插入或更新报告
     std::optional<InterviewReportEntity> getReportBySessionId(const std::string& sessionId) override;//实现IReportRepository接口中的getReportBySessionId方法，用于根据sessionId获取报告
@@ -22,5 +23,5 @@ public:
 
 private:
     InterviewReportSummary toSummary(const InterviewReportEntity& report) const;//将InterviewReportEntity对象转换为InterviewReportSummary对象
-    MySQLConn& m_conn;
+    MySQLConnectionPool& m_pool;
 };

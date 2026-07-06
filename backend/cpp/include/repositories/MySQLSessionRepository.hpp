@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include "repositories/ISessionRepository.hpp"
-#include "MySQLConn.hpp"
+#include "Pool/MySQLConnectionPool.hpp"
 #include <sstream>
 #include <iomanip>
 #include <ctime>
@@ -13,7 +13,8 @@
 
 class MySQLSessionRepository : public ISessionRepository {
 public:
-    explicit MySQLSessionRepository(MySQLConn& conn);
+    // 每次数据库访问时从连接池借出连接，方法结束后自动归还。
+    explicit MySQLSessionRepository(MySQLConnectionPool& pool);
 
     bool recordUserMessage(const InterviewStreamRequest& request) override;//实现ISessionRepository接口中的recordUserMessage方法，用于记录用户消息
     bool recordAssistantMessage(const InterviewStreamRequest& request,//实现ISessionRepository接口中的recordAssistantMessage方法，用于记录assistant消息
@@ -31,5 +32,5 @@ private:
     InterviewSessionSummary toSummary(const InterviewSessionDetail& detail) const;//将InterviewSessionDetail对象转换为InterviewSessionSummary对象
 
 private:
-    MySQLConn& m_conn;
+    MySQLConnectionPool& m_pool;
 };

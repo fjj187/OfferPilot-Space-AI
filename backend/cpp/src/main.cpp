@@ -11,7 +11,7 @@
 #include "providers/MockInterviewProviders.hpp"
 #include "providers/OpenAIInterviewProvider.hpp"
 #include "Client/OpenAIReportAiClient.hpp"
-#include "MySQLConn.hpp"
+#include "Pool/MySQLConnectionPool.hpp"
 #include "repositories/MySQLSessionRepository.hpp"
 #include "repositories/MySQLReportRepository.hpp"
 #include "repositories/MySQLAuthUserRepository.hpp"
@@ -114,15 +114,24 @@ int main() {
         res.set_content(R"({"success":true,"message":"ok"})", "application/json");
     });
 
-    MySQLConn mysqlConn;
-    if (!mysqlConn.connect(config.dbUser, config.dbPassword, config.dbName, config.dbHost, static_cast<unsigned short>(config.dbPort))) {
-        return 1;
-    }
+    // 先创建数据库连接池，再把池注入到各个仓储。
+    // 仓储不再持有单个 MySQLConn，避免多线程请求共享同一连接。
+    MySQLPoolConfig mysqlPoolCfg;
+    mysqlPoolCfg.host = config.dbHost;
+    mysqlPoolCfg.user = config.dbUser;
+    mysqlPoolCfg.password = config.dbPassword;
+    mysqlPoolCfg.dbName = config.dbName;
+    mysqlPoolCfg.port = static_cast<unsigned short>(config.dbPort);
+    mysqlPoolCfg.minSize = 2;
+    mysqlPoolCfg.maxSize = 8;
+    mysqlPoolCfg.acquireTimeoutMs = 3000;
 
-    MySQLSessionRepository sessionRepo(mysqlConn);
-    MySQLReportRepository reportRepo(mysqlConn);
-    MySQLAuthUserRepository authUserRepo(mysqlConn);
-    MySQLAuthSessionRepository authSessionRepo(mysqlConn);
+    MySQLConnectionPool mysqlPool(mysqlPoolCfg);
+
+    MySQLSessionRepository sessionRepo(mysqlPool);
+    MySQLReportRepository reportRepo(mysqlPool);
+    MySQLAuthUserRepository authUserRepo(mysqlPool);
+    MySQLAuthSessionRepository authSessionRepo(mysqlPool);
     PasswordHasher passwordHasher;
 
     std::unique_ptr<InterviewProvider> interviewProvider;

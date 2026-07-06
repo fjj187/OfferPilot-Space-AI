@@ -36,34 +36,24 @@ std::string isoUtcToMysqlDatetime(const std::string& isoUtc) {
     }
     return out;
 }
-
-std::string mysqlDatetimeToIsoUtc(const std::string& mysqlDatetime) {
-    std::string out = mysqlDatetime;
-    for (char& ch : out) {
-        if (ch == ' ') {
-            ch = 'T';
-            break;
-        }
-    }
-    return out + "Z";
-}
 }
 
-MySQLStreamCheckpointRepository::MySQLStreamCheckpointRepository(MySQLConn& conn)
-    : m_conn(conn) {}
+MySQLStreamCheckpointRepository::MySQLStreamCheckpointRepository(MySQLConnectionPool& pool)
+    : m_pool(pool) {}
 
 std::optional<InterviewStreamCheckpointRecord> MySQLStreamCheckpointRepository::getByKey(
     const std::string& sessionId,
     const std::string& threadId,
     const std::string& idempotentKey) const
 {
-    if (!m_conn.isConnected()) {
+    auto conn = m_pool.acquire();
+    if (!conn || !conn->isConnected()) {
         return std::nullopt;
     }
 
-    const auto escapedSessionId = escapeSql(m_conn, sessionId);
-    const auto escapedThreadId = escapeSql(m_conn, threadId);
-    const auto escapedKey = escapeSql(m_conn, idempotentKey);
+    const auto escapedSessionId = escapeSql(*conn, sessionId);
+    const auto escapedThreadId = escapeSql(*conn, threadId);
+    const auto escapedKey = escapeSql(*conn, idempotentKey);
 
     std::ostringstream sql;
     sql << "SELECT session_id, thread_id, message_id, idempotent_key, user_id, status, "
@@ -78,30 +68,30 @@ std::optional<InterviewStreamCheckpointRecord> MySQLStreamCheckpointRepository::
         << "AND idempotent_key = '" << escapedKey << "' "
         << "LIMIT 1";
 
-    if (!m_conn.query(sql.str())) {
+    if (!conn->query(sql.str())) {
         return std::nullopt;
     }
 
-    if (!m_conn.next()) {
+    if (!conn->next()) {
         return std::nullopt;
     }
 
     InterviewStreamCheckpointRecord record;
-    record.sessionId = m_conn.value(0);
-    record.threadId = m_conn.value(1);
-    record.messageId = m_conn.value(2);
-    record.idempotentKey = m_conn.value(3);
-    record.userId = nullIfEmpty(m_conn.value(4)).has_value()
-        ? std::optional<long long>(std::stoll(m_conn.value(4)))
+    record.sessionId = conn->value(0);
+    record.threadId = conn->value(1);
+    record.messageId = conn->value(2);
+    record.idempotentKey = conn->value(3);
+    record.userId = nullIfEmpty(conn->value(4)).has_value()
+        ? std::optional<long long>(std::stoll(conn->value(4)))
         : std::nullopt;
-    record.status = m_conn.value(5);
-    record.content = m_conn.value(6);
-    record.lastSequence = std::stoi(m_conn.value(7));
-    record.createdAt = m_conn.value(8);
-    record.updatedAt = m_conn.value(9);
-    record.completedAt = nullIfEmpty(m_conn.value(10));
-    record.errorCode = nullIfEmpty(m_conn.value(11));
-    record.errorMessage = nullIfEmpty(m_conn.value(12));
+    record.status = conn->value(5);
+    record.content = conn->value(6);
+    record.lastSequence = std::stoi(conn->value(7));
+    record.createdAt = conn->value(8);
+    record.updatedAt = conn->value(9);
+    record.completedAt = nullIfEmpty(conn->value(10));
+    record.errorCode = nullIfEmpty(conn->value(11));
+    record.errorMessage = nullIfEmpty(conn->value(12));
 
     return record;
 }
@@ -110,12 +100,13 @@ std::optional<InterviewStreamCheckpointRecord> MySQLStreamCheckpointRepository::
     const std::string& sessionId,
     const std::string& threadId) const
 {
-    if (!m_conn.isConnected()) {
+    auto conn = m_pool.acquire();
+    if (!conn || !conn->isConnected()) {
         return std::nullopt;
     }
 
-    const auto escapedSessionId = escapeSql(m_conn, sessionId);
-    const auto escapedThreadId = escapeSql(m_conn, threadId);
+    const auto escapedSessionId = escapeSql(*conn, sessionId);
+    const auto escapedThreadId = escapeSql(*conn, threadId);
 
     std::ostringstream sql;
     sql << "SELECT session_id, thread_id, message_id, idempotent_key, user_id, status, "
@@ -130,44 +121,45 @@ std::optional<InterviewStreamCheckpointRecord> MySQLStreamCheckpointRepository::
         << "ORDER BY updated_at DESC, id DESC "
         << "LIMIT 1";
 
-    if (!m_conn.query(sql.str())) {
+    if (!conn->query(sql.str())) {
         return std::nullopt;
     }
 
-    if (!m_conn.next()) {
+    if (!conn->next()) {
         return std::nullopt;
     }
 
     InterviewStreamCheckpointRecord record;
-    record.sessionId = m_conn.value(0);
-    record.threadId = m_conn.value(1);
-    record.messageId = m_conn.value(2);
-    record.idempotentKey = m_conn.value(3);
-    record.userId = nullIfEmpty(m_conn.value(4)).has_value()
-        ? std::optional<long long>(std::stoll(m_conn.value(4)))
+    record.sessionId = conn->value(0);
+    record.threadId = conn->value(1);
+    record.messageId = conn->value(2);
+    record.idempotentKey = conn->value(3);
+    record.userId = nullIfEmpty(conn->value(4)).has_value()
+        ? std::optional<long long>(std::stoll(conn->value(4)))
         : std::nullopt;
-    record.status = m_conn.value(5);
-    record.content = m_conn.value(6);
-    record.lastSequence = std::stoi(m_conn.value(7));
-    record.createdAt = m_conn.value(8);
-    record.updatedAt = m_conn.value(9);
-    record.completedAt = nullIfEmpty(m_conn.value(10));
-    record.errorCode = nullIfEmpty(m_conn.value(11));
-    record.errorMessage = nullIfEmpty(m_conn.value(12));
+    record.status = conn->value(5);
+    record.content = conn->value(6);
+    record.lastSequence = std::stoi(conn->value(7));
+    record.createdAt = conn->value(8);
+    record.updatedAt = conn->value(9);
+    record.completedAt = nullIfEmpty(conn->value(10));
+    record.errorCode = nullIfEmpty(conn->value(11));
+    record.errorMessage = nullIfEmpty(conn->value(12));
 
     return record;
 }
 
 bool MySQLStreamCheckpointRepository::upsertStart(const InterviewStreamCheckpointRecord& checkpoint) {
-    if (!m_conn.isConnected()) {
+    auto conn = m_pool.acquire();
+    if (!conn || !conn->isConnected()) {
         return false;
     }
 
-    const auto escapedSessionId = escapeSql(m_conn, checkpoint.sessionId);
-    const auto escapedThreadId = escapeSql(m_conn, checkpoint.threadId);
-    const auto escapedMessageId = escapeSql(m_conn, checkpoint.messageId);
-    const auto escapedKey = escapeSql(m_conn, checkpoint.idempotentKey);
-    const auto escapedContent = escapeSql(m_conn, checkpoint.content);
+    const auto escapedSessionId = escapeSql(*conn, checkpoint.sessionId);
+    const auto escapedThreadId = escapeSql(*conn, checkpoint.threadId);
+    const auto escapedMessageId = escapeSql(*conn, checkpoint.messageId);
+    const auto escapedKey = escapeSql(*conn, checkpoint.idempotentKey);
+    const auto escapedContent = escapeSql(*conn, checkpoint.content);
     const auto createdAt = isoUtcToMysqlDatetime(checkpoint.createdAt.empty() ? checkpoint.updatedAt : checkpoint.createdAt);
     const auto updatedAt = isoUtcToMysqlDatetime(checkpoint.updatedAt);
 
@@ -199,7 +191,7 @@ bool MySQLStreamCheckpointRepository::upsertStart(const InterviewStreamCheckpoin
         << "error_code = NULL, "
         << "error_message = NULL";
 
-    return m_conn.update(sql.str());
+    return conn->update(sql.str());
 }
 
 bool MySQLStreamCheckpointRepository::appendChunk(
@@ -208,14 +200,15 @@ bool MySQLStreamCheckpointRepository::appendChunk(
     const std::string& idempotentKey,
     const std::string& chunk)
 {
-    if (!m_conn.isConnected()) {
+    auto conn = m_pool.acquire();
+    if (!conn || !conn->isConnected()) {
         return false;
     }
 
-    const auto escapedSessionId = escapeSql(m_conn, sessionId);
-    const auto escapedThreadId = escapeSql(m_conn, threadId);
-    const auto escapedKey = escapeSql(m_conn, idempotentKey);
-    const auto escapedChunk = escapeSql(m_conn, chunk);
+    const auto escapedSessionId = escapeSql(*conn, sessionId);
+    const auto escapedThreadId = escapeSql(*conn, threadId);
+    const auto escapedKey = escapeSql(*conn, idempotentKey);
+    const auto escapedChunk = escapeSql(*conn, chunk);
 
     std::ostringstream sql;
     sql << "UPDATE interview_stream_checkpoints SET "
@@ -226,7 +219,7 @@ bool MySQLStreamCheckpointRepository::appendChunk(
         << "AND thread_id = '" << escapedThreadId << "' "
         << "AND idempotent_key = '" << escapedKey << "'";
 
-    return m_conn.update(sql.str());
+    return conn->update(sql.str());
 }
 
 bool MySQLStreamCheckpointRepository::complete(
@@ -234,13 +227,14 @@ bool MySQLStreamCheckpointRepository::complete(
     const std::string& threadId,
     const std::string& idempotentKey)
 {
-    if (!m_conn.isConnected()) {
+    auto conn = m_pool.acquire();
+    if (!conn || !conn->isConnected()) {
         return false;
     }
 
-    const auto escapedSessionId = escapeSql(m_conn, sessionId);
-    const auto escapedThreadId = escapeSql(m_conn, threadId);
-    const auto escapedKey = escapeSql(m_conn, idempotentKey);
+    const auto escapedSessionId = escapeSql(*conn, sessionId);
+    const auto escapedThreadId = escapeSql(*conn, threadId);
+    const auto escapedKey = escapeSql(*conn, idempotentKey);
 
     std::ostringstream sql;
     sql << "UPDATE interview_stream_checkpoints SET "
@@ -253,7 +247,7 @@ bool MySQLStreamCheckpointRepository::complete(
         << "AND thread_id = '" << escapedThreadId << "' "
         << "AND idempotent_key = '" << escapedKey << "'";
 
-    return m_conn.update(sql.str());
+    return conn->update(sql.str());
 }
 
 bool MySQLStreamCheckpointRepository::fail(
@@ -264,16 +258,17 @@ bool MySQLStreamCheckpointRepository::fail(
     const std::string& message,
     const std::string& status)
 {
-    if (!m_conn.isConnected()) {
+    auto conn = m_pool.acquire();
+    if (!conn || !conn->isConnected()) {
         return false;
     }
 
-    const auto escapedSessionId = escapeSql(m_conn, sessionId);
-    const auto escapedThreadId = escapeSql(m_conn, threadId);
-    const auto escapedKey = escapeSql(m_conn, idempotentKey);
-    const auto escapedCode = escapeSql(m_conn, code);
-    const auto escapedMessage = escapeSql(m_conn, message);
-    const auto escapedStatus = escapeSql(m_conn, status);
+    const auto escapedSessionId = escapeSql(*conn, sessionId);
+    const auto escapedThreadId = escapeSql(*conn, threadId);
+    const auto escapedKey = escapeSql(*conn, idempotentKey);
+    const auto escapedCode = escapeSql(*conn, code);
+    const auto escapedMessage = escapeSql(*conn, message);
+    const auto escapedStatus = escapeSql(*conn, status);
 
     std::ostringstream sql;
     sql << "UPDATE interview_stream_checkpoints SET "
@@ -285,6 +280,5 @@ bool MySQLStreamCheckpointRepository::fail(
         << "AND thread_id = '" << escapedThreadId << "' "
         << "AND idempotent_key = '" << escapedKey << "'";
 
-    return m_conn.update(sql.str());
+    return conn->update(sql.str());
 }
-

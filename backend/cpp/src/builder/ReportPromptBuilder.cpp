@@ -1,14 +1,13 @@
 #include "builder/ReportPromptBuilder.hpp"
 
-std::string ReportPromptBuilder::buildSystemPrompt() const {
-    return R"(
-你是面试复盘报告生成器。
-你只能输出一个合法 JSON 对象。
-禁止输出 markdown、代码块、注释、解释文字。
-不要输出多余字段。
+#include <algorithm>
 
-必须包含字段：
-summaryHeadline, summaryBody, weaknessTags, primaryWeakness,
+std::string ReportPromptBuilder::buildSystemPrompt() const {
+    // 这里是硬约束：要求模型只输出 JSON，方便后续机器解析。
+    return R"(
+你是面试复盘报告生成器。你只能输出一个合法 JSON 对象。
+禁止输出 markdown、代码块、注释、解释性文字。
+必须包含字段：summaryHeadline, summaryBody, weaknessTags, primaryWeakness,
 answeredCount, totalCount, suggestedFocus, practicePlan
 
 JSON 结构：
@@ -36,6 +35,7 @@ std::string ReportPromptBuilder::truncateText(const std::string& text, size_t ma
 }
 
 std::string ReportPromptBuilder::buildMessageDigest(const InterviewSessionDetail& detail) const {
+    // 只保留最近若干条消息，避免 prompt 过长。
     nlohmann::json arr = nlohmann::json::array();
 
     const size_t maxCount = 20;
@@ -66,6 +66,7 @@ nlohmann::json toJson(const ReportQuestionReview& review) {
 }
 
 std::string ReportPromptBuilder::buildReviewDigest(const GenerateReportRequest& request) const {
+    // 控制复盘材料的数量，避免 prompt 被塞爆。
     nlohmann::json arr = nlohmann::json::array();
 
     if (!request.questionReviews.has_value()) {
@@ -87,6 +88,7 @@ std::string ReportPromptBuilder::buildUserPrompt(
     const InterviewSessionDetail& detail,
     const GenerateReportRequest& request) const
 {
+    // 用户 prompt 用结构化 JSON，不用自然语言散文，便于模型稳定生成报告。
     nlohmann::json payload;
 
     payload["session"] = {

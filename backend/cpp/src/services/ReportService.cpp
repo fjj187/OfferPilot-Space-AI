@@ -23,6 +23,7 @@ std::string currentTimestampUtc() {
 }
 
 void applyRequestMetadata(InterviewReportEntity& report, const GenerateReportRequest& request) {
+    // 这些字段来自请求侧，属于补充信息，解析 AI 时和 fallback 时都要保留。
     report.modelId = request.modelId;
     report.sourceDocumentExcerpt = request.sourceDocumentExcerpt;
     report.questionReviews = request.questionReviews;
@@ -30,36 +31,35 @@ void applyRequestMetadata(InterviewReportEntity& report, const GenerateReportReq
 }
 
 ReportService::ReportService(ISessionRepository& sessionRepo,
-                  IReportRepository& reportRepo,
-                  IReportAiClient& aiClient)
-                  :m_sessionRepo(sessionRepo),
-                  m_reportRepo(reportRepo),
-                  m_aiClient(aiClient)
-{}
+                             IReportRepository& reportRepo,
+                             IReportAiClient& aiClient)
+    : m_sessionRepo(sessionRepo),
+      m_reportRepo(reportRepo),
+      m_aiClient(aiClient) {}
 
 GenerateReportResult ReportService::generateReport(const GenerateReportRequest& request) {
-    // 1. 校验 sessionId
+    // 1. 最基础的参数校验。
     if (request.sessionId.empty()) {
         throw std::runtime_error("sessionId is required");
     }
 
-    // 2. 先查 session
+    // 2. 先查 session，因为报告必须依附于已有面试记录。
     auto sessions = m_sessionRepo.listSessionsBySessionId(request.sessionId);
     if (sessions.empty()) {
         throw std::runtime_error("Session not found");
     }
 
-    // 3. 取最新一条作为报告上下文
+    // 3. 一次 session 可能对应多个 thread，这里取最新一条作为上下文。
     const auto& session = sessions.back();
 
-    // 4. 判断是否已有报告
+    // 4. 看看是否已经有报告了，后面需要保留原 id 和 createdAt。
     auto existing = m_reportRepo.getReportBySessionId(request.sessionId);
 
-    // 5. 先拼 prompt
+    // 5. 先拼 prompt。
     const auto systemPrompt = m_promptBuilder.buildSystemPrompt();
     const auto userPrompt = m_promptBuilder.buildUserPrompt(session, request);
 
-    // 6. 调 AI
+    // 6. 调 AI；失败时记录原因并走 fallback。
     std::string rawJson;
     bool aiSucceeded = true;
     std::string parseError;
@@ -72,7 +72,7 @@ GenerateReportResult ReportService::generateReport(const GenerateReportRequest& 
         std::cerr << "[ReportService] AI report generation failed: " << fallbackReason << std::endl;
     }
 
-    // 7. 解析 AI 结果，失败则 fallback
+    // 7. 解析 AI 结果，解析失败就使用 fallback 报告。
     InterviewReportEntity report;
     if (aiSucceeded) {
         auto parsed = parseAiResultToEntity(rawJson, session, request, parseError);
@@ -89,7 +89,7 @@ GenerateReportResult ReportService::generateReport(const GenerateReportRequest& 
     }
     applyRequestMetadata(report, request);
 
-    // 8. 如果已有报告，保留原 id / createdAt
+    // 8. 如果已有报告，保留原 id 和 createdAt。
     const auto now = currentTimestampUtc();
     if (existing.has_value()) {
         report.id = existing->id;
@@ -100,7 +100,7 @@ GenerateReportResult ReportService::generateReport(const GenerateReportRequest& 
         report.updatedAt = now;
     }
 
-    // 9. 落库
+    // 9. 最终落库。
     m_reportRepo.upsertReport(report);
 
     GenerateReportResult result;
@@ -120,6 +120,7 @@ std::optional<InterviewReportEntity> ReportService::parseAiResultToEntity(
     std::string& errorMessage)
 {
     try {
+        // 假定 AI 返回的是合法 JSON；缺字段时给默认值。
         auto j = nlohmann::json::parse(rawJson);
 
         InterviewReportEntity report;
@@ -183,6 +184,7 @@ InterviewReportEntity ReportService::buildFallbackReport(
     const InterviewSessionDetail& session,
     const GenerateReportRequest& request) const
 {
+    // fallback 的目标不是“高级”，而是“稳定可用”。
     InterviewReportEntity report;
     report.id = "report-" + session.sessionId;
     report.sessionId = session.sessionId;
@@ -244,3 +246,4 @@ std::optional<InterviewReportEntity> ReportService::getReportBySessionId(const s
 void ReportService::clearAllReports() {
     m_reportRepo.clearAll();
 }
+

@@ -7,6 +7,7 @@ class AuthController {
 public:
     explicit AuthController(AuthService& authService);
 
+    // 登录、查询当前用户、退出登录。
     void login(const httplib::Request& req, httplib::Response& res);
     void me(const httplib::Request& req, httplib::Response& res);
     void logout(const httplib::Request& req, httplib::Response& res);

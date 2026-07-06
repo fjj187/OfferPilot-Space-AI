@@ -1,7 +1,7 @@
 #pragma once
 #include <optional>
 #include <string>
-#include "MySQLConn.hpp"
+#include "Pool/MySQLConnectionPool.hpp"
 #include "types/InterviewTypes.hpp"
 #include <sstream>
 #include <iomanip>
@@ -28,7 +28,8 @@ struct InterviewStreamCheckpointRecord {
 
 class MySQLStreamCheckpointRepository {
 public:
-    explicit MySQLStreamCheckpointRepository(MySQLConn& conn);
+    // 流式 checkpoint 仓储改为连接池模式。
+    explicit MySQLStreamCheckpointRepository(MySQLConnectionPool& pool);
 
     std::optional<InterviewStreamCheckpointRecord> getByKey(
         const std::string& sessionId,
@@ -57,5 +58,5 @@ public:
               const std::string& status);
 
 private:
-    MySQLConn& m_conn;
+    MySQLConnectionPool& m_pool;
 };

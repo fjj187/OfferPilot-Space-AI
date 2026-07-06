@@ -2,13 +2,16 @@
 
 #include <utility>
 
-InterviewService::InterviewService(InterviewProvider &provider, ISessionRepository &repository):
-    m_provider(provider),
-    m_sessionRepository(repository) {}
+InterviewService::InterviewService(InterviewProvider &provider, ISessionRepository &repository)
+    : m_provider(provider),
+      m_sessionRepository(repository) {}
 
-
-void InterviewService::streamInterview(const InterviewStreamRequest& request, 
-std::function<void(const InterviewStreamEvent&)> callback,std::shared_ptr<ProviderContext> context) {
+void InterviewService::streamInterview(
+    const InterviewStreamRequest& request,
+    std::function<void(const InterviewStreamEvent&)> callback,
+    std::shared_ptr<ProviderContext> context)
+{
+    // 这里的执行顺序很重要：先校验，再落用户消息，再调用 provider。
     std::string errorMessage;
     if (!validateRequest(request, errorMessage)) {
         InterviewStreamEvent event;
@@ -34,6 +37,7 @@ std::function<void(const InterviewStreamEvent&)> callback,std::shared_ptr<Provid
     m_provider.streamFeedback(
         request,
         [&](const InterviewStreamEvent& event) {
+            // 回调里只做两件事：转发事件，以及拼接 assistant 的完整输出。
             if (event.type == InterviewStreamEventType::Chunk && event.content.has_value()) {
                 assistantContent += event.content.value();
             } else if (event.type == InterviewStreamEventType::Error) {
@@ -45,6 +49,7 @@ std::function<void(const InterviewStreamEvent&)> callback,std::shared_ptr<Provid
         },
         providerContext);
 
+    // provider 正常结束后，再把完整 assistant 消息写回仓储。
     if (!providerFailed && streamFinished) {
         if (!recordAssistantMessage(request, assistantContent)) {
             InterviewStreamEvent event;
@@ -56,6 +61,7 @@ std::function<void(const InterviewStreamEvent&)> callback,std::shared_ptr<Provid
 }
 
 bool InterviewService::validateRequest(const InterviewStreamRequest& request, std::string& errorMessage) {
+    // 流式面试接口字段较多，这里逐个校验，方便前端快速定位问题。
     const auto requireField = [&](const std::string& value, const char* name) -> bool {
         if (!value.empty()) {
             return true;
@@ -77,6 +83,7 @@ bool InterviewService::validateRequest(const InterviewStreamRequest& request, st
 }
 
 std::shared_ptr<ProviderContext> InterviewService::createProviderContext(const InterviewStreamRequest& request) {
+    // 给 provider 构造默认上下文，支持超时和取消控制。
     auto context = std::make_shared<ProviderContext>();
     context->requestId = request.sessionId + ":" + request.messageId;
     context->timeoutMs = 30000;
@@ -104,3 +111,4 @@ std::optional<InterviewSessionDetail> InterviewService::getSession(const std::st
 void InterviewService::clearHistory() {
     m_sessionRepository.clearAll();
 }
+

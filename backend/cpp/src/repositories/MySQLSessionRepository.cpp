@@ -16,20 +16,6 @@ std::string escapeSql(MySQLConn& conn, const std::string& input) {
     return escaped;
 }
 
-std::string isoUtcToMysqlDatetime(const std::string& isoUtc) {
-    std::string out = isoUtc;
-    if (!out.empty() && out.back() == 'Z') {
-        out.pop_back();
-    }
-    for (char& ch : out) {
-        if (ch == 'T') {
-            ch = ' ';
-            break;
-        }
-    }
-    return out;
-}
-
 std::optional<std::string> nullIfEmpty(const std::string& value) {
     if (value.empty()) {
         return std::nullopt;
@@ -56,24 +42,15 @@ std::optional<InterviewFeedbackStyle> stringToFeedbackStyle(const std::string& v
     return std::nullopt;
 }
 
-std::string messageRoleToString(InterviewMessageRole role) {
-    return role == InterviewMessageRole::User ? "user" : "assistant";
-}
-
 std::optional<InterviewMessageRole> stringToMessageRole(const std::string& value) {
     if (value == "user") return InterviewMessageRole::User;
     if (value == "assistant") return InterviewMessageRole::Assistant;
     return std::nullopt;
 }
-
-template <typename T>
-bool containsValue(const std::optional<T>& opt) {
-    return opt.has_value();
-}
 }
 
-MySQLSessionRepository::MySQLSessionRepository(MySQLConn& conn)
-    : m_conn(conn) {}
+MySQLSessionRepository::MySQLSessionRepository(MySQLConnectionPool& pool)
+    : m_pool(pool) {}
 
 std::string MySQLSessionRepository::buildKey(const std::string& sessionId, const std::string& threadId) const {
     return sessionId + ":" + threadId;
@@ -102,18 +79,19 @@ InterviewSessionSummary MySQLSessionRepository::toSummary(const InterviewSession
 }
 
 bool MySQLSessionRepository::recordUserMessage(const InterviewStreamRequest& request) {
-    if (!m_conn.isConnected()) {
+    auto conn = m_pool.acquire();
+    if (!conn || !conn->isConnected()) {
         return false;
     }
 
-    const auto escapedSessionId = escapeSql(m_conn, request.sessionId);
-    const auto escapedThreadId = escapeSql(m_conn, request.threadId);
-    const auto escapedTopic = escapeSql(m_conn, request.topic);
-    const auto escapedQuestionTitle = escapeSql(m_conn, request.questionTitle);
-    const auto escapedMessageId = escapeSql(m_conn, request.messageId + ":user");
-    const auto escapedAnswer = escapeSql(m_conn, request.answer);
+    const auto escapedSessionId = escapeSql(*conn, request.sessionId);
+    const auto escapedThreadId = escapeSql(*conn, request.threadId);
+    const auto escapedTopic = escapeSql(*conn, request.topic);
+    const auto escapedQuestionTitle = escapeSql(*conn, request.questionTitle);
+    const auto escapedMessageId = escapeSql(*conn, request.messageId + ":user");
+    const auto escapedAnswer = escapeSql(*conn, request.answer);
     const auto feedbackStyle = feedbackStyleToString(request.options.feedbackStyle);
-    const auto escapedFeedbackStyle = escapeSql(m_conn, feedbackStyle);
+    const auto escapedFeedbackStyle = escapeSql(*conn, feedbackStyle);
 
     std::ostringstream insertSessionSql;
     insertSessionSql
@@ -138,7 +116,7 @@ bool MySQLSessionRepository::recordUserMessage(const InterviewStreamRequest& req
         << "latest_user_message = VALUES(latest_user_message), "
         << "updated_at = UTC_TIMESTAMP()";
 
-    if (!m_conn.update(insertSessionSql.str())) {
+    if (!conn->update(insertSessionSql.str())) {
         return false;
     }
 
@@ -157,21 +135,22 @@ bool MySQLSessionRepository::recordUserMessage(const InterviewStreamRequest& req
         << "UTC_TIMESTAMP()"
         << ")";
 
-    return m_conn.update(insertMessageSql.str());
+    return conn->update(insertMessageSql.str());
 }
 
 bool MySQLSessionRepository::recordAssistantMessage(
     const InterviewStreamRequest& request,
     const std::string& assistantContent)
 {
-    if (!m_conn.isConnected()) {
+    auto conn = m_pool.acquire();
+    if (!conn || !conn->isConnected()) {
         return false;
     }
 
-    const auto escapedSessionId = escapeSql(m_conn, request.sessionId);
-    const auto escapedThreadId = escapeSql(m_conn, request.threadId);
-    const auto escapedMessageId = escapeSql(m_conn, request.messageId + ":assistant");
-    const auto escapedContent = escapeSql(m_conn, assistantContent);
+    const auto escapedSessionId = escapeSql(*conn, request.sessionId);
+    const auto escapedThreadId = escapeSql(*conn, request.threadId);
+    const auto escapedMessageId = escapeSql(*conn, request.messageId + ":assistant");
+    const auto escapedContent = escapeSql(*conn, assistantContent);
 
     std::ostringstream insertMessageSql;
     insertMessageSql
@@ -188,7 +167,7 @@ bool MySQLSessionRepository::recordAssistantMessage(
         << "UTC_TIMESTAMP()"
         << ")";
 
-    if (!m_conn.update(insertMessageSql.str())) {
+    if (!conn->update(insertMessageSql.str())) {
         return false;
     }
 
@@ -200,13 +179,14 @@ bool MySQLSessionRepository::recordAssistantMessage(
         << "updated_at = UTC_TIMESTAMP() "
         << "WHERE session_id = '" << escapedSessionId << "' AND thread_id = '" << escapedThreadId << "'";
 
-    return m_conn.update(updateSessionSql.str());
+    return conn->update(updateSessionSql.str());
 }
 
 std::vector<InterviewSessionSummary> MySQLSessionRepository::listSessions() {
     std::vector<InterviewSessionSummary> result;
 
-    if (!m_conn.isConnected()) {
+    auto conn = m_pool.acquire();
+    if (!conn || !conn->isConnected()) {
         return result;
     }
 
@@ -218,22 +198,22 @@ std::vector<InterviewSessionSummary> MySQLSessionRepository::listSessions() {
         << "FROM interview_sessions "
         << "ORDER BY updated_at DESC";
 
-    if (!m_conn.query(sql.str())) {
+    if (!conn->query(sql.str())) {
         return result;
     }
 
-    while (m_conn.next()) {
+    while (conn->next()) {
         InterviewSessionSummary summary;
-        summary.sessionId = m_conn.value(0);
-        summary.threadId = m_conn.value(1);
-        summary.topic = m_conn.value(2);
-        summary.questionTitle = m_conn.value(3);
-        summary.feedbackStyle = stringToFeedbackStyle(m_conn.value(4));
-        summary.messageCount = std::stoi(m_conn.value(5));
-        summary.latestUserMessage = nullIfEmpty(m_conn.value(6));
-        summary.latestAssistantMessage = nullIfEmpty(m_conn.value(7));
-        summary.createdAt = m_conn.value(8);
-        summary.updatedAt = m_conn.value(9);
+        summary.sessionId = conn->value(0);
+        summary.threadId = conn->value(1);
+        summary.topic = conn->value(2);
+        summary.questionTitle = conn->value(3);
+        summary.feedbackStyle = stringToFeedbackStyle(conn->value(4));
+        summary.messageCount = std::stoi(conn->value(5));
+        summary.latestUserMessage = nullIfEmpty(conn->value(6));
+        summary.latestAssistantMessage = nullIfEmpty(conn->value(7));
+        summary.createdAt = conn->value(8);
+        summary.updatedAt = conn->value(9);
 
         result.push_back(std::move(summary));
     }
@@ -245,12 +225,13 @@ std::optional<InterviewSessionDetail> MySQLSessionRepository::getSession(
     const std::string& sessionId,
     const std::string& threadId)
 {
-    if (!m_conn.isConnected()) {
+    auto conn = m_pool.acquire();
+    if (!conn || !conn->isConnected()) {
         return std::nullopt;
     }
 
-    const auto escapedSessionId = escapeSql(m_conn, sessionId);
-    const auto escapedThreadId = escapeSql(m_conn, threadId);
+    const auto escapedSessionId = escapeSql(*conn, sessionId);
+    const auto escapedThreadId = escapeSql(*conn, threadId);
 
     std::ostringstream sessionSql;
     sessionSql
@@ -263,25 +244,25 @@ std::optional<InterviewSessionDetail> MySQLSessionRepository::getSession(
         << "AND thread_id = '" << escapedThreadId << "' "
         << "LIMIT 1";
 
-    if (!m_conn.query(sessionSql.str())) {
+    if (!conn->query(sessionSql.str())) {
         return std::nullopt;
     }
 
-    if (!m_conn.next()) {
+    if (!conn->next()) {
         return std::nullopt;
     }
 
     InterviewSessionDetail detail;
-    detail.sessionId = m_conn.value(0);
-    detail.threadId = m_conn.value(1);
-    detail.topic = m_conn.value(2);
-    detail.questionTitle = m_conn.value(3);
-    detail.feedbackStyle = stringToFeedbackStyle(m_conn.value(4));
-    detail.messageCount = std::stoi(m_conn.value(5));
-    detail.latestUserMessage = nullIfEmpty(m_conn.value(6));
-    detail.latestAssistantMessage = nullIfEmpty(m_conn.value(7));
-    detail.createdAt = m_conn.value(8);
-    detail.updatedAt = m_conn.value(9);
+    detail.sessionId = conn->value(0);
+    detail.threadId = conn->value(1);
+    detail.topic = conn->value(2);
+    detail.questionTitle = conn->value(3);
+    detail.feedbackStyle = stringToFeedbackStyle(conn->value(4));
+    detail.messageCount = std::stoi(conn->value(5));
+    detail.latestUserMessage = nullIfEmpty(conn->value(6));
+    detail.latestAssistantMessage = nullIfEmpty(conn->value(7));
+    detail.createdAt = conn->value(8);
+    detail.updatedAt = conn->value(9);
 
     std::ostringstream messageSql;
     messageSql
@@ -291,20 +272,20 @@ std::optional<InterviewSessionDetail> MySQLSessionRepository::getSession(
         << "AND thread_id = '" << escapedThreadId << "' "
         << "ORDER BY created_at ASC, id ASC";
 
-    if (!m_conn.query(messageSql.str())) {
+    if (!conn->query(messageSql.str())) {
         return std::nullopt;
     }
 
-    while (m_conn.next()) {
-        const auto roleOpt = stringToMessageRole(m_conn.value(0));
+    while (conn->next()) {
+        const auto roleOpt = stringToMessageRole(conn->value(0));
         if (!roleOpt.has_value()) {
             continue;
         }
 
         InterviewMessage msg;
         msg.role = *roleOpt;
-        msg.content = m_conn.value(1);
-        msg.createdAt = m_conn.value(2);
+        msg.content = conn->value(1);
+        msg.createdAt = conn->value(2);
         detail.messages.push_back(std::move(msg));
     }
 
@@ -316,11 +297,12 @@ std::vector<InterviewSessionDetail> MySQLSessionRepository::listSessionsBySessio
 {
     std::vector<InterviewSessionDetail> result;
 
-    if (!m_conn.isConnected()) {
+    auto conn = m_pool.acquire();
+    if (!conn || !conn->isConnected()) {
         return result;
     }
 
-    const auto escapedSessionId = escapeSql(m_conn, sessionId);
+    const auto escapedSessionId = escapeSql(*conn, sessionId);
 
     std::ostringstream sql;
     sql << "SELECT thread_id "
@@ -328,37 +310,90 @@ std::vector<InterviewSessionDetail> MySQLSessionRepository::listSessionsBySessio
         << "WHERE session_id = '" << escapedSessionId << "' "
         << "ORDER BY updated_at ASC";
 
-    if (!m_conn.query(sql.str())) {
+    if (!conn->query(sql.str())) {
         return result;
     }
 
     std::vector<std::string> threadIds;
-    while (m_conn.next()) {
-        threadIds.push_back(m_conn.value(0));
+    while (conn->next()) {
+        threadIds.push_back(conn->value(0));
     }
 
+    // 继续使用当前连接加载每个 thread 的完整详情，避免在循环里再次 acquire()。
     for (const auto& threadId : threadIds) {
-        auto detail = getSession(sessionId, threadId);
-        if (detail.has_value()) {
-            result.push_back(std::move(*detail));
+        const auto escapedThreadId = escapeSql(*conn, threadId);
+
+        std::ostringstream sessionSql;
+        sessionSql
+            << "SELECT session_id, thread_id, topic, question_title, feedback_style, message_count, "
+            << "latest_user_message, latest_assistant_message, "
+            << "DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ'), "
+            << "DATE_FORMAT(updated_at, '%Y-%m-%dT%H:%i:%sZ') "
+            << "FROM interview_sessions "
+            << "WHERE session_id = '" << escapedSessionId << "' "
+            << "AND thread_id = '" << escapedThreadId << "' "
+            << "LIMIT 1";
+
+        if (!conn->query(sessionSql.str()) || !conn->next()) {
+            continue;
         }
+
+        InterviewSessionDetail detail;
+        detail.sessionId = conn->value(0);
+        detail.threadId = conn->value(1);
+        detail.topic = conn->value(2);
+        detail.questionTitle = conn->value(3);
+        detail.feedbackStyle = stringToFeedbackStyle(conn->value(4));
+        detail.messageCount = std::stoi(conn->value(5));
+        detail.latestUserMessage = nullIfEmpty(conn->value(6));
+        detail.latestAssistantMessage = nullIfEmpty(conn->value(7));
+        detail.createdAt = conn->value(8);
+        detail.updatedAt = conn->value(9);
+
+        std::ostringstream messageSql;
+        messageSql
+            << "SELECT role, content, DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') "
+            << "FROM interview_messages "
+            << "WHERE session_id = '" << escapedSessionId << "' "
+            << "AND thread_id = '" << escapedThreadId << "' "
+            << "ORDER BY created_at ASC, id ASC";
+
+        if (!conn->query(messageSql.str())) {
+            continue;
+        }
+
+        while (conn->next()) {
+            const auto roleOpt = stringToMessageRole(conn->value(0));
+            if (!roleOpt.has_value()) {
+                continue;
+            }
+
+            InterviewMessage msg;
+            msg.role = *roleOpt;
+            msg.content = conn->value(1);
+            msg.createdAt = conn->value(2);
+            detail.messages.push_back(std::move(msg));
+        }
+
+        result.push_back(std::move(detail));
     }
 
     return result;
 }
 
 void MySQLSessionRepository::clearAll() {
-    if (!m_conn.isConnected()) {
+    auto conn = m_pool.acquire();
+    if (!conn || !conn->isConnected()) {
         return;
     }
 
-    m_conn.transaction();
-    const bool ok1 = m_conn.update("DELETE FROM interview_messages");
-    const bool ok2 = m_conn.update("DELETE FROM interview_sessions");
+    conn->transaction();
+    const bool ok1 = conn->update("DELETE FROM interview_messages");
+    const bool ok2 = conn->update("DELETE FROM interview_sessions");
 
     if (ok1 && ok2) {
-        m_conn.commit();
+        conn->commit();
     } else {
-        m_conn.rollback();
+        conn->rollback();
     }
 }
