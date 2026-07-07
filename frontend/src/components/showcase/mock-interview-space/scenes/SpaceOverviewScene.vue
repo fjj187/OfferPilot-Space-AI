@@ -1,5 +1,7 @@
 <script setup lang="tsx">
+import InterviewAnalyticsDashboard from '@/components/analytics/InterviewAnalyticsDashboard.vue'
 import SpaceSceneHeader from '@/components/showcase/mock-interview-space/SpaceSceneHeader.vue'
+import { useInterviewAnalyticsDashboardData } from '@/composables/analytics/useInterviewAnalyticsDashboardData'
 
 interface OverviewSummaryItem {
   label: string
@@ -24,6 +26,15 @@ const emit = defineEmits<{
   openPractice: []
   openReport: []
 }>()
+
+const {
+  dashboardData,
+  hasFilteredAnalyticsData,
+  hasLocalAnalyticsData,
+  selectedTimeRange,
+  selectedTimeRangeText,
+  timeRangeOptions
+} = useInterviewAnalyticsDashboardData()
 </script>
 
 <template>
@@ -31,7 +42,64 @@ const emit = defineEmits<{
     <SpaceSceneHeader
       :title="sectionTitle"
       :body="sectionBody"
-    />
+      aside-min-width="620px"
+    >
+      <template #aside>
+        <div class="overview-action-row">
+          <button
+            type="button"
+            class="overview-action primary"
+            @click="emit('primaryAction')"
+          >
+            {{ primaryActionLabel }}
+          </button>
+          <button
+            type="button"
+            class="overview-action"
+            @click="emit('openLibrary')"
+          >
+            查看资料
+          </button>
+          <button
+            type="button"
+            class="overview-action"
+            @click="emit('openPractice')"
+          >
+            去专项训练
+          </button>
+          <button
+            type="button"
+            class="overview-action"
+            @click="emit('openReport')"
+          >
+            查看报告
+          </button>
+        </div>
+      </template>
+    </SpaceSceneHeader>
+
+    <InterviewAnalyticsDashboard
+      class="overview-analytics-dashboard"
+      :data="dashboardData"
+      title="训练数据驾驶舱"
+      :subtitle="hasLocalAnalyticsData ? (hasFilteredAnalyticsData ? '基于本地面试会话和复盘报告生成训练概览。' : '当前时间范围暂无本地训练记录，先用示例数据预览图表效果。') : '当前暂无本地训练记录，先用示例数据预览图表效果。'"
+      :time-range-text="selectedTimeRangeText"
+    >
+      <template #actions>
+        <div class="overview-analytics-range">
+          <button
+            v-for="option in timeRangeOptions"
+            :key="option.value"
+            type="button"
+            class="overview-analytics-range__button"
+            :class="{ 'is-active': selectedTimeRange === option.value }"
+            @click="selectedTimeRange = option.value"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+      </template>
+    </InterviewAnalyticsDashboard>
 
     <div class="overview-progress-card">
       <div class="overview-progress-head">
@@ -74,37 +142,6 @@ const emit = defineEmits<{
       >
         {{ practiceRouteNote }}
       </small>
-    </div>
-
-    <div class="overview-action-row">
-      <button
-        type="button"
-        class="overview-action primary"
-        @click="emit('primaryAction')"
-      >
-        {{ primaryActionLabel }}
-      </button>
-      <button
-        type="button"
-        class="overview-action"
-        @click="emit('openLibrary')"
-      >
-        查看资料
-      </button>
-      <button
-        type="button"
-        class="overview-action"
-        @click="emit('openPractice')"
-      >
-        去专项训练
-      </button>
-      <button
-        type="button"
-        class="overview-action"
-        @click="emit('openReport')"
-      >
-        查看报告
-      </button>
     </div>
   </div>
 </template>
@@ -199,7 +236,9 @@ const emit = defineEmits<{
 .overview-action-row {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 12px;
+  padding-top: 4px;
 }
 
 .overview-action {
@@ -232,7 +271,43 @@ const emit = defineEmits<{
   background: #fff;
 }
 
+.overview-analytics-dashboard {
+  margin-top: 10px;
+}
+
+.overview-analytics-range {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid rgb(148 199 255 / 0.18);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.05);
+}
+
+.overview-analytics-range__button {
+  height: 32px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgb(224 238 255 / 0.72);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.overview-analytics-range__button:hover,
+.overview-analytics-range__button.is-active {
+  background: rgb(82 240 196 / 0.16);
+  color: #f6fbff;
+}
+
 @media (max-width: 1100px) {
+  .overview-action-row {
+    justify-content: flex-start;
+  }
+
   .overview-summary-grid {
     grid-template-columns: 1fr;
   }

@@ -14,6 +14,9 @@ declare module 'vue' {
   export interface GlobalComponents {
     404: typeof import('./src/components/404.vue')['default']
     AdminGalaxy: typeof import('./src/components/admin/AdminGalaxy.vue')['default']
+    AnalyticsBaseECharts: typeof import('./src/components/analytics/BaseECharts.vue')['default']
+    AnalyticsChartPanel: typeof import('./src/components/analytics/AnalyticsChartPanel.vue')['default']
+    AnalyticsInterviewAnalyticsDashboard: typeof import('./src/components/analytics/InterviewAnalyticsDashboard.vue')['default']
     ClipBoard: typeof import('./src/components/ClipBoard/index.vue')['default']
     CustomTooltip: typeof import('./src/components/CustomTooltip/index.vue')['default']
     HistoryReportList: typeof import('./src/components/history/HistoryReportList.vue')['default']
@@ -91,6 +94,9 @@ declare module 'vue' {
 declare global {
   const 404: typeof import('./src/components/404.vue')['default']
   const AdminGalaxy: typeof import('./src/components/admin/AdminGalaxy.vue')['default']
+  const AnalyticsBaseECharts: typeof import('./src/components/analytics/BaseECharts.vue')['default']
+  const AnalyticsChartPanel: typeof import('./src/components/analytics/AnalyticsChartPanel.vue')['default']
+  const AnalyticsInterviewAnalyticsDashboard: typeof import('./src/components/analytics/InterviewAnalyticsDashboard.vue')['default']
   const ClipBoard: typeof import('./src/components/ClipBoard/index.vue')['default']
   const CustomTooltip: typeof import('./src/components/CustomTooltip/index.vue')['default']
   const HistoryReportList: typeof import('./src/components/history/HistoryReportList.vue')['default']

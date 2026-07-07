@@ -67,7 +67,11 @@ defineEmits<{
   pickFolder: []
   selectDocument: [value: string]
   deleteDocument: [value: string]
-  updateDocumentCategories: [payload: { documentId: string, name: string, tags: string[] }]
+  updateDocumentCategories: [payload: {
+    documentId: string
+    name: string
+    tags: string[]
+  }]
   updateActiveFilter: [value: string]
   updateLibraryPage: [value: number]
   updateMaterialCompileCount: [value: number]
@@ -81,7 +85,10 @@ defineEmits<{
 <template>
   <div
     class="panel-grid"
-    :class="{ 'is-library': displayScene.id === 'library' }"
+    :class="{
+      'is-library': displayScene.id === 'library',
+      'is-overview': displayScene.id === 'overview'
+    }"
   >
     <div>
       <SpaceOverviewScene
@@ -178,6 +185,10 @@ defineEmits<{
 }
 
 .panel-grid.is-library {
+  grid-template-columns: 1fr;
+}
+
+.panel-grid.is-overview {
   grid-template-columns: 1fr;
 }
 
