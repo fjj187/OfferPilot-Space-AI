@@ -27,7 +27,6 @@ node_modules
 /backend/__tests__
 /backend/cpp/build/
 /backend/cpp/data/
-/backend/cpp/offerpilot_backend.exe
 /backend/cpp/*.pdb
 /backend/cpp/*.ilk
 /backend/cpp/*.obj
