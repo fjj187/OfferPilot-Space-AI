@@ -14,6 +14,11 @@ interface OrbitGhostItem {
   style: CSSProperties
 }
 
+type OrbitPositionStyle = CSSProperties & {
+  '--orbit-x-distance'?: string
+  '--orbit-y-distance'?: string
+}
+
 interface UseMockInterviewSpaceOrbitOptions {
   scenes: SceneItem[]
   initialActiveIndex?: number
@@ -69,6 +74,8 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
   let orbitPlayBurstTimer: ReturnType<typeof setTimeout> | null = null
   let orbitSettleTimer: ReturnType<typeof setTimeout> | null = null
   let copyRevealTimer: ReturnType<typeof setTimeout> | null = null
+  let panelRevealTimer: ReturnType<typeof setTimeout> | null = null
+  let panelSettleTimer: ReturnType<typeof setTimeout> | null = null
 
   const activeScene = computed(() => options.scenes[activeIndex.value])
   const displayScene = computed(() => options.scenes[displayIndex.value])
@@ -95,15 +102,6 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
     pauseAutoplay()
   }
 
-  const hideSceneCopy = () => {
-    if (!isCopyVisible.value) return
-    isCopyVisible.value = false
-    if (copyRevealTimer) {
-      window.clearTimeout(copyRevealTimer)
-      copyRevealTimer = null
-    }
-  }
-
   const revealSceneCopy = (index: number) => {
     copySceneIndex.value = index
     if (copyRevealTimer) {
@@ -115,20 +113,77 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
     }, 20)
   }
 
-  const startPanelTransition = (index: number) => {
+  const clearPanelTransitionTimers = () => {
+    if (panelRevealTimer) {
+      window.clearTimeout(panelRevealTimer)
+      panelRevealTimer = null
+    }
+    if (panelSettleTimer) {
+      window.clearTimeout(panelSettleTimer)
+      panelSettleTimer = null
+    }
+  }
+
+  const resolveSceneCopyDelay = (orbitOptions?: OrbitNavOptions) => {
+    if (!isOrbitTransitioning.value) return 0
+    return orbitOptions?.fastOrbit
+      ? 240
+      : Math.round(options.transitionMs * 0.68)
+  }
+
+  const commitPanelTransition = (index: number) => {
     isPanelTransitioning.value = true
     displayIndex.value = index
     revealSceneCopy(index)
-    window.setTimeout(() => {
+    if (panelSettleTimer) {
+      window.clearTimeout(panelSettleTimer)
+    }
+    panelSettleTimer = window.setTimeout(() => {
       isPanelTransitioning.value = false
+      panelSettleTimer = null
     }, options.transitionMs)
   }
 
-  const resolveOrbitTop = (slotIndex: number, top: number) => {
-    if (slotIndex === 0 || slotIndex === options.orbitSlots.value.length - 1) {
-      return `calc(${ top }% + 10px)`
+  const startPanelTransition = (index: number, delay = 0) => {
+    clearPanelTransitionTimers()
+    if (delay <= 0) {
+      commitPanelTransition(index)
+      return
     }
-    return `${ top }%`
+
+    isPanelTransitioning.value = true
+    panelRevealTimer = window.setTimeout(() => {
+      panelRevealTimer = null
+      commitPanelTransition(index)
+    }, delay)
+  }
+
+  const resolveOrbitYDistance = (slotIndex: number, top: number) => {
+    const baseDistance = `calc(250px * ${ top / 100 })`
+    if (slotIndex === 0 || slotIndex === options.orbitSlots.value.length - 1) {
+      return `calc(${ baseDistance } + 10px)`
+    }
+    return baseDistance
+  }
+
+  const resolveOrbitPositionStyle = (
+    position: {
+      left: number
+      top: number
+    },
+    slotIndex: number,
+    opacity: string,
+    transition?: string
+  ): OrbitPositionStyle => {
+    const style: OrbitPositionStyle = {
+      '--orbit-x-distance': `calc(var(--page-viewport-width, 100vw) * ${ position.left / 100 })`,
+      '--orbit-y-distance': resolveOrbitYDistance(slotIndex, position.top),
+      opacity
+    }
+    if (transition) {
+      style.transition = transition
+    }
+    return style
   }
 
   const setActiveByCenterSlot = (orbitOptions?: OrbitNavOptions) => {
@@ -137,7 +192,7 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
       return
     }
     activeIndex.value = nextIndex
-    startPanelTransition(nextIndex)
+    startPanelTransition(nextIndex, resolveSceneCopyDelay(orbitOptions))
   }
 
   const resolveOrbitTravel = (center: number, index: number) => {
@@ -230,9 +285,7 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
     orbitGhosts.value = [{
       label: options.scenes[exitingScene].navLabel,
       style: {
-        left: `${ ghostStart.left }%`,
-        top: resolveOrbitTop(ghostStartSlotIndex, ghostStart.top),
-        opacity: '0.72',
+        ...resolveOrbitPositionStyle(ghostStart, ghostStartSlotIndex, '0.72'),
         transition: 'none'
       }
     }]
@@ -240,8 +293,7 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
     orbitOrder.value = newOrder
     orbitOverrides.value = {
       [exitingScene]: {
-        left: `${ reenterStart.left }%`,
-        top: `${ reenterStart.top }%`,
+        ...resolveOrbitPositionStyle(reenterStart, -1, '0'),
         opacity: '0',
         pointerEvents: 'none',
         transition: 'none'
@@ -253,24 +305,21 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const motionTransition = orbitOptions?.fastOrbit
-          ? 'left 0.36s cubic-bezier(0.2, 0.9, 0.24, 1.02), top 0.36s cubic-bezier(0.2, 0.9, 0.24, 1.02), opacity 0.22s ease'
+          ? 'transform 0.36s cubic-bezier(0.2, 0.9, 0.24, 1.02), opacity 0.22s ease'
           : options.orbitMotionTransition
         orbitOverrides.value = {
           [exitingScene]: {
-            left: `${ reenterEnd?.left ?? 50 }%`,
-            top: resolveOrbitTop(reenterEndSlotIndex, reenterEnd?.top ?? 82),
-            opacity: '1',
-            transition: motionTransition
+            ...resolveOrbitPositionStyle(reenterEnd ?? {
+              left: 50,
+              top: 82
+            }, reenterEndSlotIndex, '1', motionTransition)
           }
         }
         if (orbitGhosts.value.length) {
           orbitGhosts.value = orbitGhosts.value.map(ghost => ({
             ...ghost,
             style: {
-              left: `${ ghostEnd.left }%`,
-              top: `${ ghostEnd.top }%`,
-              opacity: '0',
-              transition: motionTransition
+              ...resolveOrbitPositionStyle(ghostEnd, -1, '0', motionTransition)
             }
           }))
         }
@@ -331,8 +380,8 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
       applySceneChange(index, orbitOptions)
       return
     }
-    hideSceneCopy()
     if (isOrbitTransitioning.value) {
+      clearPanelTransitionTimers()
       pendingTargetIndex.value = index
       return
     }
@@ -393,14 +442,12 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
   const goToNext = () => {
     resumeAutoplayFromOrbitControl()
     pendingTargetIndex.value = null
-    hideSceneCopy()
     stepOrbit(-1)
   }
 
   const goToPrev = () => {
     resumeAutoplayFromOrbitControl()
     pendingTargetIndex.value = null
-    hideSceneCopy()
     stepOrbit(1)
   }
 
@@ -438,14 +485,13 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
     const slot = options.orbitSlots.value[slotIndex]
     if (!slot) {
       return {
-        left: '50%',
-        top: '82%',
+        '--orbit-x-distance': 'calc(var(--page-viewport-width, 100vw) * 0.5)',
+        '--orbit-y-distance': 'calc(250px * 0.82)',
         opacity: '0'
-      }
+      } as OrbitPositionStyle
     }
     return {
-      left: `${ slot.left }%`,
-      top: resolveOrbitTop(slotIndex, slot.top),
+      ...resolveOrbitPositionStyle(slot, slotIndex, slot.visible ? '1' : '0'),
       opacity: slot.visible ? '1' : '0',
       zIndex: String(slotIndex >= options.centerSlot ? 12 - slotIndex : 6 - slotIndex)
     }
@@ -465,6 +511,7 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
       window.clearTimeout(copyRevealTimer)
       copyRevealTimer = null
     }
+    clearPanelTransitionTimers()
     orbitGhosts.value = []
     orbitOverrides.value = {}
   }

@@ -279,24 +279,32 @@ defineEmits<{
 
 .orbit-stop {
   position: absolute;
+  left: 0;
+  top: 0;
+  --orbit-x-distance: calc(var(--page-viewport-width, 100vw) * 0.5);
+  --orbit-y-distance: calc(250px * 0.82);
   width: 132px;
   height: 84px;
   padding: 0;
   border: 0;
   background: transparent;
-  transform: translate(-50%, -50%);
+  transform: translate3d(
+    calc(var(--orbit-x-distance) - 50%),
+    calc(var(--orbit-y-distance) - 50%),
+    0
+  );
   cursor: pointer;
   pointer-events: auto;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
   transition:
-    left 1.04s cubic-bezier(0.2, 0.9, 0.24, 1.02),
-    top 1.04s cubic-bezier(0.2, 0.9, 0.24, 1.02),
+    transform 1.04s cubic-bezier(0.2, 0.9, 0.24, 1.02),
     opacity 0.3s ease;
 }
 
 .orbit-rail.is-fast-orbit-transition .orbit-stop {
   transition:
-    left 0.36s cubic-bezier(0.2, 0.9, 0.24, 1.02),
-    top 0.36s cubic-bezier(0.2, 0.9, 0.24, 1.02),
+    transform 0.36s cubic-bezier(0.2, 0.9, 0.24, 1.02),
     opacity 0.22s ease;
 }
 

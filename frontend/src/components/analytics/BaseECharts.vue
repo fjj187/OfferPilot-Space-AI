@@ -46,6 +46,8 @@ const chartRef = ref<HTMLDivElement | null>(null)
 const chart = shallowRef<ECharts | null>(null)
 
 let resizeObserver: ResizeObserver | null = null
+let resizeFrame: number | null = null
+let isUnmounted = false
 
 const chartStyle = computed(() => {
   const height = typeof props.height === 'number' ? `${ props.height }px` : props.height
@@ -56,29 +58,42 @@ const chartStyle = computed(() => {
 })
 
 const resizeChart = () => {
-  chart.value?.resize()
+  if (resizeFrame !== null) return
+
+  resizeFrame = window.requestAnimationFrame(() => {
+    resizeFrame = null
+    chart.value?.resize()
+  })
+}
+
+const setChartOption = (option: EChartsCoreOption) => {
+  chart.value?.setOption({
+    animation: false,
+    ...option
+  }, {
+    notMerge: true,
+    lazyUpdate: true
+  })
 }
 
 const setupChart = async () => {
   await nextTick()
 
-  if (!chartRef.value)
+  if (!chartRef.value || isUnmounted)
     return
 
   chart.value = init(chartRef.value, undefined, {
     renderer: 'canvas'
   })
   chart.value.on('click', event => emit('chartClick', event as ECElementEvent))
-  chart.value.setOption(props.option, true)
+  setChartOption(props.option)
 
   resizeObserver = new ResizeObserver(() => resizeChart())
   resizeObserver.observe(chartRef.value)
 }
 
 watch(() => props.option, option => {
-  chart.value?.setOption(option, true)
-}, {
-  deep: true
+  setChartOption(option)
 })
 
 onMounted(() => {
@@ -86,6 +101,11 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  isUnmounted = true
+  if (resizeFrame !== null) {
+    window.cancelAnimationFrame(resizeFrame)
+    resizeFrame = null
+  }
   resizeObserver?.disconnect()
   resizeObserver = null
   chart.value?.dispose()

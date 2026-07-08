@@ -19,11 +19,13 @@ const props = withDefaults(defineProps<{
   timeRangeText?: string
   loading?: boolean
   error?: string
+  active?: boolean
 }>(), {
   title: 'AI 面试训练数据驾驶舱',
   subtitle: '聚焦训练次数、能力结构、评分趋势和题型覆盖。',
   timeRangeText: '最近 14 次训练',
-  error: ''
+  error: '',
+  active: true
 })
 
 const emit = defineEmits<{
@@ -121,7 +123,10 @@ const scoreTrendOption = computed<EChartsCoreOption>(() => {
   return {
     color: ['#52f0c4'],
     tooltip: {
-      trigger: 'axis'
+      trigger: 'axis',
+      axisPointer: {
+        show: false
+      }
     },
     grid: {
       top: 24,
@@ -210,7 +215,10 @@ const questionTypeOption = computed<EChartsCoreOption>(() => buildPieOption(prop
 const jobPracticeOption = computed<EChartsCoreOption>(() => ({
   color: ['#57d7ff'],
   tooltip: {
-    trigger: 'axis'
+    trigger: 'axis',
+    axisPointer: {
+      show: false
+    }
   },
   grid: {
     top: 16,
@@ -268,6 +276,7 @@ const handleChartClick = (chartId: string, event: {
     dataIndex: event.dataIndex
   })
 }
+
 </script>
 
 <template>
@@ -328,6 +337,7 @@ const handleChartClick = (chartId: string, event: {
         <AnalyticsChartPanel
           title="能力雷达"
           caption="表达、逻辑、专业与岗位匹配综合视图"
+          :loading="false"
           :empty="!data?.abilityRadar.length"
         >
           <BaseECharts
@@ -340,6 +350,7 @@ const handleChartClick = (chartId: string, event: {
         <AnalyticsChartPanel
           title="评分趋势"
           caption="最近训练得分变化"
+          :loading="false"
           :empty="!data?.scoreTrend.length"
         >
           <BaseECharts
@@ -352,6 +363,7 @@ const handleChartClick = (chartId: string, event: {
         <AnalyticsChartPanel
           title="题型分布"
           caption="当前训练题型覆盖比例"
+          :loading="false"
           :empty="isEmptyDistribution(data?.questionTypeDistribution)"
         >
           <BaseECharts
@@ -364,6 +376,7 @@ const handleChartClick = (chartId: string, event: {
         <AnalyticsChartPanel
           title="岗位训练"
           caption="不同方向训练占比"
+          :loading="false"
           :empty="isEmptyDistribution(data?.jobPracticeDistribution)"
         >
           <BaseECharts

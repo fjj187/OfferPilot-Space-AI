@@ -753,34 +753,26 @@ onBeforeUnmount(() => {
               >
                 选好题数和组卷方式后，点击「生成练习题」预览本轮题目。
               </p>
+              <section class="library-inline-preview-section">
+                <div class="library-inline-preview-panel">
+                  <DocumentPreviewPanel
+                    dark
+                    hide-summary
+                    compact-meta
+                    :preview-line-count="4"
+                    :name="selectedDocument.name"
+                    :type="selectedDocument.type"
+                    :imported-at="selectedDocument.importedAt"
+                    :summary="selectedDocument.summary"
+                    :tags="selectedDocument.tags"
+                    :status="selectedDocument.status"
+                    :topic-labels="selectedDocument.topicKeys.map((key: string) => topicLabelMap[key])"
+                    :source-label="sourceLabelText(selectedDocument)"
+                    :raw-text="selectedDocument.rawText"
+                  />
+                </div>
+              </section>
             </article>
-          </Transition>
-
-          <Transition
-            name="library-preview"
-            mode="out-in"
-          >
-            <div
-              v-if="selectedDocument"
-              :key="`preview-${selectedDocument.id}`"
-              class="library-preview-panel"
-            >
-              <DocumentPreviewPanel
-                dark
-                hide-summary
-                compact-meta
-                :preview-line-count="2"
-                :name="selectedDocument.name"
-                :type="selectedDocument.type"
-                :imported-at="selectedDocument.importedAt"
-                :summary="selectedDocument.summary"
-                :tags="selectedDocument.tags"
-                :status="selectedDocument.status"
-                :topic-labels="selectedDocument.topicKeys.map((key: string) => topicLabelMap[key])"
-                :source-label="sourceLabelText(selectedDocument)"
-                :raw-text="selectedDocument.rawText"
-              />
-            </div>
           </Transition>
         </div>
       </aside>
@@ -1017,8 +1009,7 @@ onBeforeUnmount(() => {
 .library-scene-shell :deep(.import-card),
 .library-scene-shell :deep(.stat-card),
 .library-document-list :deep(.doc-item),
-.library-material-card,
-.library-preview-panel {
+.library-material-card {
   border-color: rgb(255 255 255 / 0.18);
   background: rgb(255 255 255 / 0.035);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
@@ -1039,26 +1030,21 @@ onBeforeUnmount(() => {
   min-height: 156px;
 }
 
-.library-material-card,
-.library-preview-panel {
+.library-material-card {
   border: 1px solid rgb(255 255 255 / 0.18);
   border-radius: 24px;
 }
 
 .library-material-card {
-  padding: 8px 20px;
+  padding: 8px 20px 20px;
 }
 
-.library-preview-panel {
-  padding: 18px 18px 20px;
-}
-
-.library-preview-panel :deep(.eyebrow),
-.library-preview-panel :deep(.section-label) {
+.library-inline-preview-panel :deep(.eyebrow),
+.library-inline-preview-panel :deep(.section-label) {
   font-size: 13px;
 }
 
-.library-preview-panel :deep(.preview-head--compact .preview-chip-row .preview-chip) {
+.library-inline-preview-panel :deep(.preview-head--compact .preview-chip-row .preview-chip) {
   min-height: 34px;
   min-width: 56px;
   padding: 0 14px;
@@ -1066,27 +1052,73 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
-.library-preview-panel :deep(.preview-expand) {
+.library-inline-preview-panel :deep(.preview-expand) {
   min-height: 34px;
   padding: 0 14px;
   font-size: 13px;
   font-weight: 600;
 }
 
-.library-preview-panel :deep(.preview-imported-at) {
+.library-inline-preview-panel :deep(.preview-imported-at) {
   font-size: 12px;
   line-height: 34px;
 }
 
-.library-preview-panel :deep(.preview-text) {
-  overflow: hidden;
-  border: 1px solid rgb(255 255 255 / 0.12);
-  background: rgb(255 255 255 / 0.045);
+.library-inline-preview-panel :deep(.preview-head--compact .preview-toolbar) {
+  display: none;
 }
 
-.library-preview-panel :deep(.preview-card),
-.library-preview-panel :deep(.preview-card.is-dark),
-.library-preview-panel :deep(.preview-card.is-compact) {
+.library-inline-preview-panel :deep(.preview-section-head .section-label) {
+  display: none;
+}
+
+.library-inline-preview-panel :deep(.preview-card.is-compact) {
+  position: relative;
+}
+
+.library-inline-preview-panel :deep(.preview-head--compact) {
+  gap: 6px;
+}
+
+.library-inline-preview-panel :deep(.preview-headline) {
+  padding-right: 124px;
+}
+
+.library-inline-preview-panel :deep(.preview-headline h3) {
+  min-height: 34px;
+}
+
+.library-inline-preview-panel :deep(.preview-section-head) {
+  position: absolute;
+  top: 26px;
+  right: 0;
+  justify-content: flex-end;
+  margin: 0;
+}
+
+.library-inline-preview-panel :deep(.preview-text) {
+  overflow: hidden;
+  padding: 14px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 16px;
+  background: rgb(255 255 255 / 0.045);
+  font-size: 13px;
+  line-height: 1.75;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  max-height: calc(1em * 1.75 * 4 + 28px);
+  box-shadow: none;
+}
+
+.library-inline-preview-panel :deep(.preview-section--text) {
+  margin-top: 2px;
+}
+
+.library-inline-preview-panel :deep(.preview-card),
+.library-inline-preview-panel :deep(.preview-card.is-dark),
+.library-inline-preview-panel :deep(.preview-card.is-compact) {
   padding: 0;
   border: 0;
   background: transparent;
@@ -1269,6 +1301,31 @@ onBeforeUnmount(() => {
 .library-material-card {
   display: grid;
   gap: 12px;
+  max-height: min(calc(78vh + 200px), 1180px);
+  overflow: hidden auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.library-material-card::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.library-inline-preview-section {
+  display: grid;
+  gap: 0;
+  padding-top: 0;
+  margin-top: -2px;
+  border-top: 0;
+}
+
+.library-inline-preview-panel {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .material-card-head {

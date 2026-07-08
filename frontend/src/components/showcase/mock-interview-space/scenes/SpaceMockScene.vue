@@ -48,6 +48,7 @@ const props = defineProps<{
   canRetryStream: boolean
   retryActionLabel: string
   sessionStatusText: string
+  autoEnterFullscreen?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -64,6 +65,7 @@ const emit = defineEmits<{
   stop: []
   retry: []
   selectQuestionThread: [value: string]
+  consumeAutoEnterFullscreen: []
 }>()
 
 interface FeedbackStyleOption {
@@ -662,6 +664,26 @@ watch(
 )
 
 watch(
+  () => [
+    props.autoEnterFullscreen,
+    props.isAwaitingSetup,
+    props.activeQuestionThreadId,
+    props.totalCount
+  ] as const,
+  ([shouldAutoEnterFullscreen, isAwaitingSetup, activeQuestionThreadId, totalCount]) => {
+    if (!shouldAutoEnterFullscreen || isAwaitingSetup) return
+    if (!activeQuestionThreadId && totalCount <= 0) return
+    // 自动进入面试时，直接落在当前题目正文，避免先停在问题历史页。
+    isQuestionHistoryView.value = false
+    enterSessionFullscreen()
+    emit('consumeAutoEnterFullscreen')
+  },
+  {
+    immediate: true
+  }
+)
+
+watch(
   () => props.activeQuestionThreadId,
   (threadId) => {
     if (!threadId) {
@@ -842,14 +864,14 @@ onBeforeUnmount(() => {
                   class="mock-conversation-head-meta"
                 >
                   <button
+                    v-if="!isSessionFullscreen"
                     type="button"
-                    class="mock-fullscreen-button"
-                    :aria-label="isSessionFullscreen ? '退出全屏' : '全屏'"
-                    :title="isSessionFullscreen ? '退出全屏' : '全屏'"
+                    class="mock-fullscreen-button is-side-exit"
+                    aria-label="进入全屏"
+                    title="进入全屏"
                     @click="toggleSessionFullscreen"
                   >
                     <svg
-                      v-if="!isSessionFullscreen"
                       class="mock-fullscreen-icon"
                       viewBox="0 0 24 24"
                       aria-hidden="true"
@@ -863,21 +885,7 @@ onBeforeUnmount(() => {
                         stroke-width="1.8"
                       />
                     </svg>
-                    <svg
-                      v-else
-                      class="mock-fullscreen-icon"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                    >
-                      <path
-                        d="M9 4H4v5M20 9V4h-5M4 15v5h5M15 20h5v-5"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="1.8"
-                      />
-                    </svg>
+                    <span>进入全屏</span>
                   </button>
                   <button
                     v-if="!isQuestionHistoryView && viewState.totalCount > 1"
@@ -1037,7 +1045,7 @@ onBeforeUnmount(() => {
                 <template v-else>
                   <div class="mock-side-guide-scroll">
                     <section
-                      v-for="card in questionSideCards"
+                      v-for="(card, index) in questionSideCards"
                       :key="card.label"
                       class="mock-side-guide-section mock-question-requirement-card"
                       :class="{
@@ -1046,7 +1054,33 @@ onBeforeUnmount(() => {
                         'is-feedback-card': card.label === '本轮回馈'
                       }"
                     >
-                      <div class="mock-side-label">{{ card.label }}</div>
+                      <div class="mock-side-label-row">
+                        <div class="mock-side-label">{{ card.label }}</div>
+                        <button
+                          v-if="isSessionFullscreen && index === 0"
+                          type="button"
+                          class="mock-fullscreen-button is-side-exit"
+                          aria-label="退出全屏"
+                          title="退出全屏"
+                          @click="toggleSessionFullscreen"
+                        >
+                          <svg
+                            class="mock-fullscreen-icon"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                          >
+                            <path
+                              d="M9 4H4v5M20 9V4h-5M4 15v5h5M15 20h5v-5"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="1.8"
+                            />
+                          </svg>
+                          <span>退出全屏</span>
+                        </button>
+                      </div>
                       <p
                         class="mock-prompt-body"
                         :class="{
@@ -1603,6 +1637,13 @@ onBeforeUnmount(() => {
   line-height: 1.35;
 }
 
+.mock-side-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .mock-side-guide-panel .mock-question-info {
   max-height: none;
   overflow: visible;
@@ -1949,6 +1990,16 @@ onBeforeUnmount(() => {
   border-color: rgb(255 255 255 / 0.22);
   background: rgb(255 255 255 / 0.09);
   transform: translateY(-1px);
+}
+
+.mock-fullscreen-button.is-side-exit {
+  gap: 8px;
+  width: auto;
+  min-width: 0;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .mock-fullscreen-icon {

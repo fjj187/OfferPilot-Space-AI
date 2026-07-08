@@ -48,6 +48,7 @@ const visualLayerRefs = ref<Array<HTMLElement | null>>(Array.from({
 const visualLayerStates = ref<Array<VisualLayerState | null>>(Array.from({
   length: props.scenes.length
 }, () => null))
+const isVisualLayerTransitioning = ref(false)
 let visualTimeline: gsap.core.Timeline | null = null
 
 const planetTextureMap: Partial<Record<SceneItem['id'], PlanetTextureConfig>> = {
@@ -198,6 +199,10 @@ const setVisualLayerRef = (element: Element | null, index: number) => {
   visualLayerRefs.value[index] = element instanceof HTMLElement ? element : null
 }
 
+const visualLayerFilter = (state: Pick<VisualLayerState, 'blur' | 'brightness'>) => {
+  return `blur(${ state.blur }px) brightness(${ state.brightness })`
+}
+
 const resolveVisualLayerState = (sceneIndex: number): VisualLayerState => {
   const host = visualColumnRef.value
   const slotIndex = props.orderedSceneIndexes.indexOf(sceneIndex)
@@ -230,7 +235,8 @@ const applyVisualLayerState = (sceneIndex: number, state: VisualLayerState) => {
     scale: state.scale,
     rotation: state.rotate,
     opacity: state.opacity,
-    filter: `blur(${ state.blur }px) brightness(${ state.brightness })`
+    filter: visualLayerFilter(state),
+    force3D: true
   })
   visualLayerStates.value[sceneIndex] = state
 }
@@ -240,12 +246,14 @@ const syncVisualLayers = (immediate = false) => {
   visualTimeline = null
 
   if (immediate) {
+    isVisualLayerTransitioning.value = false
     props.scenes.forEach((_, sceneIndex) => {
       applyVisualLayerState(sceneIndex, resolveVisualLayerState(sceneIndex))
     })
     return
   }
 
+  isVisualLayerTransitioning.value = true
   const motionDuration = Math.max(props.transitionMs / 1000, 1.18)
   visualTimeline = gsap.timeline({
     defaults: {
@@ -259,6 +267,7 @@ const syncVisualLayers = (immediate = false) => {
           layer.style.zIndex = String(target.zIndex)
         }
       })
+      isVisualLayerTransitioning.value = false
       visualTimeline = null
     }
   })
@@ -273,17 +282,18 @@ const syncVisualLayers = (immediate = false) => {
     gsap.killTweensOf(layer)
     layer.style.zIndex = String(Math.max(previous.zIndex, target.zIndex))
     visualLayerStates.value[sceneIndex] = target
+    layer.style.filter = visualLayerFilter(target)
 
-    // 同一条补间同时处理位移、大小和清晰度，避免星球先离轨再回位。
+    // 移动过程只补间合成层属性，避免大图层逐帧重算滤镜拖慢星球动画。
     visualTimeline?.to(layer, {
       x: target.x,
       y: target.y,
       scale: target.scale,
       rotation: target.rotate,
       opacity: target.opacity,
-      filter: `blur(${ target.blur }px) brightness(${ target.brightness })`,
       duration: motionDuration,
-      ease: 'power2.inOut'
+      ease: 'power2.inOut',
+      force3D: true
     }, 0)
   })
 }
@@ -308,7 +318,8 @@ const playBigBangReveal = (): Promise<void> => {
         scale: 0.06,
         opacity: 0,
         rotation: 0,
-        filter: 'blur(6px) brightness(0.72)'
+        filter: 'blur(6px) brightness(0.72)',
+        force3D: true
       })
       layer.style.zIndex = '1'
     })
@@ -341,16 +352,18 @@ const playBigBangReveal = (): Promise<void> => {
         scale: target.scale * (isHero ? 1.06 : 1),
         opacity: target.opacity,
         rotation: target.rotate,
-        filter: `blur(${ target.blur }px) brightness(${ target.brightness })`,
+        filter: visualLayerFilter(target),
         duration: isHero ? 1.15 : 0.95,
-        ease: isHero ? 'power4.out' : 'power3.out'
+        ease: isHero ? 'power4.out' : 'power3.out',
+        force3D: true
       }, delay)
 
       if (isHero) {
         timeline.to(layer, {
           scale: target.scale,
           duration: 0.35,
-          ease: 'power2.inOut'
+          ease: 'power2.inOut',
+          force3D: true
         }, delay + 1.05)
       }
     })
@@ -360,6 +373,7 @@ const playBigBangReveal = (): Promise<void> => {
 const clearVisualLayerTweens = () => {
   visualTimeline?.kill()
   visualTimeline = null
+  isVisualLayerTransitioning.value = false
   visualLayerRefs.value.forEach((layer) => {
     if (layer) {
       gsap.killTweensOf(layer)
@@ -378,6 +392,7 @@ defineExpose({
   <section
     ref="visualColumnRef"
     class="visual-column"
+    :class="{ 'is-layer-transitioning': isVisualLayerTransitioning }"
   >
     <svg
       class="saturn-ring-guide"
@@ -418,16 +433,6 @@ defineExpose({
           :image-style="planetTextureFor(scene)!.imageStyle"
           :show-shade="!isSaturnScene(scene)"
         />
-        <span
-          v-if="isSaturnScene(scene)"
-          class="saturn-planet-shadow"
-          aria-hidden="true"
-        ></span>
-        <span
-          v-if="isSaturnScene(scene)"
-          class="saturn-asteroids"
-          aria-hidden="true"
-        ></span>
       </div>
     </div>
   </section>
@@ -490,6 +495,7 @@ defineExpose({
   transform-style: preserve-3d;
   backface-visibility: hidden;
   contain: layout paint;
+  transition: filter 0.48s ease;
 }
 
 .planet-shell {
@@ -617,6 +623,7 @@ defineExpose({
   pointer-events: none;
   transform: translate(-50%, -48%) rotate(-12deg);
   transform-origin: center;
+  transition: filter 0.36s ease, opacity 0.36s ease;
 }
 
 .planet-shell.is-saturn-planet::before {
@@ -639,56 +646,14 @@ defineExpose({
   -webkit-mask-image: linear-gradient(180deg, transparent 0%, transparent 35%, rgb(0 0 0 / 0.38) 47%, rgb(0 0 0 / 0.68) 55%, rgb(0 0 0 / 0.26) 65%, transparent 78%, transparent 100%);
 }
 
-.saturn-planet-shadow {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  overflow: hidden;
-  border-radius: inherit;
-  pointer-events: none;
+.visual-column.is-layer-transitioning .planet-shell.is-saturn-planet::before {
+  filter: blur(0.6px);
+  opacity: 0.62;
 }
 
-.saturn-planet-shadow {
-  background:
-    radial-gradient(ellipse 30% 18% at 48% 12%, rgb(8 4 5 / 0.48) 0%, rgb(18 8 8 / 0.34) 34%, transparent 72%),
-    linear-gradient(170deg, transparent 0 44%, rgb(38 15 12 / 0.22) 49%, rgb(4 5 11 / 0.38) 58%, transparent 66%),
-    radial-gradient(circle at 32% 24%, rgb(9 5 8 / 0.06) 0 22%, rgb(34 16 13 / 0.16) 50%, rgb(2 4 10 / 0.62) 100%),
-    linear-gradient(132deg, rgb(10 4 8 / 0.1) 0%, transparent 30%, rgb(32 12 10 / 0.2) 54%, rgb(1 4 11 / 0.66) 100%);
-}
-
-.saturn-asteroids {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  z-index: 4;
-  width: 236%;
-  height: 54%;
-  pointer-events: none;
-  transform: translate(-50%, -48%) rotate(-12deg);
-}
-
-.saturn-asteroids::before,
-.saturn-asteroids::after {
-  position: absolute;
-  inset: 0;
-  content: '';
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 13% 55%, rgb(236 151 70 / 0.74) 0 1.8px, transparent 2.6px),
-    radial-gradient(circle at 18% 49%, rgb(117 34 22 / 0.58) 0 1.2px, transparent 2px),
-    radial-gradient(circle at 26% 58%, rgb(190 58 28 / 0.56) 0 1.5px, transparent 2.4px),
-    radial-gradient(circle at 37% 52%, rgb(224 96 38 / 0.5) 0 1.3px, transparent 2.2px),
-    radial-gradient(circle at 47% 59%, rgb(148 42 24 / 0.54) 0 1.8px, transparent 2.8px),
-    radial-gradient(circle at 58% 51%, rgb(106 31 22 / 0.48) 0 1.1px, transparent 2px),
-    radial-gradient(circle at 69% 57%, rgb(198 66 30 / 0.54) 0 1.7px, transparent 2.6px),
-    radial-gradient(circle at 78% 50%, rgb(102 30 22 / 0.48) 0 1.2px, transparent 2.2px),
-    radial-gradient(circle at 86% 56%, rgb(214 78 34 / 0.56) 0 1.9px, transparent 2.9px);
-  filter: drop-shadow(0 0 3px rgb(158 42 22 / 0.44));
-}
-
-.saturn-asteroids::after {
-  transform: rotate(180deg) scale(0.92);
-  opacity: 0.68;
+.visual-column.is-layer-transitioning .planet-shell.is-saturn-planet::after {
+  filter: blur(0.2px);
+  opacity: 0.56;
 }
 
 @media (max-width: 1100px) {

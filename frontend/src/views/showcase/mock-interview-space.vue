@@ -194,6 +194,7 @@ const {
   resolveReportSummaries: mergeReportSummaries
 })
 const currentWorkbenchContext = computed(() => loadWorkbenchContext())
+const shouldAutoEnterMockFullscreen = computed(() => Boolean(currentWorkbenchContext.value?.autoEnterFullscreen))
 
 const {
   enabledModels,
@@ -837,7 +838,7 @@ const findSceneIndexById = (id: string) => sceneIndexById[id] ?? -1
 
 const transitionMs = 840
 const centerSlot = 2
-const orbitMotionTransition = `left ${ transitionMs }ms cubic-bezier(0.2, 0.9, 0.24, 1.02), top ${ transitionMs }ms cubic-bezier(0.2, 0.9, 0.24, 1.02), opacity 0.3s ease`
+const orbitMotionTransition = `transform ${ transitionMs }ms cubic-bezier(0.2, 0.9, 0.24, 1.02), opacity 0.3s ease`
 
 const orbitSlots = ref<OrbitSlot[]>([
   {
@@ -978,11 +979,20 @@ const syncPageViewportSize = () => {
 }
 
 let sceneLayoutRefreshFrame: number | null = null
+let scrollCapsuleVisibilityFrame: number | null = null
+let scrollCapsuleTriggerTop = 140
+let scrollCapsuleReleaseTop = 0
 
 const cancelSceneLayoutRefresh = () => {
   if (sceneLayoutRefreshFrame === null) return
   window.cancelAnimationFrame(sceneLayoutRefreshFrame)
   sceneLayoutRefreshFrame = null
+}
+
+const cancelScrollCapsuleVisibilityUpdate = () => {
+  if (scrollCapsuleVisibilityFrame === null) return
+  window.cancelAnimationFrame(scrollCapsuleVisibilityFrame)
+  scrollCapsuleVisibilityFrame = null
 }
 
 const scheduleSceneLayoutRefresh = () => {
@@ -992,7 +1002,7 @@ const scheduleSceneLayoutRefresh = () => {
       sceneLayoutRefreshFrame = null
       refreshScrollMetrics()
       updateHeaderFade()
-      updateScrollCapsuleVisibility()
+      updateScrollCapsuleVisibility(true)
     })
   })
 }
@@ -1003,7 +1013,7 @@ const bootstrapVisualStage = () => {
     syncPageViewportSize()
     refreshScrollMetrics()
     syncVisualLayers(true)
-    updateScrollCapsuleVisibility()
+    updateScrollCapsuleVisibility(true)
   })
 }
 
@@ -1133,7 +1143,7 @@ const revealScrollCapsule = (duration = 3000) => {
   scrollCapsuleRevealTimer = window.setTimeout(() => {
     forceScrollCapsuleVisible.value = false
     scrollCapsuleRevealTimer = null
-    updateScrollCapsuleVisibility()
+    updateScrollCapsuleVisibility(true)
   }, duration)
 }
 
@@ -1158,7 +1168,25 @@ const persistSceneContext = (sceneId: string) => {
     sourcePage,
     practicePlan: context?.practicePlan || null,
     mockEntryMode: context?.mockEntryMode || 'direct',
-    mockSessionConfig: context?.mockSessionConfig || null
+    mockSessionConfig: context?.mockSessionConfig || null,
+    autoEnterFullscreen: context?.autoEnterFullscreen || false
+  })
+}
+
+const consumeMockAutoEnterFullscreen = () => {
+  const context = loadWorkbenchContext()
+  if (!context?.autoEnterFullscreen) return
+  saveWorkbenchContext({
+    activeTopic: context.activeTopic,
+    activeDocumentId: context.activeDocumentId,
+    selectedModelId: context.selectedModelId,
+    currentMode: context.currentMode,
+    sourcePage: context.sourcePage,
+    practicePlan: context.practicePlan || null,
+    practiceQuestionGroup: context.practiceQuestionGroup || null,
+    mockEntryMode: context.mockEntryMode,
+    mockSessionConfig: context.mockSessionConfig || null,
+    autoEnterFullscreen: false
   })
 }
 
@@ -1348,7 +1376,7 @@ const resetCosmosToOverviewHome = (options?: {
     releaseScrollCapsuleReveal()
     scrollCapsuleHideLock.value = false
     isScrollCapsuleVisible.value = true
-    updateScrollCapsuleVisibility()
+    updateScrollCapsuleVisibility(true)
     if (options?.startAutoplay !== false) {
       startAutoplay()
     }
@@ -1388,7 +1416,7 @@ const runCosmosBigBangEntrance = async () => {
   releaseScrollCapsuleReveal()
   scrollCapsuleHideLock.value = false
   isScrollCapsuleVisible.value = true
-  updateScrollCapsuleVisibility()
+  updateScrollCapsuleVisibility(true)
 }
 
 const runWelcomeEntranceIfNeeded = async () => {
@@ -1587,7 +1615,8 @@ const handleStartMaterialMockFromLibrary = () => {
     practicePlan: null,
     practiceQuestionGroup,
     mockEntryMode: 'material',
-    mockSessionConfig: buildMaterialMockSessionConfig(activeDocumentId, buildResult.actualCount)
+    mockSessionConfig: buildMaterialMockSessionConfig(activeDocumentId, buildResult.actualCount),
+    autoEnterFullscreen: true
   })
   void openSceneById('mock')
 
@@ -1710,7 +1739,8 @@ const handlePracticeStart = (plan: PersistedPracticePlan) => {
     practicePlan: effectivePlan,
     practiceQuestionGroup,
     mockEntryMode: 'practice',
-    mockSessionConfig: buildPracticeMockSessionConfig(effectivePlan)
+    mockSessionConfig: buildPracticeMockSessionConfig(effectivePlan),
+    autoEnterFullscreen: true
   })
   void openSceneById('mock')
 }
@@ -1804,34 +1834,47 @@ const handleVisualResize = () => {
   syncPageViewportSize()
   refreshScrollMetrics()
   syncVisualLayers(true)
-  updateScrollCapsuleVisibility()
+  updateScrollCapsuleVisibility(true)
 }
 
-const updateScrollCapsuleVisibility = () => {
+const refreshScrollCapsuleMetrics = () => {
+  const panel = contentPanelRef.value || contentSectionRef.value
+  if (!panel) {
+    scrollCapsuleTriggerTop = 140
+    scrollCapsuleReleaseTop = 0
+    return
+  }
+
+  scrollCapsuleTriggerTop = Math.max(140, panel.offsetTop - 180)
+  scrollCapsuleReleaseTop = Math.max(0, scrollCapsuleTriggerTop - 140)
+}
+
+const updateScrollCapsuleVisibility = (refreshMetrics = false) => {
+  if (refreshMetrics) {
+    refreshScrollCapsuleMetrics()
+  }
+
   if (forceScrollCapsuleVisible.value) {
     isScrollCapsuleVisible.value = true
     return
   }
 
   const page = pageRef.value
-  const panel = contentPanelRef.value || contentSectionRef.value
-  if (!page || !panel) {
+  if (!page) {
     isScrollCapsuleVisible.value = true
     scrollCapsuleHideLock.value = false
     return
   }
 
-  const triggerTop = Math.max(140, panel.offsetTop - 180)
-  const releaseTop = Math.max(0, triggerTop - 140)
   const scrollTop = page.scrollTop
 
-  if (!scrollCapsuleHideLock.value && scrollTop >= triggerTop) {
+  if (!scrollCapsuleHideLock.value && scrollTop >= scrollCapsuleTriggerTop) {
     scrollCapsuleHideLock.value = true
     isScrollCapsuleVisible.value = false
     return
   }
 
-  if (scrollCapsuleHideLock.value && scrollTop <= releaseTop) {
+  if (scrollCapsuleHideLock.value && scrollTop <= scrollCapsuleReleaseTop) {
     scrollCapsuleHideLock.value = false
     isScrollCapsuleVisible.value = true
     return
@@ -1840,9 +1883,17 @@ const updateScrollCapsuleVisibility = () => {
   isScrollCapsuleVisible.value = !scrollCapsuleHideLock.value
 }
 
+const scheduleScrollCapsuleVisibilityUpdate = () => {
+  if (scrollCapsuleVisibilityFrame !== null) return
+  scrollCapsuleVisibilityFrame = window.requestAnimationFrame(() => {
+    scrollCapsuleVisibilityFrame = null
+    updateScrollCapsuleVisibility()
+  })
+}
+
 const handlePageScroll = () => {
   updateHeaderFade()
-  updateScrollCapsuleVisibility()
+  scheduleScrollCapsuleVisibilityUpdate()
 }
 
 watch(orderedSceneIndexes, async () => {
@@ -1850,7 +1901,7 @@ watch(orderedSceneIndexes, async () => {
   syncPageViewportSize()
   refreshScrollMetrics()
   syncVisualLayers()
-  updateScrollCapsuleVisibility()
+  updateScrollCapsuleVisibility(true)
 })
 
 watch(displayScene, async () => {
@@ -1924,7 +1975,8 @@ onMounted(async () => {
     sourcePage: sourcePageBySceneId[restoredSceneId] || context?.sourcePage || 'overview',
     practicePlan: context?.practicePlan || null,
     mockEntryMode: context?.mockEntryMode || 'direct',
-    mockSessionConfig: context?.mockSessionConfig || null
+    mockSessionConfig: context?.mockSessionConfig || null,
+    autoEnterFullscreen: context?.autoEnterFullscreen || false
   })
   await replaceSceneQuery(restoredSceneId)
 
@@ -1944,7 +1996,7 @@ onMounted(async () => {
     if (!isWelcomeEntrance) {
       void scheduleVisualStageBootstrap()
     }
-    updateScrollCapsuleVisibility()
+    updateScrollCapsuleVisibility(true)
   })
   if (!shouldRestoreContentScene && !isWelcomeEntrance) {
     startAutoplay()
@@ -1967,6 +2019,7 @@ onBeforeUnmount(() => {
     libraryListTransitionTimer = null
   }
   cancelSceneLayoutRefresh()
+  cancelScrollCapsuleVisibilityUpdate()
   clearTransitionTimers()
   window.removeEventListener('resize', handleVisualResize)
   visualStageRef.value?.clearVisualLayerTweens()
@@ -2146,6 +2199,7 @@ onBeforeUnmount(() => {
           :mock-generated-thread-count="generatedThreadCount"
           :mock-is-viewing-history-preview="flowMode === 'history_preview'"
           :mock-scene-reset-version="mockSceneResetVersion"
+          :mock-auto-enter-fullscreen="shouldAutoEnterMockFullscreen"
           :mock-question-prompt="mockQuestionPrompt"
           :mock-scroll-version="mockScrollVersion"
           :mock-stream-error="mockStreamError"
@@ -2232,6 +2286,7 @@ onBeforeUnmount(() => {
           @submit-mock-answer="submitMockAnswer"
           @finish-mock-session="handleMockFinish"
           @update-mock-feedback-style="handleMockFeedbackStyleChange"
+          @consume-auto-enter-fullscreen="consumeMockAutoEnterFullscreen"
           @update-active-filter="libraryActiveFilter = $event"
           @update-library-page="libraryCurrentPage = $event"
           @update-material-compile-count="handleMaterialCompileCountChange"

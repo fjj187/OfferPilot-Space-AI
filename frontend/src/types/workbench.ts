@@ -114,6 +114,7 @@ export interface PersistedWorkbenchContext {
   practiceQuestionGroup?: PersistedPracticeQuestionGroup | null
   mockEntryMode?: PersistedMockEntryMode
   mockSessionConfig?: PersistedMockSessionConfig | null
+  autoEnterFullscreen?: boolean
   updatedAt: string
 }
 

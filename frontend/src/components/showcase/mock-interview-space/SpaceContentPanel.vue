@@ -60,6 +60,7 @@ defineProps<{
   mockTotalCount: number
   mockGeneratedThreadCount: number
   mockSceneResetVersion: number
+  mockAutoEnterFullscreen: boolean
   overviewPrimaryActionLabel: string
   overviewProgressPercent: number
   overviewStatusLabel: string
@@ -157,6 +158,7 @@ const emit = defineEmits<{
   retryMockStream: []
   submitMockAnswer: []
   updateMockFeedbackStyle: [value: PersistedInterviewFeedbackStyle]
+  consumeAutoEnterFullscreen: []
   updateActiveFilter: [value: string]
   updateLibraryPage: [value: number]
   updateMaterialCompileCount: [value: number]
@@ -283,6 +285,7 @@ onBeforeUnmount(() => {
                 :session-status-text="mockSessionStatusText"
                 :total-count="mockTotalCount"
                 :generated-thread-count="mockGeneratedThreadCount"
+                :auto-enter-fullscreen="mockAutoEnterFullscreen"
                 @update:answer-draft="$emit('updateMockAnswerDraft', $event)"
                 @submit="$emit('submitMockAnswer')"
                 @finish="$emit('finishMockSession')"
@@ -296,6 +299,7 @@ onBeforeUnmount(() => {
                 @retry="$emit('retryMockStream')"
                 @update:feedback-style="$emit('updateMockFeedbackStyle', $event)"
                 @select-question-thread="$emit('selectMockQuestionThread', $event)"
+                @consume-auto-enter-fullscreen="$emit('consumeAutoEnterFullscreen')"
               />
               <SpacePracticeScene
                 v-else-if="displayScene.id === 'feedback'"

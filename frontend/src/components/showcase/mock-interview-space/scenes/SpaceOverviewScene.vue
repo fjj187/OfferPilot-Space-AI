@@ -1,7 +1,24 @@
 <script setup lang="tsx">
-import InterviewAnalyticsDashboard from '@/components/analytics/InterviewAnalyticsDashboard.vue'
+import { defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import SpaceSceneHeader from '@/components/showcase/mock-interview-space/SpaceSceneHeader.vue'
 import { useInterviewAnalyticsDashboardData } from '@/composables/analytics/useInterviewAnalyticsDashboardData'
+
+type IdleWindow = Window & {
+  requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
+  cancelIdleCallback?: (handle: number) => void
+}
+
+let analyticsDashboardLoadTask: Promise<typeof import('@/components/analytics/InterviewAnalyticsDashboard.vue')> | null = null
+
+const preloadAnalyticsDashboard = () => {
+  analyticsDashboardLoadTask ||= import('@/components/analytics/InterviewAnalyticsDashboard.vue')
+  return analyticsDashboardLoadTask
+}
+
+const InterviewAnalyticsDashboard = defineAsyncComponent({
+  loader: preloadAnalyticsDashboard,
+  delay: 0
+})
 
 interface OverviewSummaryItem {
   label: string
@@ -27,6 +44,17 @@ const emit = defineEmits<{
   openReport: []
 }>()
 
+const analyticsRevealTarget = ref<HTMLElement | null>(null)
+const shouldMountAnalyticsDashboard = ref(false)
+const isAnalyticsDashboardVisible = ref(false)
+const isAnalyticsDashboardActive = ref(false)
+
+let analyticsRevealObserver: IntersectionObserver | null = null
+let cancelAnalyticsPreload: (() => void) | null = null
+let isAnalyticsNearViewport = false
+let hasAnalyticsActivatedInView = false
+let analyticsScrollIdleTimer: number | null = null
+
 const {
   dashboardData,
   hasFilteredAnalyticsData,
@@ -35,6 +63,129 @@ const {
   selectedTimeRangeText,
   timeRangeOptions
 } = useInterviewAnalyticsDashboardData()
+
+const revealAnalyticsDashboard = async () => {
+  if (shouldMountAnalyticsDashboard.value) return
+
+  shouldMountAnalyticsDashboard.value = true
+  await preloadAnalyticsDashboard()
+  await nextTick()
+
+  window.requestAnimationFrame(() => {
+    isAnalyticsDashboardVisible.value = true
+  })
+}
+
+const scheduleAnalyticsPreload = () => {
+  const idleWindow = window as IdleWindow
+
+  if (idleWindow.requestIdleCallback) {
+    const preloadHandle = idleWindow.requestIdleCallback(() => {
+      void preloadAnalyticsDashboard()
+    }, {
+      timeout: 1600
+    })
+
+    cancelAnalyticsPreload = () => idleWindow.cancelIdleCallback?.(preloadHandle)
+    return
+  }
+
+  const preloadTimer = window.setTimeout(() => {
+    void preloadAnalyticsDashboard()
+  }, 600)
+
+  cancelAnalyticsPreload = () => window.clearTimeout(preloadTimer)
+}
+
+const syncAnalyticsDashboardActive = () => {
+  if (!isAnalyticsNearViewport) {
+    hasAnalyticsActivatedInView = false
+    isAnalyticsDashboardActive.value = false
+    return
+  }
+
+  if (hasAnalyticsActivatedInView) {
+    isAnalyticsDashboardActive.value = true
+    return
+  }
+
+  isAnalyticsDashboardActive.value = false
+}
+
+const scheduleAnalyticsActivationAfterScroll = () => {
+  if (analyticsScrollIdleTimer !== null) {
+    window.clearTimeout(analyticsScrollIdleTimer)
+  }
+
+  analyticsScrollIdleTimer = window.setTimeout(() => {
+    analyticsScrollIdleTimer = null
+    if (!isAnalyticsNearViewport) return
+
+    hasAnalyticsActivatedInView = true
+    isAnalyticsDashboardActive.value = true
+  }, 360)
+}
+
+const handleAnalyticsScroll = () => {
+  if (!isAnalyticsNearViewport && !isAnalyticsDashboardActive.value) return
+
+  if (analyticsScrollIdleTimer !== null) {
+    window.clearTimeout(analyticsScrollIdleTimer)
+  }
+
+  isAnalyticsDashboardActive.value = false
+  analyticsScrollIdleTimer = window.setTimeout(() => {
+    analyticsScrollIdleTimer = null
+    if (!isAnalyticsNearViewport) return
+
+    hasAnalyticsActivatedInView = true
+    isAnalyticsDashboardActive.value = true
+  }, 360)
+}
+
+onMounted(() => {
+  scheduleAnalyticsPreload()
+  window.addEventListener('scroll', handleAnalyticsScroll, {
+    passive: true
+  })
+
+  if (!('IntersectionObserver' in window)) {
+    isAnalyticsNearViewport = true
+    hasAnalyticsActivatedInView = true
+    isAnalyticsDashboardActive.value = true
+    void revealAnalyticsDashboard()
+    return
+  }
+
+  analyticsRevealObserver = new IntersectionObserver((entries) => {
+    const isNearViewport = entries.some(entry => entry.isIntersecting)
+
+    isAnalyticsNearViewport = isNearViewport
+    syncAnalyticsDashboardActive()
+    if (!isNearViewport) return
+
+    void revealAnalyticsDashboard()
+    scheduleAnalyticsActivationAfterScroll()
+  }, {
+    rootMargin: '420px 0px 520px'
+  })
+
+  if (analyticsRevealTarget.value) {
+    analyticsRevealObserver.observe(analyticsRevealTarget.value)
+  }
+})
+
+onBeforeUnmount(() => {
+  analyticsRevealObserver?.disconnect()
+  analyticsRevealObserver = null
+  window.removeEventListener('scroll', handleAnalyticsScroll)
+  if (analyticsScrollIdleTimer !== null) {
+    window.clearTimeout(analyticsScrollIdleTimer)
+    analyticsScrollIdleTimer = null
+  }
+  cancelAnalyticsPreload?.()
+  cancelAnalyticsPreload = null
+})
 </script>
 
 <template>
@@ -78,28 +229,36 @@ const {
       </template>
     </SpaceSceneHeader>
 
-    <InterviewAnalyticsDashboard
-      class="overview-analytics-dashboard"
-      :data="dashboardData"
-      title="训练数据驾驶舱"
-      :subtitle="hasLocalAnalyticsData ? (hasFilteredAnalyticsData ? '基于本地面试会话和复盘报告生成训练概览。' : '当前时间范围暂无本地训练记录，先用示例数据预览图表效果。') : '当前暂无本地训练记录，先用示例数据预览图表效果。'"
-      :time-range-text="selectedTimeRangeText"
+    <div
+      ref="analyticsRevealTarget"
+      class="overview-analytics-lazy"
+      :class="{ 'is-visible': isAnalyticsDashboardVisible }"
     >
-      <template #actions>
-        <div class="overview-analytics-range">
-          <button
-            v-for="option in timeRangeOptions"
-            :key="option.value"
-            type="button"
-            class="overview-analytics-range__button"
-            :class="{ 'is-active': selectedTimeRange === option.value }"
-            @click="selectedTimeRange = option.value"
-          >
-            {{ option.label }}
-          </button>
-        </div>
-      </template>
-    </InterviewAnalyticsDashboard>
+      <InterviewAnalyticsDashboard
+        v-if="shouldMountAnalyticsDashboard"
+        class="overview-analytics-dashboard"
+        :active="isAnalyticsDashboardActive"
+        :data="dashboardData"
+        title="训练数据驾驶舱"
+        :subtitle="hasLocalAnalyticsData ? (hasFilteredAnalyticsData ? '基于本地面试会话和复盘报告生成训练概览。' : '当前时间范围暂无本地训练记录，先用示例数据预览图表效果。') : '当前暂无本地训练记录，先用示例数据预览图表效果。'"
+        :time-range-text="selectedTimeRangeText"
+      >
+        <template #actions>
+          <div class="overview-analytics-range">
+            <button
+              v-for="option in timeRangeOptions"
+              :key="option.value"
+              type="button"
+              class="overview-analytics-range__button"
+              :class="{ 'is-active': selectedTimeRange === option.value }"
+              @click="selectedTimeRange = option.value"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+        </template>
+      </InterviewAnalyticsDashboard>
+    </div>
 
     <div class="overview-progress-card">
       <div class="overview-progress-head">
@@ -275,6 +434,20 @@ const {
   margin-top: 10px;
 }
 
+.overview-analytics-lazy {
+  min-height: 760px;
+  contain: layout paint style;
+  content-visibility: auto;
+  opacity: 0;
+  transform: translate3d(0, 18px, 0);
+  transition: opacity 0.42s ease, transform 0.42s ease;
+}
+
+.overview-analytics-lazy.is-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
 .overview-analytics-range {
   display: inline-flex;
   gap: 4px;
@@ -310,6 +483,10 @@ const {
 
   .overview-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .overview-analytics-lazy {
+    min-height: 980px;
   }
 }
 </style>
