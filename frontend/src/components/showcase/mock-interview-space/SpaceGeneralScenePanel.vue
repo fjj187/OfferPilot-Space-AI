@@ -28,6 +28,7 @@ defineProps<{
   overviewStatusLabel: string
   overviewSummaryItems: any[]
   overviewPracticeRouteNote: string
+  overviewAnalyticsSuspended: boolean
   selectedDocument: any
   selectedDocumentId: string
   showImportFeedback: boolean
@@ -100,6 +101,7 @@ defineEmits<{
         :summary-items="overviewSummaryItems"
         :primary-action-label="overviewPrimaryActionLabel"
         :practice-route-note="overviewPracticeRouteNote"
+        :analytics-suspended="overviewAnalyticsSuspended"
         @primary-action="$emit('primaryAction')"
         @open-library="$emit('openLibrary')"
         @open-practice="$emit('openPractice')"

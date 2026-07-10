@@ -66,6 +66,7 @@ defineProps<{
   overviewStatusLabel: string
   overviewSummaryItems: any[]
   overviewPracticeRouteNote: string
+  overviewAnalyticsSuspended: boolean
   reportHeaderMeta: string[]
   reportAnswerSnapshot: string[]
   reportQuestionReviews: any[]
@@ -349,6 +350,7 @@ onBeforeUnmount(() => {
                 :overview-status-label="overviewStatusLabel"
                 :overview-summary-items="overviewSummaryItems"
                 :overview-practice-route-note="overviewPracticeRouteNote"
+                :overview-analytics-suspended="overviewAnalyticsSuspended"
                 :selected-document="selectedDocument"
                 :selected-document-id="selectedDocumentId"
                 :show-import-feedback="showImportFeedback"

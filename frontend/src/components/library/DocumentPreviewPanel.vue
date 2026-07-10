@@ -41,7 +41,10 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  'update-tags': [payload: { name: string, tags: string[] }]
+  'update-tags': [payload: {
+    name: string
+    tags: string[]
+  }]
 }>()
 
 const showFullPreview = ref(false)
@@ -64,11 +67,33 @@ const previewSourceText = computed(() => {
   return props.rawText || '当前文档尚未生成可展示的文本预览。'
 })
 
-const previewLines = computed(() => previewSourceText.value.split(/\r?\n/))
+const previewLines = computed(() => {
+  const normalized = previewSourceText.value.replace(/\r\n/g, '\n')
+  const rawLines = normalized
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+
+  if (props.type !== 'docx' || rawLines.length >= props.previewLineCount) {
+    return rawLines.length ? rawLines : ['']
+  }
+
+  const sentenceLines = normalized
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[。！？；.!?])\s+/)
+    .map(line => line.trim())
+    .filter(Boolean)
+
+  return sentenceLines.length ? sentenceLines : (rawLines.length ? rawLines : [''])
+})
 
 const previewExcerpt = computed(() => {
   return previewLines.value.slice(0, props.previewLineCount).join('\n')
 })
+
+const previewTextStyle = computed(() => ({
+  '--preview-visible-lines': String(props.previewLineCount)
+}))
 
 const hasMorePreview = computed(() => previewLines.value.length > props.previewLineCount)
 
@@ -179,7 +204,10 @@ const typeLabel = computed(() => getLibraryDocumentTypeLabel(props.type))
           全屏查看
         </button>
       </div>
-      <div class="preview-text">
+      <div
+        class="preview-text"
+        :style="previewTextStyle"
+      >
         {{ previewExcerpt }}
       </div>
       <div
@@ -224,6 +252,13 @@ const typeLabel = computed(() => getLibraryDocumentTypeLabel(props.type))
   --preview-type-bg: #eef2ff;
   --preview-type-text: #5f79ff;
   --preview-accent: #7182f8;
+  --preview-level-1-size: 20px;
+  --preview-level-2-size: 15px;
+  --preview-level-3-size: 12px;
+  --preview-level-1-weight: 700;
+  --preview-level-2-weight: 700;
+  --preview-level-3-weight: 600;
+  --preview-visible-lines: 14;
   padding: 20px;
   border: 1px solid var(--preview-card-border);
   border-radius: 24px;
@@ -308,8 +343,8 @@ const typeLabel = computed(() => getLibraryDocumentTypeLabel(props.type))
   border-radius: 999px;
   background: var(--preview-chip-bg);
   color: var(--preview-chip-text);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--preview-level-3-size);
+  font-weight: var(--preview-level-3-weight);
   line-height: 1;
   white-space: nowrap;
 }
@@ -398,18 +433,18 @@ const typeLabel = computed(() => getLibraryDocumentTypeLabel(props.type))
 
 .eyebrow,
 .section-label {
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--preview-level-2-size);
+  font-weight: var(--preview-level-2-weight);
   color: var(--preview-accent);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: -0.01em;
 }
 
 h3 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--preview-level-1-size);
   line-height: 1.4;
   color: var(--preview-title);
+  font-weight: var(--preview-level-1-weight);
 }
 
 .preview-type {
@@ -435,7 +470,7 @@ h3 {
 }
 
 .preview-card.is-compact h3 {
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1.4;
 }
 
@@ -454,17 +489,18 @@ h3 {
 .preview-card.is-compact .preview-text {
   margin-top: 10px;
   padding: 12px 14px;
-  max-height: calc(1.65em * 2 + 24px);
-  font-size: 12px;
+  max-height: calc(1.65em * var(--preview-visible-lines) + 24px);
+  font-size: 13px;
   line-height: 1.65;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: var(--preview-visible-lines);
+  line-clamp: var(--preview-visible-lines);
 }
 
 .preview-card.is-compact .preview-more {
   margin-top: 8px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .preview-meta {
@@ -497,8 +533,8 @@ h3 {
   background: rgb(255 255 255 / 0.04);
   color: var(--preview-accent);
   font: inherit;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--preview-level-3-size);
+  font-weight: var(--preview-level-3-weight);
   line-height: 1;
   cursor: pointer;
   transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
@@ -556,8 +592,8 @@ p {
   border-radius: 999px;
   background: var(--preview-chip-bg);
   color: var(--preview-chip-text);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--preview-level-3-size);
+  font-weight: var(--preview-level-3-weight);
   line-height: 1;
   white-space: nowrap;
 }
@@ -586,7 +622,7 @@ p {
 .preview-more {
   margin-top: 10px;
   color: var(--preview-muted);
-  font-size: 12px;
+  font-size: var(--preview-level-3-size);
   line-height: 1.6;
 }
 

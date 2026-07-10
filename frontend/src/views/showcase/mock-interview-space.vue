@@ -13,8 +13,11 @@ import {
 } from '@/services/interview/interview-report-api'
 import SpaceContentPanel from '@/components/showcase/mock-interview-space/SpaceContentPanel.vue'
 import SpaceHeader from '@/components/showcase/mock-interview-space/SpaceHeader.vue'
-import SpaceCosmosBigBang from '@/components/showcase/mock-interview-space/SpaceCosmosBigBang.vue'
 import SpaceGpuBackdrop from '@/components/showcase/mock-interview-space/SpaceGpuBackdrop.vue'
+import {
+  areMockInterviewSpacePlanetTexturesReady,
+  preloadMockInterviewSpacePlanetTextures
+} from '@/services/showcase/mock-interview-space-planet-preload'
 import router from '@/router'
 import { useRoute } from 'vue-router'
 import SpaceOrbitNav from '@/components/showcase/mock-interview-space/SpaceOrbitNav.vue'
@@ -60,14 +63,18 @@ interface OrbitSlot {
 const route = useRoute()
 
 const isWelcomeEntranceInitial = route.query.welcome === '1'
-const isCosmosBigBangPending = ref(isWelcomeEntranceInitial)
-const isCosmosBigBangPlaying = ref(false)
+const isCosmosEntrancePending = ref(isWelcomeEntranceInitial)
 const isCosmosContentRevealed = ref(!isWelcomeEntranceInitial)
+const isPlanetTexturesReady = ref(areMockInterviewSpacePlanetTexturesReady())
 
-let bigBangOverlayResolver: (() => void) | null = null
+const ensurePlanetTexturesReady = async () => {
+  if (isPlanetTexturesReady.value) return
+  await preloadMockInterviewSpacePlanetTextures()
+  isPlanetTexturesReady.value = true
+}
 
 const isCosmosChromeReady = computed(
-  () => !isCosmosBigBangPending.value
+  () => !isCosmosEntrancePending.value
 )
 
 const {
@@ -203,10 +210,12 @@ const {
   selectedModelId,
   updateSelectedModelId
 } = useEnabledModels({
+  enabled: () => true,
   initialSelectedModelId: currentWorkbenchContext.value?.selectedModelId || ''
 })
 const initialSceneId = resolveSceneIdFromRouteQuery() || 'overview'
 const initialSceneIndex = scenes.findIndex(scene => scene.id === initialSceneId)
+const overviewAnalyticsSuspended = ref(initialSceneId !== 'overview')
 
 const {
   refFileInput,
@@ -553,7 +562,10 @@ const {
   reportAnswerSnapshotFromRemote,
   resolveReportSummary
 } = useMockInterviewSpaceReportHydration({
-  reportSession: reportTargetSession,
+  reportSession: computed(() => {
+    if (resolveSceneIdFromRouteQuery() !== 'report') return null
+    return reportTargetSession.value
+  }),
   reportSessionIdOverride,
   getLocalReportSummary: getLocalReportSummaryBySessionId
 })
@@ -1024,9 +1036,16 @@ const scheduleVisualStageBootstrap = async () => {
 }
 
 watch(visualStageRef, (stage) => {
-  if (stage && !isCosmosBigBangPending.value) {
+  if (stage && !isCosmosEntrancePending.value) {
     void scheduleVisualStageBootstrap()
   }
+})
+
+watch(isPlanetTexturesReady, (ready) => {
+  if (!ready || isCosmosEntrancePending.value) return
+  void scheduleVisualStageBootstrap()
+}, {
+  immediate: true
 })
 
 const clearTransitionTimers = () => {
@@ -1077,7 +1096,11 @@ const {
   offscreenOrbitLeft,
   offscreenOrbitRight,
   orbitMotionTransition,
-  scrollToSceneContent: (...args) => orbitScrollToSceneContent(...args)
+  scrollToSceneContent: (...args) => orbitScrollToSceneContent(...args),
+  beforeSceneChange: (nextIndex) => {
+    const nextScene = scenes[nextIndex]
+    overviewAnalyticsSuspended.value = nextScene?.id !== 'overview'
+  }
 })
 
 const {
@@ -1383,50 +1406,13 @@ const resetCosmosToOverviewHome = (options?: {
   })
 }
 
-const handleBigBangOverlayComplete = () => {
-  bigBangOverlayResolver?.()
-  bigBangOverlayResolver = null
-  isCosmosBigBangPlaying.value = false
-}
-
-const runCosmosBigBangEntrance = async () => {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    isCosmosContentRevealed.value = true
-    isScrollCapsuleRevealSettled.value = true
-    bootstrapVisualStage()
-    return
-  }
-
-  isCosmosContentRevealed.value = false
-  isCosmosBigBangPlaying.value = true
-
-  await nextTick()
-  await nextTick()
-
-  const overlayPromise = new Promise<void>((resolve) => {
-    bigBangOverlayResolver = resolve
-  })
-  const planetsPromise = visualStageRef.value?.playBigBangReveal() ?? Promise.resolve()
-
-  await Promise.all([overlayPromise, planetsPromise])
-
-  isCosmosContentRevealed.value = true
-  refreshScrollMetrics()
-  updateHeaderFade()
-  releaseScrollCapsuleReveal()
-  scrollCapsuleHideLock.value = false
-  isScrollCapsuleVisible.value = true
-  updateScrollCapsuleVisibility(true)
-}
-
 const runWelcomeEntranceIfNeeded = async () => {
   if (route.query.welcome !== '1') {
     isCosmosContentRevealed.value = true
     return
   }
 
-  isCosmosBigBangPending.value = true
-  isCosmosContentRevealed.value = false
+  isCosmosEntrancePending.value = true
   resetCosmosToOverviewHome({
     startAutoplay: false,
     instant: true
@@ -1441,8 +1427,18 @@ const runWelcomeEntranceIfNeeded = async () => {
     query: restQuery
   })
 
-  await runCosmosBigBangEntrance()
-  isCosmosBigBangPending.value = false
+  void ensurePlanetTexturesReady()
+  await nextTick()
+  syncVisualLayers(true)
+  isCosmosContentRevealed.value = true
+  isScrollCapsuleRevealSettled.value = true
+  refreshScrollMetrics()
+  updateHeaderFade()
+  releaseScrollCapsuleReveal()
+  scrollCapsuleHideLock.value = false
+  isScrollCapsuleVisible.value = true
+  updateScrollCapsuleVisibility(true)
+  isCosmosEntrancePending.value = false
   startAutoplay()
 }
 
@@ -1964,6 +1960,7 @@ watch(
 
 onMounted(async () => {
   const isWelcomeEntrance = route.query.welcome === '1'
+  void ensurePlanetTexturesReady()
   const context = loadWorkbenchContext()
   const restoredSceneId = resolveInitialSceneId()
   const restoredSceneIndex = findSceneIndexById(restoredSceneId)
@@ -1993,7 +1990,7 @@ onMounted(async () => {
     releaseScrollCapsuleReveal()
     scrollCapsuleHideLock.value = false
     isScrollCapsuleVisible.value = true
-    if (!isWelcomeEntrance) {
+    if (!isWelcomeEntrance && isPlanetTexturesReady.value) {
       void scheduleVisualStageBootstrap()
     }
     updateScrollCapsuleVisibility(true)
@@ -2075,15 +2072,10 @@ onBeforeUnmount(() => {
     />
 
     <div class="showcase-body">
-      <SpaceCosmosBigBang
-        v-if="isCosmosBigBangPlaying"
-        @complete="handleBigBangOverlayComplete"
-      />
-
       <div
         class="cosmos-gate-root"
         :class="{
-          'is-big-bang-active': isCosmosBigBangPending,
+          'is-entrance-pending': isCosmosEntrancePending,
           'is-content-revealed': isCosmosContentRevealed,
           'is-scroll-capsule-reveal-settled': isScrollCapsuleRevealSettled
         }"
@@ -2092,7 +2084,7 @@ onBeforeUnmount(() => {
           :content-revealed="isCosmosContentRevealed"
           :is-user-scrolling="isUserScrolling"
           :reveal-settled="isScrollCapsuleRevealSettled"
-          :shell-hidden="isCosmosBigBangPending && !isCosmosContentRevealed"
+          :shell-hidden="isCosmosEntrancePending && !isCosmosContentRevealed"
           :visible="isScrollCapsuleVisible"
           @scroll="handleScrollCapsuleClick"
         />
@@ -2126,7 +2118,6 @@ onBeforeUnmount(() => {
 
           <SpaceVisualStage
             ref="visualStageRef"
-            :class="{ 'is-big-bang-hidden': isCosmosBigBangPending && !isCosmosBigBangPlaying }"
             :active-scene-index-by-slot="activeSceneIndexBySlot"
             :center-slot="centerSlot"
             :last-orbit-direction="lastOrbitDirection"
@@ -2139,7 +2130,7 @@ onBeforeUnmount(() => {
         <SpaceOrbitNav
           :autoplay="autoplay"
           :content-revealed="isCosmosContentRevealed"
-          :hidden="isCosmosBigBangPending && !isCosmosContentRevealed"
+          :hidden="isCosmosEntrancePending && !isCosmosContentRevealed"
           :is-fast-orbit-transition="isFastOrbitTransition"
           :is-orbit-play-bursting="isOrbitPlayBursting"
           :is-play-ready="isOrbitPlayReady"
@@ -2214,6 +2205,7 @@ onBeforeUnmount(() => {
           :overview-status-label="overviewStatusLabel"
           :overview-summary-items="overviewSummaryItems"
           :overview-practice-route-note="overviewPracticeRouteNote"
+          :overview-analytics-suspended="overviewAnalyticsSuspended"
           :report-header-meta="reportHeaderMeta"
           :report-answer-snapshot="reportAnswerSnapshot"
           :report-question-reviews="reportQuestionReviews"
@@ -2378,7 +2370,7 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
-.cosmos-gate-root.is-big-bang-active:not(.is-content-revealed) {
+.cosmos-gate-root.is-entrance-pending:not(.is-content-revealed) {
   .copy-column,
   .visual-column,
   .content-stack {
@@ -2390,23 +2382,15 @@ onBeforeUnmount(() => {
 
 .cosmos-gate-root.is-content-revealed {
   .copy-column {
-    animation: cosmos-content-reveal 0.72s var(--ease-orbit) forwards;
+    animation: none;
+    opacity: 1;
+    transform: none;
   }
 
   .content-stack {
-    animation: cosmos-content-reveal 0.88s var(--ease-orbit) 0.14s forwards;
-  }
-}
-
-@keyframes cosmos-content-reveal {
-  from {
-    opacity: 0;
-    transform: translateY(20px) scale(0.97);
-  }
-
-  to {
+    animation: none;
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: none;
   }
 }
 

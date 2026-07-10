@@ -5,6 +5,7 @@ import {
   clearAuthSession,
   getDefaultAuthCredentials,
   getAuthSession,
+  normalizeAuthSession,
   resolveCredentials,
   setLastAuthAccount,
   setAuthSession,
@@ -35,14 +36,15 @@ export function useAuth() {
   }
 
   const syncFromServer = async () => {
-    const session = await fetchCurrentAuthSession()
-    if (!session) {
+    const rawSession = await fetchCurrentAuthSession()
+    if (!rawSession) {
       clearAuthSession()
       clearAuthToken()
       applySession(null)
       return null
     }
 
+    const session = normalizeAuthSession(rawSession)
     setAuthSession(session)
     applySession(session)
     return session
@@ -52,7 +54,7 @@ export function useAuth() {
     const result = await loginByApi(username, password)
     if (result) {
       setAuthToken(result.token)
-      const session = result.session
+      const session = normalizeAuthSession(result.session)
       setAuthSession(session)
       setLastAuthAccount(session.username)
       authUsername.value = session.username
@@ -64,13 +66,14 @@ export function useAuth() {
     // 演示环境兜底：API 不可用时使用本地演示账号校验
     const localSession = resolveCredentials(username, password)
     if (localSession) {
+      const normalizedLocalSession = normalizeAuthSession(localSession)
       // 设置占位 token 以通过路由守卫的 hasUsableAuthState 校验
       setAuthToken('demo')
-      setAuthSession(localSession)
-      setLastAuthAccount(localSession.username)
-      authUsername.value = localSession.username
-      authRole.value = localSession.role
-      authDisplayName.value = localSession.displayName ?? localSession.username
+      setAuthSession(normalizedLocalSession)
+      setLastAuthAccount(normalizedLocalSession.username)
+      authUsername.value = normalizedLocalSession.username
+      authRole.value = normalizedLocalSession.role
+      authDisplayName.value = normalizedLocalSession.displayName ?? normalizedLocalSession.username
       return true
     }
 

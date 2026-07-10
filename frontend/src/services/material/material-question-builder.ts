@@ -21,6 +21,23 @@ import {
 
 const codeFencePattern = /```[\s\S]*?```/
 const minExplainSectionLength = 48
+const minGenericQuestionBodyLength = 36
+
+const extractGenericQuestionTitle = (text: string) => {
+  const normalized = text
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!normalized) return '请结合资料内容进行讲解'
+
+  const firstSentence = normalized
+    .split(/(?<=[。！？；.!?])/)
+    .map(item => item.trim())
+    .find(Boolean) || normalized
+
+  const cleanSentence = firstSentence.replace(/^[\d.、\s]+/, '').trim()
+  if (cleanSentence.length <= 28) return cleanSentence
+  return `${ cleanSentence.slice(0, 28) }...`
+}
 
 const resolveQuestionType = (chunk: MaterialChunk): MaterialQuestionItem['questionType'] => {
   if (codeFencePattern.test(chunk.text)) return 'code'
@@ -145,6 +162,18 @@ const buildQuestionsForChunk = (chunk: MaterialChunk): MaterialQuestionItem[] =>
         ? normalizedHeading
         : `概念理解：${ normalizedHeading }`,
       prompt
+    ))
+  }
+
+  // Some imported Docs paragraphs are long and substantive, but may not carry a usable heading.
+  if (!questions.length && substantiveText.length >= minGenericQuestionBodyLength) {
+    const fallbackTitle = extractGenericQuestionTitle(substantiveText)
+    questions.push(buildQuestionBase(
+      chunk,
+      'body-fallback',
+      0,
+      fallbackTitle,
+      `请根据资料内容进行结构化讲解，并概括核心要点。\n\n${ formatMaterialReference(normalizedHeading, substantiveText) }`
     ))
   }
 

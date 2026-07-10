@@ -39,6 +39,7 @@ interface UseMockInterviewSpaceOrbitOptions {
   }
   orbitMotionTransition: string
   scrollToSceneContent: (delay?: number, duration?: number) => void
+  beforeSceneChange?: (index: number) => void
 }
 
 export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOptions) {
@@ -58,7 +59,8 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
   const displayIndex = ref(orbitOrder.value[options.centerSlot])
   const copySceneIndex = ref(orbitOrder.value[options.centerSlot])
   const orbitProgress = ref(0)
-  const autoplay = ref(true)
+  // 默认不自动轮播，避免首次进入时轨道连续自转造成反复入场的体感误判。
+  const autoplay = ref(false)
   const autoplayPausedByContent = ref(false)
   const isOrbitPlayBursting = ref(false)
   const isOrbitTransitioning = ref(false)
@@ -216,6 +218,7 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
   }
 
   const applySceneChange = (index: number, orbitOptions?: OrbitNavOptions) => {
+    options.beforeSceneChange?.(index)
     if (orbitOptions?.pauseAutoplay) {
       pauseAutoplay()
     }
@@ -256,6 +259,8 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
 
   const stepOrbit = (direction: 1 | -1, orbitOptions?: OrbitNavOptions) => {
     if (isOrbitTransitioning.value) return
+    const nextOrder = shiftOrbitOrder(orbitOrder.value, direction)
+    options.beforeSceneChange?.(nextOrder[options.centerSlot])
     isOrbitTransitioning.value = true
     isFastOrbitTransition.value = Boolean(orbitOptions?.fastOrbit)
     orbitProgress.value = 0
@@ -280,8 +285,6 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
     const reenterEnd = direction === 1 ? options.orbitSlots.value[options.orbitSlots.value.length - 1] : options.orbitSlots.value[0]
     const ghostStartSlotIndex = direction === 1 ? 0 : options.orbitSlots.value.length - 1
     const reenterEndSlotIndex = direction === 1 ? options.orbitSlots.value.length - 1 : 0
-    const newOrder = shiftOrbitOrder(currentOrder, direction)
-
     orbitGhosts.value = [{
       label: options.scenes[exitingScene].navLabel,
       style: {
@@ -290,7 +293,7 @@ export function useMockInterviewSpaceOrbit(options: UseMockInterviewSpaceOrbitOp
       }
     }]
 
-    orbitOrder.value = newOrder
+    orbitOrder.value = nextOrder
     orbitOverrides.value = {
       [exitingScene]: {
         ...resolveOrbitPositionStyle(reenterStart, -1, '0'),

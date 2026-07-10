@@ -11,6 +11,12 @@ export const cleanMammothArtifact = (text: string): string => {
 
 const stripMarkdownHeading = (text: string) => text.replace(/^#{1,6}\s+/, '').trim()
 
+/** mammoth 偶发把编号转义符拆成独立段落，不能当成题目或答案正文 */
+export const isMammothArtifactOnlyLine = (text: string) => {
+  const body = stripMarkdownHeading(cleanMammothArtifact(text))
+  return /^\\+$/.test(body) || /^\\?\.$/.test(body) || /^\d+\.\s*$/.test(body)
+}
+
 export const isSessionSectionLine = (text: string) => SESSION_SECTION_PATTERN.test(text)
 
 export const isInterviewNotesAnswerLine = (cleanedLine: string) => {
@@ -21,7 +27,7 @@ export const isInterviewNotesAnswerLine = (cleanedLine: string) => {
 /** 编号题面（1. xxx），排除日期场次 12.10 一面 */
 export const isInterviewNotesQuestionLine = (cleanedLine: string) => {
   const body = stripMarkdownHeading(cleanedLine)
-  if (!body || isInterviewNotesAnswerLine(cleanedLine) || isSessionSectionLine(body)) return false
+  if (!body || isMammothArtifactOnlyLine(cleanedLine) || isInterviewNotesAnswerLine(cleanedLine) || isSessionSectionLine(body)) return false
   if (/^答[：:]/.test(body)) return false
   return /^\d+\.\s+\S/.test(body)
 }
@@ -69,7 +75,7 @@ export function normalizeInterviewNotesMarkdown(markdown: string): string {
       currentSession = ''
     }
 
-    output.push(`### ${currentQuestion}`)
+    output.push(`### ${ currentQuestion }`)
     const answer = answerLines.join('\n').trim()
     if (answer) output.push(answer)
     output.push('')
@@ -80,14 +86,14 @@ export function normalizeInterviewNotesMarkdown(markdown: string): string {
 
   for (const line of lines) {
     const cleaned = cleanMammothArtifact(line)
-    if (!cleaned) {
+    if (!cleaned || isMammothArtifactOnlyLine(cleaned)) {
       if (currentQuestion && answerLines.length) answerLines.push('')
       continue
     }
 
     if (isSessionSectionLine(stripMarkdownHeading(cleaned))) {
       flushQuestion()
-      currentSession = `## ${stripMarkdownHeading(cleaned)}`
+      currentSession = `## ${ stripMarkdownHeading(cleaned) }`
       continue
     }
 

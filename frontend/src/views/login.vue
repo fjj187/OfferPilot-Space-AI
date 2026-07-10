@@ -4,6 +4,7 @@ import SpaceHeader from '@/components/showcase/mock-interview-space/SpaceHeader.
 import SpaceLoginHero from '@/components/showcase/mock-interview-space/SpaceLoginHero.vue'
 import { DEFAULT_APP_ROUTE_NAME } from '@/config/product'
 import { scenes } from '@/constants/showcase/mockInterviewSpaceScenes'
+import { preloadMockInterviewSpacePlanetTextures } from '@/services/showcase/mock-interview-space-planet-preload'
 import router from '@/router'
 import { resolveSafeRedirect } from '@/utils/auth/resolve-safe-redirect'
 import { useRoute } from 'vue-router'
@@ -11,6 +12,11 @@ import { useRoute } from 'vue-router'
 const route = useRoute()
 const overviewScene = scenes[0]!
 const isNavigatingAfterLogin = ref(false)
+const DEFAULT_APP_PATH = '/showcase/mock-interview-space'
+const LOGIN_TRANSITION_MS = 360
+
+let loginTransitionTimer: ReturnType<typeof setTimeout> | null = null
+let mockInterviewSpaceEntryPreloadPromise: Promise<void> | null = null
 
 /** 与宇宙页登录门控一致的静止顶栏样式 */
 const loginHeaderStyle: CSSProperties = {
@@ -34,29 +40,62 @@ const loginPageStyle = computed<CSSProperties>(() => ({
   '--space-header-height': '59px'
 } as CSSProperties))
 
-const navigateAfterLogin = () => {
-  isNavigatingAfterLogin.value = true
-  const redirect = resolveSafeRedirect(route.query.redirect)
-  if (redirect) {
-    if (redirect.startsWith('/showcase/mock-interview-space')) {
-      void router.replace({
-        name: DEFAULT_APP_ROUTE_NAME,
-        query: {
-          welcome: '1'
-        }
-      })
-      return
-    }
-    void router.replace(redirect)
-    return
+const normalizePostLoginRedirect = (target: string) => {
+  if (!target.startsWith(DEFAULT_APP_PATH)) {
+    return target
   }
 
-  void router.replace({
-    name: DEFAULT_APP_ROUTE_NAME,
-    query: {
-      welcome: '1'
-    }
-  })
+  const [pathAndQuery, hash = ''] = target.split('#')
+  const [path, queryString = ''] = pathAndQuery.split('?')
+  const searchParams = new URLSearchParams(queryString)
+
+  searchParams.delete('welcome')
+
+  const normalizedQuery = searchParams.toString()
+  const normalizedHash = hash ? `#${ hash }` : ''
+
+  return normalizedQuery
+    ? `${ path }?${ normalizedQuery }${ normalizedHash }`
+    : `${ path }${ normalizedHash }`
+}
+
+const resolvePostLoginTarget = () => {
+  const redirect = resolveSafeRedirect(route.query.redirect)
+  if (redirect) {
+    return normalizePostLoginRedirect(redirect)
+  }
+
+  return {
+    name: DEFAULT_APP_ROUTE_NAME
+  }
+}
+
+const clearLoginTransitionTimer = () => {
+  if (!loginTransitionTimer) return
+  window.clearTimeout(loginTransitionTimer)
+  loginTransitionTimer = null
+}
+
+const preloadMockInterviewSpaceEntry = () => {
+  mockInterviewSpaceEntryPreloadPromise ||= Promise.allSettled([
+    preloadMockInterviewSpacePlanetTextures(),
+    import('@/views/showcase/mock-interview-space.vue')
+  ]).then(() => undefined)
+
+  return mockInterviewSpaceEntryPreloadPromise
+}
+
+const navigateAfterLogin = () => {
+  if (isNavigatingAfterLogin.value) return
+
+  isNavigatingAfterLogin.value = true
+  const target = resolvePostLoginTarget()
+
+  clearLoginTransitionTimer()
+  loginTransitionTimer = window.setTimeout(() => {
+    loginTransitionTimer = null
+    void router.replace(target)
+  }, LOGIN_TRANSITION_MS)
 }
 
 const handleLoginSuccess = () => {
@@ -69,6 +108,14 @@ const goAdminLogin = () => {
   })
 }
 
+onMounted(() => {
+  void preloadMockInterviewSpaceEntry()
+})
+
+onBeforeUnmount(() => {
+  clearLoginTransitionTimer()
+})
+
 </script>
 
 <template>
@@ -78,7 +125,9 @@ const goAdminLogin = () => {
   >
     <SpaceHeader
       :header-style="loginHeaderStyle"
+      :enabled-models="[]"
       :is-auto-scrolling="false"
+      :is-loading-models="false"
       :is-user-scrolling="false"
     />
 
@@ -92,9 +141,7 @@ const goAdminLogin = () => {
       v-if="isNavigatingAfterLogin"
       class="login-transition-mask"
       aria-hidden="true"
-    >
-      <span class="login-transition-core"></span>
-    </div>
+    ></div>
 
     <button
       class="admin-entry-button"
@@ -159,30 +206,18 @@ const goAdminLogin = () => {
   position: fixed;
   inset: 0;
   z-index: 3;
-  display: grid;
-  place-items: center;
-  background: #03060e;
+  background: rgb(3 6 14 / 0);
   pointer-events: none;
+  animation: login-transition-fade 0.36s ease forwards;
 }
 
-.login-transition-core {
-  width: 18vmax;
-  height: 18vmax;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle, rgb(255 255 255 / 0.92) 0%, rgb(118 247 234 / 0.58) 22%, transparent 68%);
-  animation: login-transition-pulse 0.72s ease-out infinite;
-}
-
-@keyframes login-transition-pulse {
+@keyframes login-transition-fade {
   0% {
-    opacity: 0.78;
-    transform: scale(0.72);
+    background: rgb(3 6 14 / 0);
   }
 
   100% {
-    opacity: 0.18;
-    transform: scale(1.28);
+    background: rgb(3 6 14 / 0.92);
   }
 }
 </style>

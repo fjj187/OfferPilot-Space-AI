@@ -34,8 +34,12 @@ use([
 const props = withDefaults(defineProps<{
   option: EChartsCoreOption
   height?: number | string
+  active?: boolean
+  disposeOnInactive?: boolean
 }>(), {
-  height: 260
+  height: 260,
+  active: true,
+  disposeOnInactive: true
 })
 
 const emit = defineEmits<{
@@ -58,6 +62,7 @@ const chartStyle = computed(() => {
 })
 
 const resizeChart = () => {
+  if (!props.active) return
   if (resizeFrame !== null) return
 
   resizeFrame = window.requestAnimationFrame(() => {
@@ -67,6 +72,7 @@ const resizeChart = () => {
 }
 
 const setChartOption = (option: EChartsCoreOption) => {
+  if (!props.active) return
   chart.value?.setOption({
     animation: false,
     ...option
@@ -76,10 +82,33 @@ const setChartOption = (option: EChartsCoreOption) => {
   })
 }
 
+const stopResizeObserver = () => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+}
+
+const startResizeObserver = () => {
+  if (!chartRef.value || resizeObserver) return
+  resizeObserver = new ResizeObserver(() => resizeChart())
+  resizeObserver.observe(chartRef.value)
+}
+
+const disposeChart = () => {
+  if (resizeFrame !== null) {
+    window.cancelAnimationFrame(resizeFrame)
+    resizeFrame = null
+  }
+  stopResizeObserver()
+  chart.value?.dispose()
+  chart.value = null
+}
+
 const setupChart = async () => {
+  if (!props.active || chart.value) return
+
   await nextTick()
 
-  if (!chartRef.value || isUnmounted)
+  if (!chartRef.value || isUnmounted || !props.active)
     return
 
   chart.value = init(chartRef.value, undefined, {
@@ -87,13 +116,30 @@ const setupChart = async () => {
   })
   chart.value.on('click', event => emit('chartClick', event as ECElementEvent))
   setChartOption(props.option)
-
-  resizeObserver = new ResizeObserver(() => resizeChart())
-  resizeObserver.observe(chartRef.value)
+  startResizeObserver()
+  resizeChart()
 }
 
 watch(() => props.option, option => {
   setChartOption(option)
+})
+
+watch(() => props.active, (active) => {
+  if (active) {
+    void setupChart()
+    return
+  }
+
+  if (props.disposeOnInactive) {
+    disposeChart()
+    return
+  }
+
+  if (resizeFrame !== null) {
+    window.cancelAnimationFrame(resizeFrame)
+    resizeFrame = null
+  }
+  stopResizeObserver()
 })
 
 onMounted(() => {
@@ -102,14 +148,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   isUnmounted = true
-  if (resizeFrame !== null) {
-    window.cancelAnimationFrame(resizeFrame)
-    resizeFrame = null
-  }
-  resizeObserver?.disconnect()
-  resizeObserver = null
-  chart.value?.dispose()
-  chart.value = null
+  disposeChart()
 })
 </script>
 

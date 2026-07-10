@@ -1601,6 +1601,12 @@ onBeforeUnmount(() => {
   gap: 0;
   min-height: 0;
   overflow: hidden auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.mock-side-guide-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .mock-side-guide-scroll .mock-side-guide-section + .mock-side-guide-section {
@@ -1769,7 +1775,7 @@ onBeforeUnmount(() => {
 }
 
 .mock-side-guide-panel .mock-question-requirement-card.is-feedback-card .mock-prompt-body.is-hint-clamp {
-  --mock-hint-line-count: 10;
+  --mock-hint-line-count: 4;
 }
 
 .mock-side-guide-panel.is-practice-entry .mock-question-requirement-card.is-feedback-card .mock-prompt-body.is-hint-clamp {
@@ -1777,9 +1783,9 @@ onBeforeUnmount(() => {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 10;
-  line-clamp: 10;
-  max-height: calc(1em * 1.48 * 10);
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  max-height: calc(1em * 1.48 * 4);
 }
 
 .mock-side-guide-panel .mock-question-requirement-card.is-hint-card .mock-prompt-body.is-hint-clamp {

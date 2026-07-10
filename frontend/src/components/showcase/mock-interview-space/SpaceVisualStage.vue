@@ -2,6 +2,7 @@
 import type { CSSProperties } from 'vue'
 import gsap from 'gsap'
 import type { SceneItem } from '@/constants/showcase/mockInterviewSpaceScenes'
+import { mockInterviewSpacePlanetTextureMap } from '@/services/showcase/mock-interview-space-planet-preload'
 import SpaceTexturedPlanet from './SpaceTexturedPlanet.vue'
 
 interface VisualSlot {
@@ -26,12 +27,6 @@ interface VisualLayerState {
   brightness: number
 }
 
-interface PlanetTextureConfig {
-  fitMode?: 'cover' | 'contain'
-  imageStyle?: CSSProperties
-  src: string
-}
-
 const props = defineProps<{
   activeSceneIndexBySlot: number
   centerSlot: number
@@ -51,48 +46,7 @@ const visualLayerStates = ref<Array<VisualLayerState | null>>(Array.from({
 const isVisualLayerTransitioning = ref(false)
 let visualTimeline: gsap.core.Timeline | null = null
 
-const planetTextureMap: Partial<Record<SceneItem['id'], PlanetTextureConfig>> = {
-  overview: {
-    src: `${ import.meta.env.BASE_URL }DroitStock_630232299_Medium.jpg`,
-    imageStyle: {
-      objectPosition: '50% 46%',
-      transform: 'translate(-50%, -50%) scale(2.18)',
-      filter: 'saturate(1.08) contrast(1.28) brightness(0.92)'
-    }
-  },
-  mock: {
-    src: `${ import.meta.env.BASE_URL }DroitStock_1493827434_Medium.jpg`,
-    imageStyle: {
-      objectPosition: '50% 50%',
-      transform: 'translate(-50%, -50%) scale(1.1)',
-      filter: 'saturate(1.08) contrast(1.04) brightness(1.02)'
-    }
-  },
-  library: {
-    src: `${ import.meta.env.BASE_URL }DroitStock_923338027_Medium.jpg`,
-    imageStyle: {
-      objectPosition: '45% 48%',
-      transform: 'translate(-50%, -50%) scale(1.38)',
-      filter: 'saturate(1.06) contrast(1.08) brightness(0.96)'
-    }
-  },
-  feedback: {
-    src: `${ import.meta.env.BASE_URL }PIA18033~orig.jpg`,
-    imageStyle: {
-      objectPosition: '50% 52%',
-      transform: 'translate(-50%, -50%) scale(1.22)',
-      filter: 'saturate(1.12) contrast(1.08) brightness(1.03)'
-    }
-  },
-  report: {
-    src: `${ import.meta.env.BASE_URL }DroitStock_55808438_Medium.jpg`,
-    imageStyle: {
-      objectPosition: '50% 54%',
-      transform: 'translate(-50%, -50%) scale(1.48)',
-      filter: 'saturate(1.1) contrast(1.08) brightness(1)'
-    }
-  }
-}
+const planetTextureMap = mockInterviewSpacePlanetTextureMap as Partial<Record<SceneItem['id'], typeof mockInterviewSpacePlanetTextureMap.overview>>
 
 const resolveVisualSlotProfiles = (stageWidth: number, stageHeight: number): VisualSlot[] => {
   const widthUnit = Math.max(stageWidth, 360)
@@ -298,78 +252,6 @@ const syncVisualLayers = (immediate = false) => {
   })
 }
 
-/** 登录大爆炸：星球从中心向轨道位分发展开 */
-const playBigBangReveal = (): Promise<void> => {
-  return new Promise((resolve) => {
-    const host = visualColumnRef.value
-    if (!host) {
-      resolve()
-      return
-    }
-
-    props.scenes.forEach((_, sceneIndex) => {
-      const layer = visualLayerRefs.value[sceneIndex]
-      if (!layer) return
-
-      gsap.killTweensOf(layer)
-      gsap.set(layer, {
-        x: 0,
-        y: 0,
-        scale: 0.06,
-        opacity: 0,
-        rotation: 0,
-        filter: 'blur(6px) brightness(0.72)',
-        force3D: true
-      })
-      layer.style.zIndex = '1'
-    })
-
-    const timeline = gsap.timeline({
-      onComplete: () => {
-        props.scenes.forEach((_, sceneIndex) => {
-          const target = resolveVisualLayerState(sceneIndex)
-          const layer = visualLayerRefs.value[sceneIndex]
-          if (layer) {
-            layer.style.zIndex = String(target.zIndex)
-          }
-          visualLayerStates.value[sceneIndex] = target
-        })
-        resolve()
-      }
-    })
-
-    props.scenes.forEach((_, sceneIndex) => {
-      const layer = visualLayerRefs.value[sceneIndex]
-      const target = resolveVisualLayerState(sceneIndex)
-      if (!layer) return
-
-      const isHero = sceneIndex === props.activeSceneIndexBySlot
-      const delay = 0.18 + sceneIndex * 0.09
-
-      timeline.to(layer, {
-        x: target.x,
-        y: target.y,
-        scale: target.scale * (isHero ? 1.06 : 1),
-        opacity: target.opacity,
-        rotation: target.rotate,
-        filter: visualLayerFilter(target),
-        duration: isHero ? 1.15 : 0.95,
-        ease: isHero ? 'power4.out' : 'power3.out',
-        force3D: true
-      }, delay)
-
-      if (isHero) {
-        timeline.to(layer, {
-          scale: target.scale,
-          duration: 0.35,
-          ease: 'power2.inOut',
-          force3D: true
-        }, delay + 1.05)
-      }
-    })
-  })
-}
-
 const clearVisualLayerTweens = () => {
   visualTimeline?.kill()
   visualTimeline = null
@@ -383,7 +265,6 @@ const clearVisualLayerTweens = () => {
 
 defineExpose({
   clearVisualLayerTweens,
-  playBigBangReveal,
   syncVisualLayers
 })
 </script>

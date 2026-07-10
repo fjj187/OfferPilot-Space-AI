@@ -76,6 +76,44 @@ describe('normalize-interview-notes-markdown', () => {
     expect(chunks.some(chunk => /手撕快排/.test(chunk.heading))).toBe(true)
   })
 
+  it('忽略 mammoth 拆出来的孤立转义残留', () => {
+    const normalized = prepareMaterialRawText(`
+1.
+\\.
+
+1. Vue 3 的响应式为什么使用 Proxy？
+
+答：Proxy 可以拦截对象读写，并配合依赖收集触发更新。
+
+2.
+\\.
+
+2. computed 和 watch 有什么区别？
+
+答：computed 适合派生值，watch 适合副作用。
+`.trim())
+
+    const chunks = splitMaterialChunks(normalized, 'doc-artifact')
+    const pool = buildMaterialQuestionPool({
+      id: 'doc-artifact',
+      name: '转义残留.docx',
+      type: 'docx',
+      size: 1024,
+      importedAt: '2026-06-02T00:00:00.000Z',
+      status: 'parsed',
+      topicKeys: ['vue3'],
+      sourceKey: 'library',
+      tags: ['面经'],
+      summary: '面经',
+      rawText: normalized
+    })
+
+    expect(chunks.every(chunk => !/^(?:\d+\.|\\?\.|\\+)$/.test(chunk.heading.trim()))).toBe(true)
+    expect(pool.questions.map(item => item.title).join('\n')).not.toMatch(/^(?:\d+\.|\\?\.)$/m)
+    expect(pool.questions.some(item => /Vue 3 的响应式/.test(item.title))).toBe(true)
+    expect(pool.questions.some(item => /computed 和 watch/.test(item.title))).toBe(true)
+  })
+
   it('面经资料能稳定产出带参考答案的题库', () => {
     const document: PersistedLibraryDocument = {
       id: 'doc-mianjing',

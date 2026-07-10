@@ -343,6 +343,7 @@ const handleChartClick = (chartId: string, event: {
           <BaseECharts
             :option="radarOption"
             :height="300"
+            :active="active"
             @chart-click="handleChartClick('abilityRadar', $event)"
           />
         </AnalyticsChartPanel>
@@ -356,6 +357,7 @@ const handleChartClick = (chartId: string, event: {
           <BaseECharts
             :option="scoreTrendOption"
             :height="300"
+            :active="active"
             @chart-click="handleChartClick('scoreTrend', $event)"
           />
         </AnalyticsChartPanel>
@@ -369,6 +371,7 @@ const handleChartClick = (chartId: string, event: {
           <BaseECharts
             :option="questionTypeOption"
             :height="300"
+            :active="active"
             @chart-click="handleChartClick('questionTypeDistribution', $event)"
           />
         </AnalyticsChartPanel>
@@ -382,6 +385,7 @@ const handleChartClick = (chartId: string, event: {
           <BaseECharts
             :option="jobPracticeOption"
             :height="300"
+            :active="active"
             @chart-click="handleChartClick('jobPracticeDistribution', $event)"
           />
         </AnalyticsChartPanel>

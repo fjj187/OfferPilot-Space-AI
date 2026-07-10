@@ -37,15 +37,23 @@ const handleLogoutClick = () => {
   showLogoutConfirm.value = true
 }
 
-const handleLogoutConfirm = () => {
+const handleLogoutConfirm = async () => {
+  const loginRoute = {
+    name: LOGIN_ROUTE_NAME
+  } as const
+
   logout()
+  showLogoutConfirm.value = false
   window.$ModalMessage?.success?.('已退出登录', {
     duration: 2000,
     closable: false
   })
-  router.replace({
-    name: LOGIN_ROUTE_NAME
-  })
+  try {
+    await router.replace(loginRoute)
+  }
+  catch {
+    window.location.assign(router.resolve(loginRoute).href)
+  }
 }
 
 const headerEl = ref<HTMLElement | null>(null)
@@ -90,15 +98,21 @@ onBeforeUnmount(() => {
     <div class="header-tools">
       <label
         class="model-picker"
-        :title="`当前模型 ${ selectedModelLabel }`"
+        :title="enabledModels.length > 0 ? `当前模型 ${ selectedModelLabel }` : '暂无可用模型，请先检查模型配置'"
       >
         <span class="model-picker__label">模型</span>
         <select
           class="model-picker__select"
           :value="selectedModelId"
-          :disabled="isLoadingModels || enabledModels.length <= 0"
+          :disabled="isLoadingModels"
           @change="emit('updateModelId', ($event.target as HTMLSelectElement).value)"
         >
+          <option
+            v-if="enabledModels.length <= 0"
+            value=""
+          >
+            暂无可用模型
+          </option>
           <option
             v-for="item in enabledModels"
             :key="item.modelId"
@@ -269,6 +283,7 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   background: rgb(255 255 255 / 0.06);
   color: rgb(255 255 255 / 0.92);
+  cursor: pointer;
 }
 
 .model-picker__label {
@@ -282,9 +297,11 @@ onBeforeUnmount(() => {
   min-width: 136px;
   border: 0;
   outline: none;
+  appearance: none;
   background: transparent;
   color: #fff;
   font: inherit;
+  cursor: pointer;
 }
 
 .model-picker__select option {

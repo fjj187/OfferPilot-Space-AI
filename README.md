@@ -5,7 +5,7 @@
 <h1 align="center">OfferPilot-Space-AI</h1>
 
 <p align="center">
-  面向模拟面试与求职训练的前端原型，项目采用宇宙风格，整体围绕资料库页、总览页、模拟面试页、专项刷题、复盘报告构建。
+  面向模拟面试与求职训练的前端原型，项目采用宇宙风格，围绕资料库、总览页、模拟面试、专项刷题、复盘报告、ECharts（图表库）可视化数据大屏与后台管理面板构建完整训练闭环。
 </p>
 
 <p align="center">
@@ -29,6 +29,8 @@
 
 * 宇宙模拟面试页把面试流程、场景切换和视觉叙事放在同一屏。
 * 工作台提供总览、资料库、模拟面试、专项刷题、复盘报告和历史记录入口。
+* 基于 ECharts（图表库）构建训练数据可视化大屏，可展示核心指标、能力雷达、评分趋势和训练分布。
+* 后台管理面板支持从运营视角查看训练表现、模块状态和关键数据概览。
 * 面试流式输出使用 SSE（服务端发送事件）实现，支持连续生成和中止控制。
 * 报告与内容预览支持 Markdown（标记语言）、Mermaid（流程图工具）和 LaTeX（排版系统）
 * 题库与复盘链路已打通，可围绕薄弱项生成专项训练与报告参考内容。
@@ -37,83 +39,84 @@
 ## 快速入口
 
 * 在线预览：`https://fjj187.github.io/OfferPilot-Space-AI`
-* 本地开发：`pnpm dev`
+* 本地开发：`pnpm dev`（一键启动前端服务与后端服务）
 * 宇宙页入口：`/showcase/mock-interview-space`
+
+## 功能概览
+
+* 模拟面试空间聚合题目发起、过程交互、流式输出和结果沉淀。
+* 训练数据大屏基于 ECharts（图表库）统一呈现训练指标、能力维度和趋势变化。
+* 后台管理面板用于承接运营查看、内容管理和关键状态总览。
+* 复盘报告链路支持从面试结果回流到专项训练与资料整理。
+
 ## 运行截图
 
 <p align="center">
-  <img src="./docs/readme-images/2.png" alt="运行截图 2" width="100%" />
+  <img src="./frontend/public/showcase/2.png" alt="后台管理面板截图 1" width="100%" />
 </p>
 
 <p align="center">
-  <img src="./docs/readme-images/3.png" alt="运行截图 3" width="100%" />
+  <img src="./frontend/public/showcase/3.png" alt="后台管理面板截图 2" width="100%" />
 </p>
 
 <p align="center">
-  <img src="./docs/readme-images/4.png" alt="运行截图 4" width="100%" />
+  <img src="./frontend/public/showcase/4.png" alt="后台管理面板截图 3" width="100%" />
 </p>
 
 <p align="center">
-  <img src="./docs/readme-images/5.png" alt="运行截图 5" width="100%" />
+  <img src="./frontend/public/showcase/5.png" alt="模型管理页面截图" width="100%" />
 </p>
 
-<p align="center">
-  <img src="./docs/readme-images/6.png" alt="运行截图 6" width="100%" />
-</p>
+## 可视化数据大屏
+
+项目内置面试训练分析视图，围绕训练次数、能力雷达、题型分布和趋势变化构建统一可视化表达，适合展示个人复盘结果，也适合作为运营侧数据看板的基础能力。
+
+## 后台管理面板
+
+除训练主链路外，项目也包含后台管理面板方向，用于承接内容配置、训练概览、数据追踪与后续扩展，便于把面试训练、题库管理和结果复盘放到同一套系统里管理。
 
 ## 接入示例
 
-这个项目对使用者来说，最重要的就是两步：先配置环境变量，再启动前后端服务。配置好后，就可以直接进入模拟面试对话。
+项目推荐通过后台管理面板完成模型配置。启动服务后，用 `admin（管理员账户）` 登录后台，在模型管理页面填入对应配置即可。
 
-### 1. 配置环境变量
-
-先复制模板文件，再填写自己的密钥和本地后端地址。
-
-```bash
-cp frontend/.env.template frontend/.env
-```
-
-```env
-VITE_INTERVIEW_BACKEND_ORIGIN=http://localhost:3030
-VITE_INTERVIEW_SSE_URL=
-VITE_SPARK_KEY=你的_星火_API_Key
-VITE_SILICONFLOW_KEY=你的_SiliconFlow_API_Key
-VITE_MOONSHOT_KEY=你的_Moonshot_API_Key
-VITE_DEEPSEEK_KEY=你的_DeepSeek_API_Key
-```
-
-`VITE_INTERVIEW_BACKEND_ORIGIN` 默认指向本地 `3030` 端口，前端开发服务器会通过 `Vite` 代理到后端。
-
-### 2. 启动后端
-
-```bash
-pnpm dev:backend
-```
-
-后端启动后，默认监听 `http://localhost:3030`。
-
-### 3. 启动前端
+### 1. 启动本地服务
 
 ```bash
 pnpm dev
 ```
 
-前端启动后，默认访问 http://localhost:2048/#/showcase/mock-interview-space（模拟面试空间页面路径），进入后即可开始模拟面试对话。
+`pnpm dev`（开发启动命令）会同时启动前端服务和后端服务：
 
-### 4. 接口说明
+* 前端默认访问：`http://localhost:2048/`
+* 后端默认监听：`http://localhost:3030`
 
-* 面试流式接口默认走 /api/interview/stream（面试流式接口）
-* 会话列表和复盘报告默认走 /api/interview（面试会话与复盘接口）
-* 如果你有独立后端，可以直接修改 frontend/.env（前端环境配置文件） 里的 VITE_INTERVIEW_SSE_URL（面试流式地址配置项） 和 VITE_INTERVIEW_BACKEND_ORIGIN（后端源地址配置项）
+如果只需要单独调试某一侧，也可以使用：
 
-### 5. 可选模型密钥
+```bash
+pnpm dev:frontend
+pnpm dev:backend
+```
 
-如果你要启用模型适配，再补这几个密钥就行，不影响主流程：
+### 2. 使用 `admin（管理员账户）` 登录后台
 
-* `VITE_DEEPSEEK_KEY`
-* `VITE_SPARK_KEY`
-* `VITE_SILICONFLOW_KEY`
-* `VITE_MOONSHOT_KEY`
+进入后台管理面板后，使用 `admin（管理员账户）` 登录系统，进入模型管理页面。
+
+### 3. 在模型管理页面填写自己的模型配置
+
+在后台模型管理页按实际使用的模型服务填写对应内容即可，常见包括：
+
+* `API Key（接口密钥）`
+* `Base URL（服务地址）`
+* `Model Name（模型名称）`
+* 其他平台要求的附加参数
+
+保存后即可在前台面试、专项训练或相关能力模块中直接使用，无需再回到代码里修改环境变量。
+
+### 4. 使用说明
+
+* 模型管理适合集中维护不同平台的模型配置。
+* 如果后续需要更换模型，只需要在后台管理面板更新对应配置。
+* 前台训练链路会直接读取已保存的模型配置，不需要重新改 `frontend/.env（前端环境变量文件）`。
 
 ## 相关文档
 

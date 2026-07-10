@@ -4,10 +4,10 @@
   "private": true,
   "packageManager": "pnpm@10.18.2",
   "scripts": {
-    "dev": "pnpm --filter frontend dev",
+    "dev": "node ./scripts/dev-all.mjs",
     "dev:frontend": "pnpm --filter frontend dev",
     "dev:backend": "pnpm --filter mock-interview-backend dev",
-    "dev:cpp": "powershell -ExecutionPolicy Bypass -File ./backend/cpp/mariadb/start-local.ps1 && cmd /c backend\\cpp\\run-local.bat",
+    "dev:cpp": "node ./scripts/dev-cpp-with-backend.mjs",
     "stop:cpp-db": "powershell -ExecutionPolicy Bypass -File ./backend/cpp/mariadb/stop-local.ps1",
     "build": "pnpm --filter frontend build",
     "build:gh-pages": "pnpm --filter frontend build:gh-pages",

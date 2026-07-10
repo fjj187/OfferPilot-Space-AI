@@ -593,7 +593,7 @@ onBeforeUnmount(() => {
               <div class="material-count-field">
                 <span class="material-count-field-head">
                   <span class="material-count-field-label-row">
-                    <span>{{ materialCountFieldLabel }}</span>
+                    <span class="material-section-label">{{ materialCountFieldLabel }}</span>
                     <span
                       v-if="materialPreviewPendingHint"
                       class="material-draft-hint-inline"
@@ -1084,8 +1084,18 @@ onBeforeUnmount(() => {
   padding-right: 124px;
 }
 
+.library-inline-preview-panel :deep(.preview-headline .eyebrow) {
+  color: rgb(243 248 255 / 0.96);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
 .library-inline-preview-panel :deep(.preview-headline h3) {
   min-height: 34px;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 .library-inline-preview-panel :deep(.preview-section-head) {
@@ -1103,12 +1113,10 @@ onBeforeUnmount(() => {
   border-radius: 16px;
   background: rgb(255 255 255 / 0.045);
   font-size: 13px;
-  line-height: 1.75;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
-  line-clamp: 4;
-  max-height: calc(1em * 1.75 * 4 + 28px);
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
   box-shadow: none;
 }
 
@@ -1128,7 +1136,9 @@ onBeforeUnmount(() => {
 .library-scene-shell :deep(.eyebrow),
 .library-scene-shell :deep(.section-label) {
   color: var(--scene-primary);
-  font-size: 15px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .library-scene-shell :deep(h2),
@@ -1299,6 +1309,12 @@ onBeforeUnmount(() => {
 }
 
 .library-material-card {
+  --library-type-level-1-size: 24px;
+  --library-type-level-2-size: 16px;
+  --library-type-level-3-size: 13px;
+  --library-type-level-1-weight: 700;
+  --library-type-level-2-weight: 700;
+  --library-type-level-3-weight: 600;
   display: grid;
   gap: 12px;
   max-height: min(calc(78vh + 200px), 1180px);
@@ -1343,10 +1359,18 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
+.material-card-head .stat-label {
+  color: #f8fbff;
+  font-size: var(--library-type-level-1-size);
+  font-weight: var(--library-type-level-1-weight);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
 .material-pool-total {
   color: rgb(186 245 255 / 0.72);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--library-type-level-3-size);
+  font-weight: var(--library-type-level-3-weight);
   line-height: 1.3;
   white-space: nowrap;
 }
@@ -1358,7 +1382,8 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   background: rgb(186 245 255 / 0.12);
   color: #baf5ff;
-  font-size: 13px;
+  font-size: var(--library-type-level-3-size);
+  font-weight: var(--library-type-level-3-weight);
 }
 
 .material-action-row {
@@ -1369,9 +1394,9 @@ onBeforeUnmount(() => {
 
 .material-count-field {
   display: grid;
-  gap: 6px;
+  gap: 10px;
   color: rgb(220 232 255 / 0.72);
-  font-size: 14px;
+  font-size: var(--library-type-level-3-size);
 }
 
 .material-count-field-head {
@@ -1389,10 +1414,22 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
+.material-section-label,
+.material-draft-hint-inline {
+  line-height: 1.4;
+}
+
+.material-section-label {
+  color: rgb(243 248 255 / 0.96);
+  font-size: var(--library-type-level-2-size);
+  font-weight: var(--library-type-level-2-weight);
+  letter-spacing: -0.01em;
+}
+
 .material-draft-hint-inline {
   color: rgb(186 245 255 / 0.88);
-  font: inherit;
-  line-height: inherit;
+  font-size: var(--library-type-level-3-size);
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -1402,7 +1439,8 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   background: rgb(255 255 255 / 0.06);
   color: rgb(228 236 255 / 0.9);
-  font-size: 12px;
+  font-size: var(--library-type-level-3-size);
+  font-weight: var(--library-type-level-3-weight);
   cursor: pointer;
 }
 
@@ -1438,14 +1476,14 @@ onBeforeUnmount(() => {
 }
 
 .material-order-mode-button__label {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   line-height: 1.3;
 }
 
 .material-order-mode-button__desc {
   color: rgb(223 231 252 / 0.68);
-  font-size: 12px;
+  font-size: var(--library-type-level-3-size);
   line-height: 1.35;
 }
 
@@ -1484,10 +1522,10 @@ onBeforeUnmount(() => {
 }
 
 .material-topic-filter-label {
-  color: rgb(223 231 252 / 0.72);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  color: rgb(243 248 255 / 0.96);
+  font-size: var(--library-type-level-2-size);
+  font-weight: var(--library-type-level-2-weight);
+  letter-spacing: -0.01em;
 }
 
 .material-topic-filter-chips {
@@ -1506,8 +1544,8 @@ onBeforeUnmount(() => {
   background: rgb(255 255 255 / 0.04);
   color: rgb(236 242 255 / 0.88);
   font: inherit;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--library-type-level-3-size);
+  font-weight: var(--library-type-level-3-weight);
   cursor: pointer;
   transition: border-color 160ms ease, background 160ms ease;
 }
@@ -1636,7 +1674,7 @@ onBeforeUnmount(() => {
   margin: 0;
   padding-left: 18px;
   color: rgb(235 244 255 / 0.88);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.4;
 }
 
@@ -1650,14 +1688,16 @@ onBeforeUnmount(() => {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.42;
 }
 
 .material-group-preview em {
   overflow: hidden;
   color: rgb(186 245 255 / 0.72);
   font-style: normal;
-  font-size: 12px;
+  font-size: var(--library-type-level-3-size);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

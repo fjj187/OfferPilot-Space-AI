@@ -7,9 +7,20 @@ const minSubstantiveChunkLength = 12
 
 const isSeparatorLine = (line: string) => /^-{3,}$/.test(line.trim()) || /^_{3,}$/.test(line.trim())
 
+const stripHeadingMarker = (line: string) => line.replace(/^#{1,6}\s+/, '').trim()
+
+/** Word 转 Markdown 后偶发的孤立转义符或编号残片，不应形成资料块 */
+const isArtifactOnlyLine = (line: string) => {
+  const body = stripHeadingMarker(line)
+    .replace(/\\([.#*_+\-=\[\](){}\\|])/g, '$1')
+    .replace(/__/g, '')
+    .trim()
+  return /^\\+$/.test(body) || /^\\?\.$/.test(body) || /^\d+\.\s*$/.test(body)
+}
+
 const normalizeSectionText = (lines: string[]) => {
   return lines
-    .filter(line => !isSeparatorLine(line))
+    .filter(line => !isSeparatorLine(line) && !isArtifactOnlyLine(line))
     .join('\n')
     .replace(/\n-{3,}\n/g, '\n')
     .replace(/-{3,}/g, '')
@@ -94,6 +105,8 @@ export function splitMaterialChunks(rawText: string, documentId: string): Materi
   }
 
   for (const line of lines) {
+    if (isArtifactOnlyLine(line)) continue
+
     const headingMatch = line.match(headingPattern)
     if (headingMatch) {
       flushSection()

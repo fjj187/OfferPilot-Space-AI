@@ -1,8 +1,9 @@
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { listEnabledModels } from '@/services/model/model-api'
 import type { EnabledModelListItem } from '@/services/model/model-api'
 
 interface UseEnabledModelsOptions {
+  enabled?: () => boolean
   initialSelectedModelId?: string
 }
 
@@ -10,7 +11,9 @@ export function useEnabledModels(options: UseEnabledModelsOptions = {}) {
   const enabledModels = ref<EnabledModelListItem[]>([])
   const isLoadingEnabledModels = ref(false)
   const enabledModelsError = ref('')
+  const hasLoadedEnabledModels = ref(false)
   const selectedModelId = ref(options.initialSelectedModelId?.trim() || '')
+  const shouldLoadEnabledModels = computed(() => options.enabled?.() ?? true)
 
   const selectedModel = computed(() => {
     const exactMatch = enabledModels.value.find(item => item.modelId === selectedModelId.value)
@@ -21,12 +24,15 @@ export function useEnabledModels(options: UseEnabledModelsOptions = {}) {
   const selectedModelDisplayName = computed(() => selectedModel.value?.displayName || '系统默认模型')
 
   const refreshEnabledModels = async () => {
+    if (!shouldLoadEnabledModels.value) return
+
     isLoadingEnabledModels.value = true
     enabledModelsError.value = ''
 
     try {
       const models = await listEnabledModels()
       enabledModels.value = models
+      hasLoadedEnabledModels.value = true
 
       if (!models.some(item => item.modelId === selectedModelId.value)) {
         selectedModelId.value = models.find(item => item.isDefault)?.modelId || models[0]?.modelId || ''
@@ -44,8 +50,11 @@ export function useEnabledModels(options: UseEnabledModelsOptions = {}) {
     selectedModelId.value = modelId.trim()
   }
 
-  onMounted(() => {
+  watch(shouldLoadEnabledModels, (enabled) => {
+    if (!enabled || hasLoadedEnabledModels.value || isLoadingEnabledModels.value) return
     void refreshEnabledModels()
+  }, {
+    immediate: true
   })
 
   return {

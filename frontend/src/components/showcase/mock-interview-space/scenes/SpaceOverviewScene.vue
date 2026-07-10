@@ -1,5 +1,5 @@
 <script setup lang="tsx">
-import { defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import SpaceSceneHeader from '@/components/showcase/mock-interview-space/SpaceSceneHeader.vue'
 import { useInterviewAnalyticsDashboardData } from '@/composables/analytics/useInterviewAnalyticsDashboardData'
 
@@ -26,16 +26,19 @@ interface OverviewSummaryItem {
   note: string
 }
 
-defineProps<{
+const props = withDefaults(defineProps<{
   sectionTitle: string
   sectionBody: string
   progressPercent: number
   statusLabel: string
   summaryItems: OverviewSummaryItem[]
   primaryActionLabel: string
+  analyticsSuspended?: boolean
   /** 有报告弱项时补充说明专项训练如何承接 */
   practiceRouteNote?: string
-}>()
+}>(), {
+  analyticsSuspended: false
+})
 
 const emit = defineEmits<{
   primaryAction: []
@@ -52,8 +55,7 @@ const isAnalyticsDashboardActive = ref(false)
 let analyticsRevealObserver: IntersectionObserver | null = null
 let cancelAnalyticsPreload: (() => void) | null = null
 let isAnalyticsNearViewport = false
-let hasAnalyticsActivatedInView = false
-let analyticsScrollIdleTimer: number | null = null
+let analyticsScrollRoot: HTMLElement | null = null
 
 const {
   dashboardData,
@@ -98,60 +100,28 @@ const scheduleAnalyticsPreload = () => {
 }
 
 const syncAnalyticsDashboardActive = () => {
-  if (!isAnalyticsNearViewport) {
-    hasAnalyticsActivatedInView = false
+  if (props.analyticsSuspended || !isAnalyticsNearViewport) {
     isAnalyticsDashboardActive.value = false
     return
   }
 
-  if (hasAnalyticsActivatedInView) {
-    isAnalyticsDashboardActive.value = true
-    return
-  }
+  isAnalyticsDashboardActive.value = true
+}
 
+const suspendAnalyticsDashboard = () => {
   isAnalyticsDashboardActive.value = false
 }
 
-const scheduleAnalyticsActivationAfterScroll = () => {
-  if (analyticsScrollIdleTimer !== null) {
-    window.clearTimeout(analyticsScrollIdleTimer)
-  }
-
-  analyticsScrollIdleTimer = window.setTimeout(() => {
-    analyticsScrollIdleTimer = null
-    if (!isAnalyticsNearViewport) return
-
-    hasAnalyticsActivatedInView = true
-    isAnalyticsDashboardActive.value = true
-  }, 360)
-}
-
-const handleAnalyticsScroll = () => {
-  if (!isAnalyticsNearViewport && !isAnalyticsDashboardActive.value) return
-
-  if (analyticsScrollIdleTimer !== null) {
-    window.clearTimeout(analyticsScrollIdleTimer)
-  }
-
-  isAnalyticsDashboardActive.value = false
-  analyticsScrollIdleTimer = window.setTimeout(() => {
-    analyticsScrollIdleTimer = null
-    if (!isAnalyticsNearViewport) return
-
-    hasAnalyticsActivatedInView = true
-    isAnalyticsDashboardActive.value = true
-  }, 360)
+const resolveAnalyticsScrollTarget = () => {
+  return analyticsRevealTarget.value?.closest('.interview-space-showcase') as HTMLElement | null
 }
 
 onMounted(() => {
   scheduleAnalyticsPreload()
-  window.addEventListener('scroll', handleAnalyticsScroll, {
-    passive: true
-  })
+  analyticsScrollRoot = resolveAnalyticsScrollTarget()
 
   if (!('IntersectionObserver' in window)) {
     isAnalyticsNearViewport = true
-    hasAnalyticsActivatedInView = true
     isAnalyticsDashboardActive.value = true
     void revealAnalyticsDashboard()
     return
@@ -165,8 +135,8 @@ onMounted(() => {
     if (!isNearViewport) return
 
     void revealAnalyticsDashboard()
-    scheduleAnalyticsActivationAfterScroll()
   }, {
+    root: analyticsScrollRoot,
     rootMargin: '420px 0px 520px'
   })
 
@@ -178,13 +148,18 @@ onMounted(() => {
 onBeforeUnmount(() => {
   analyticsRevealObserver?.disconnect()
   analyticsRevealObserver = null
-  window.removeEventListener('scroll', handleAnalyticsScroll)
-  if (analyticsScrollIdleTimer !== null) {
-    window.clearTimeout(analyticsScrollIdleTimer)
-    analyticsScrollIdleTimer = null
-  }
+  analyticsScrollRoot = null
   cancelAnalyticsPreload?.()
   cancelAnalyticsPreload = null
+})
+
+watch(() => props.analyticsSuspended, (suspended) => {
+  if (suspended) {
+    suspendAnalyticsDashboard()
+    return
+  }
+
+  syncAnalyticsDashboardActive()
 })
 </script>
 

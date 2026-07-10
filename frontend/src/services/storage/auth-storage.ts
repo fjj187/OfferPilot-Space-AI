@@ -9,6 +9,30 @@ export interface AuthSession {
   displayName?: string
 }
 
+const normalizeRoleBasedDisplayName = (role: AuthRole, username: string, displayName?: string) => {
+  const normalizedDisplayName = displayName?.trim() || ''
+  const normalizedUsername = username.trim()
+  const normalizedDisplayNameLower = normalizedDisplayName.toLowerCase()
+  const normalizedUsernameLower = normalizedUsername.toLowerCase()
+
+  if (role === 'admin' && (
+    normalizedDisplayNameLower === 'admin'
+    || normalizedDisplayNameLower === 'administrator'
+    || normalizedUsernameLower === 'admin'
+  )) {
+    return '管理员'
+  }
+
+  if (role === 'user' && (
+    normalizedDisplayNameLower === 'user'
+    || normalizedUsernameLower === 'user'
+  )) {
+    return '普通用户'
+  }
+
+  return normalizedDisplayName || normalizedUsername
+}
+
 export const DEFAULT_AUTH_CREDENTIALS = {
   username: 'user',
   password: 'user'
@@ -62,7 +86,11 @@ export function getAuthSession(): AuthSession | null {
     return {
       username,
       role: normalizeAuthRole(parsed.role, username),
-      displayName: parsed.displayName?.trim() || username
+      displayName: normalizeRoleBasedDisplayName(
+        normalizeAuthRole(parsed.role, username),
+        username,
+        parsed.displayName
+      )
     }
   }
   catch {
@@ -72,7 +100,10 @@ export function getAuthSession(): AuthSession | null {
 
 export function setAuthSession(session: AuthSession) {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session))
+  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({
+    ...session,
+    displayName: normalizeRoleBasedDisplayName(session.role, session.username, session.displayName)
+  }))
 }
 
 export function setLastAuthAccount(username: string) {
@@ -106,6 +137,13 @@ export function resolveCredentials(username: string, password: string) {
     role: matched.role,
     displayName: matched.displayName
   } satisfies AuthSession
+}
+
+export function normalizeAuthSession(session: AuthSession): AuthSession {
+  return {
+    ...session,
+    displayName: normalizeRoleBasedDisplayName(session.role, session.username, session.displayName)
+  }
 }
 
 export function validateCredentials(username: string, password: string) {
