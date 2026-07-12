@@ -8,7 +8,8 @@
 2. 提供 `POST /api/interview/stream` SSE 接口。
 3. 支持 `mock` 和 `remote` provider。
 4. 将最小 session / message 数据持久化到本地 JSON 文件。
-5. 为未来真实模型 provider 和 C++ 服务接入预留扩展层。
+5. 提供资料分析、题目种子生成、随机 / 顺序出题接口。
+6. 为未来真实模型 provider 和 C++ 服务接入预留扩展层。
 
 ## 当前已完成能力
 
@@ -20,6 +21,7 @@
 4. 会话列表读取接口。
 5. 会话详情读取接口。
 6. 报告列表 / 详情 / 生成接口（Phase 28）。
+7. 资料大模型出题接口（Phase 46）。
 
 ## 当前接口
 
@@ -70,6 +72,41 @@
 
 清空后端全部会话与报告存储（与前端「清空对话历史」联动）。
 
+### `POST /api/resource/analyze`
+
+分析资料原文，生成资料摘要、知识点和题目种子。请求体包含：
+
+- `resourceId`（资料标识）
+- `title`（资料标题，可选）
+- `rawText`（资料原文）
+- `documentVersion`（资料版本，可选）
+- `modelId`（模型标识，可选）
+
+### `GET /api/resource/:resourceId/question-meta`
+
+返回指定资料的出题状态、题目种子数量和可用顺序模式。
+
+### `POST /api/resource/question/random`
+
+从题目种子池随机生成一题正式资料练习题。请求体包含：
+
+- `resourceId`（资料标识）
+- `excludeSeedIds`（需排除的题目种子标识，可选）
+- `difficulty`（难度，可选）
+- `questionType`（题型，可选）
+- `modelId`（模型标识，可选）
+- `fastMode`（快速模式，可选；批量资料组卷时跳过逐题模型调用）
+
+### `POST /api/resource/question/next`
+
+按顺序模式生成下一题正式资料练习题。请求体包含：
+
+- `resourceId`（资料标识）
+- `sequenceMode`（顺序模式，可选，默认 `by_chapter`）
+- `cursor`（顺序游标，可选）
+- `modelId`（模型标识，可选）
+- `fastMode`（快速模式，可选；批量资料组卷时跳过逐题模型调用）
+
 ## 目录说明
 
 ```text
@@ -103,6 +140,10 @@ npm run dev
 报告存储：
 
 `backend/data/interview-reports.json`
+
+资料出题存储：
+
+`backend/data/resource-question-store.json`
 
 健康检查：
 

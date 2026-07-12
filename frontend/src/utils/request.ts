@@ -115,7 +115,9 @@ class TokenBucket {
           this.removePendingRequest(pendingRequest.id)
           reject(createRequestError('请求在队列中已取消。', 'ERR_CANCELED'))
         }
-        signal.addEventListener('abort', pendingRequest.abortHandler, { once: true })
+        signal.addEventListener('abort', pendingRequest.abortHandler, {
+          once: true
+        })
       }
 
       pendingRequest.timerId = window.setTimeout(() => {
@@ -196,7 +198,7 @@ type CircuitBreakerRegistry = {
 const waitRetryDelay = (time = 0) => new Promise(resolve => setTimeout(resolve, time))
 
 const createRequestError = (message: string, code: string) => {
-  const error = new Error(message) as Error & { code?: string }
+  const error = new Error(message) as Error & { code?: string; }
   error.code = code
   return error
 }
@@ -235,7 +237,9 @@ const resolveRetryConfig = (config: AxiosRequestConfig): ResolvedRetryConfig => 
   }
 
   if (isIdempotentMethod(config.method)) {
-    return { ...DEFAULT_RETRY_CONFIG }
+    return {
+      ...DEFAULT_RETRY_CONFIG
+    }
   }
 
   return {
@@ -264,7 +268,7 @@ const resolveRetryDelay = (config: AxiosRequestConfig) => {
   return Math.round(retry.retryDelayMs * Math.max(1, retry.backoffMultiplier ** Math.max(0, currentRetry - 1)))
 }
 
-const resolveErrorType = (error: AxiosError | (Error & { code?: string })): IRequestData['errorType'] => {
+const resolveErrorType = (error: AxiosError | (Error & { code?: string; })): IRequestData['errorType'] => {
   if (error.code === 'ERR_CANCELED' || (isAxiosError(error) && error.config?.signal?.aborted)) {
     return 'aborted'
   }
@@ -294,7 +298,7 @@ const resolveErrorType = (error: AxiosError | (Error & { code?: string })): IReq
 
 const isAxiosError = (error: unknown): error is AxiosError => axios.isAxiosError(error)
 
-const shouldCountAsCircuitFailure = (error: AxiosError | (Error & { code?: string })) => {
+const shouldCountAsCircuitFailure = (error: AxiosError | (Error & { code?: string; })) => {
   const errorType = resolveErrorType(error)
   if (errorType === 'timeout' || errorType === 'network') {
     return true
@@ -400,7 +404,7 @@ const releaseConcurrency = (config?: AxiosRequestConfig) => {
   config.__releaseConcurrency = null
 }
 
-const isRetryableRequestError = (error: AxiosError | (Error & { code?: string })) => {
+const isRetryableRequestError = (error: AxiosError | (Error & { code?: string; })) => {
   if (!isAxiosError(error)) return false
 
   const config = error.config
@@ -537,7 +541,7 @@ service.interceptors.response.use(
     if (data?.code && data?.data) {
       return {
         data: data.data,
-        error: data.code === 200 ? 0 : -1,
+        error: String(data.code) === '200' ? 0 : -1,
         msg: 'ok'
       }
     }
@@ -571,7 +575,7 @@ service.interceptors.response.use(
       errorRedirect(error.config.redirect)
     }
 
-    return retryRequest(error).catch((finalError: AxiosError | (Error & { code?: string })) => {
+    return retryRequest(error).catch((finalError: AxiosError | (Error & { code?: string; })) => {
       const errorType = resolveErrorType(finalError)
 
       if (isAxiosError(finalError) && finalError.response) {
@@ -633,7 +637,9 @@ function extractFileNameFromContentDispositionHeader(value: string) {
 export function downloadFile(blobData: BlobPart, filename = '默认文件名', type: string) {
   const blob = blobData instanceof Blob
     ? blobData
-    : new Blob([blobData], { type })
+    : new Blob([blobData], {
+      type
+    })
   const url = window.URL.createObjectURL(blob)
 
   const link = document.createElement('a')

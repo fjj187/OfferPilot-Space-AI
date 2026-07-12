@@ -57,6 +57,7 @@ defineProps<{
   mockStreamRecoveryHint?: string
   mockCanRetryStream: boolean
   mockRetryActionLabel: string
+  mockIsFinishingReport: boolean
   mockTotalCount: number
   mockGeneratedThreadCount: number
   mockSceneResetVersion: number
@@ -68,6 +69,7 @@ defineProps<{
   overviewPracticeRouteNote: string
   overviewAnalyticsSuspended: boolean
   reportHeaderMeta: string[]
+  reportGenerationSuccessVisible: boolean
   reportAnswerSnapshot: string[]
   reportQuestionReviews: any[]
   reportFocusAreas: string[]
@@ -151,7 +153,11 @@ const emit = defineEmits<{
   resolveContentSection: [element: HTMLElement | null]
   selectDocument: [value: string]
   deleteDocument: [value: string]
-  updateDocumentCategories: [payload: { documentId: string, name: string, tags: string[] }]
+  updateDocumentCategories: [payload: {
+    documentId: string
+    name: string
+    tags: string[]
+  }]
   selectMockQuestionThread: [value: string]
   finishMockSession: []
   nextMockQuestion: []
@@ -224,6 +230,7 @@ onBeforeUnmount(() => {
                 :section-title="displayScene.sectionTitle"
                 :section-body="displayScene.sectionBody"
                 :header-meta="reportHeaderMeta"
+                :generation-success-visible="reportGenerationSuccessVisible"
                 :answer-snapshot="reportAnswerSnapshot"
                 :question-reviews="reportQuestionReviews"
                 :focus-areas="reportFocusAreas"
@@ -283,6 +290,7 @@ onBeforeUnmount(() => {
                 :stream-recovery-hint="mockStreamRecoveryHint"
                 :can-retry-stream="mockCanRetryStream"
                 :retry-action-label="mockRetryActionLabel"
+                :is-finishing-report="mockIsFinishingReport"
                 :session-status-text="mockSessionStatusText"
                 :total-count="mockTotalCount"
                 :generated-thread-count="mockGeneratedThreadCount"

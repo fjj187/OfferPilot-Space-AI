@@ -4,7 +4,7 @@ import ReportReviewMarkdown from '@/components/report/ReportReviewMarkdown.vue'
 import SpaceSceneHeader from '@/components/showcase/mock-interview-space/SpaceSceneHeader.vue'
 import { cleanReportQuestionTitle } from '@/utils/report/clean-report-question-title'
 import { isReportQuestionUnanswered } from '@/utils/report/format-report-thread-dialogue'
-import { formatReportDialogueText, formatReportPlainText } from '@/utils/report/format-report-plain-text'
+import { formatReportDialogueText } from '@/utils/report/format-report-plain-text'
 
 interface ReportOverviewStatItem {
   label: string
@@ -37,6 +37,7 @@ const props = defineProps<{
   sectionTitle: string
   sectionBody: string
   headerMeta: string[]
+  generationSuccessVisible: boolean
   summaryHeadline: string
   summaryBody: string
   answerSnapshot: string[]
@@ -86,6 +87,12 @@ const emit = defineEmits<{
       <div class="report-scene-container">
         <section class="report-scene-hero">
           <div class="report-scene-kicker">Round complete</div>
+          <div
+            v-if="generationSuccessVisible && hasSummary"
+            class="report-scene-success-tip"
+          >
+            生成报告成功，已为你跳转到本轮复盘报告。
+          </div>
           <h3>{{ hasSummary ? '这轮训练已经生成复盘报告' : '这轮训练已经结束' }}</h3>
           <p>{{ summaryBody }}</p>
           <div
@@ -422,6 +429,17 @@ const emit = defineEmits<{
   color: rgb(230 240 255 / 0.92);
   font-size: 14px;
   line-height: 1.7;
+}
+
+.report-scene-success-tip {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgb(139 246 220 / 0.32);
+  border-radius: 14px;
+  background: rgb(25 120 100 / 0.18);
+  color: rgb(223 255 248 / 0.94);
+  font-size: 15px;
+  line-height: 1.65;
 }
 
 .report-scene-hero-meta {

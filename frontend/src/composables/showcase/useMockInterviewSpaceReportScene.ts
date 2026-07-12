@@ -8,6 +8,7 @@ import type {
 } from '@/types/workbench'
 import type { InterviewMessage } from '@/types/message'
 import {
+  extractReferenceAnswerFromThreadMessages,
   formatReportThreadLatestAiFeedback,
   formatReportThreadUserAnswer
 } from '@/utils/report/format-report-thread-dialogue'
@@ -156,6 +157,7 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
         questionId: thread.questionId || thread.id,
         questionTitle: thread.title,
         userAnswer: userAnswer || '未作答',
+        referenceAnswer: extractReferenceAnswerFromThreadMessages(messages, thread.id) || undefined,
         aiFeedback: aiFeedback || undefined
       }
     })
@@ -166,9 +168,24 @@ export function useMockInterviewSpaceReportScene(options: UseMockInterviewSpaceR
     const enrich = (reviews: PersistedReportQuestionReviewItem[]) => (
       reviews.map(review => enrichReportQuestionReview(review, sourceDocumentId))
     )
+    const sessionReferenceMap = new Map(
+      reportSceneSession.value
+        ? buildReviewsFromSessionSnapshot(reportSceneSession.value)
+          .filter(item => item.referenceAnswer?.trim())
+          .map(item => [item.questionId, item.referenceAnswer?.trim() || ''])
+        : []
+    )
 
     if (reportSceneSummary.value?.questionReviews?.length) {
-      return enrich(reportSceneSummary.value.questionReviews)
+      return enrich(reportSceneSummary.value.questionReviews).map((review) => {
+        if (review.referenceAnswer?.trim()) return review
+        const sessionReferenceAnswer = sessionReferenceMap.get(review.questionId)
+        if (!sessionReferenceAnswer) return review
+        return {
+          ...review,
+          referenceAnswer: sessionReferenceAnswer
+        }
+      })
     }
 
     const session = reportSceneSession.value

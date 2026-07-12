@@ -28,7 +28,7 @@ const resolveChunkOrder = (pool: MaterialQuestionPool, question: MaterialQuestio
 }
 
 const resolveChunkHeading = (pool: MaterialQuestionPool, question: MaterialQuestionItem) => {
-  return pool.chunks.find(chunk => chunk.id === question.chunkId)?.heading || '资料章节'
+  return question.sourceHeading || pool.chunks.find(chunk => chunk.id === question.chunkId)?.heading || '资料章节'
 }
 
 /** 用 shuffleSeed（洗牌种子）做可复现的 Fisher-Yates 洗牌，避免 computed（计算属性）里 Math.random 导致预览不刷新 */
@@ -135,7 +135,9 @@ export function buildMaterialQuestionGroup(
       documentId: pool.documentId,
       name: documentName
     },
-    compileOptions: { ...options },
+    compileOptions: {
+      ...options
+    },
     items,
     currentIndex: 0,
     status: items.length ? 'pending' : 'completed',

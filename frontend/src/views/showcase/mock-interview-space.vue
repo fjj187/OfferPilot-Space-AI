@@ -339,6 +339,8 @@ const materialPoolQuestionTotal = computed(() => (
     : 0
 ))
 
+const materialDefaultGenerateLimit = 20
+
 const materialTopicTabs = computed(() => {
   const pool = selectedMaterialPool.value
   if (!pool || pool.status !== 'ready') return []
@@ -355,8 +357,10 @@ const materialFilteredQuestionTotal = computed(() => {
 const materialPreviewCount = computed(() => materialPreviewItems.value.length)
 
 const materialCompileCountMax = computed(() => {
-  const poolSize = materialFilteredQuestionTotal.value
-  return Math.max(1, poolSize)
+  const pool = selectedMaterialPool.value
+  const generatedCount = materialFilteredQuestionTotal.value
+  const seedCount = pool?.resourceQuestionMeta?.seedCount || 0
+  return Math.max(1, generatedCount, seedCount, materialCompileOptions.value.count, materialDefaultGenerateLimit)
 })
 
 const materialOrderMode = computed(() => materialCompileOptions.value.orderMode)
@@ -808,6 +812,9 @@ const overviewPracticeRouteNote = computed(() => {
   return `最近一轮已识别弱项「${ plan.weaknessTag }」，专项训练会按报告配置从题库中自动选题。`
 })
 
+const isFinishingMockReport = ref(false)
+const reportGenerationSuccessVisible = ref(false)
+
 const {
   finishAndOpenReport,
   flowMode,
@@ -834,11 +841,18 @@ const {
 })
 
 const handleMockFinish = async () => {
-  const result = await finishAndOpenReport()
-  if (!result) return
-  await loadRemoteReportSummaries()
-  await replaceReportSceneQuery(result.sessionId)
-  await openSceneById('report')
+  if (isFinishingMockReport.value) return
+  isFinishingMockReport.value = true
+  try {
+    const result = await finishAndOpenReport()
+    if (!result) return
+    await loadRemoteReportSummaries()
+    await replaceReportSceneQuery(result.sessionId)
+    reportGenerationSuccessVisible.value = true
+    await openSceneById('report')
+  } finally {
+    isFinishingMockReport.value = false
+  }
 }
 
 const sceneIndexById = scenes.reduce<Record<string, number>>((map, scene, index) => {
@@ -1256,6 +1270,10 @@ const resolveInitialSceneId = () => {
 const replaceSceneQuery = async (sceneId: string) => {
   if (!validSceneIds.has(sceneId)) return
 
+  if (sceneId !== 'report') {
+    reportGenerationSuccessVisible.value = false
+  }
+
   const nextQuery = {
     ...route.query,
     scene: sceneId
@@ -1481,16 +1499,6 @@ watch(selectedDocumentId, () => {
   materialTopicFilter.value = 'all'
 })
 
-watch(materialFilteredQuestionTotal, (total) => {
-  if (materialPoolQuestionTotal.value === 0) return
-  if (total > 0 && materialCompileOptions.value.count > total) {
-    materialCompileOptions.value = {
-      ...materialCompileOptions.value,
-      count: total
-    }
-  }
-})
-
 watch(materialCompileCountMax, (max) => {
   // 题池生成中 total 为 0，勿把用户刚选的出题数压回 1
   if (materialPoolQuestionTotal.value === 0) return
@@ -1527,7 +1535,11 @@ const handlePrepareMaterialQuestions = async () => {
     return
   }
 
-  const result = await prepareMaterialQuestions(document.id)
+  const result = await prepareMaterialQuestions(document.id, {
+    count: materialCompileOptions.value.count,
+    orderMode: materialCompileOptions.value.orderMode === 'random' ? 'random' : 'chapter',
+    modelId: selectedModelId.value || undefined
+  })
   if (!result.ok) {
     window.$ModalMessage?.warning?.(result.message, {
       duration: 3200
@@ -2198,6 +2210,7 @@ onBeforeUnmount(() => {
           :mock-stream-recovery-hint="mockStreamRecoveryHint"
           :mock-can-retry-stream="canRetryMockStream"
           :mock-retry-action-label="retryMockActionLabel"
+          :mock-is-finishing-report="isFinishingMockReport"
           :mock-stream-mode="mockStreamMode"
           :mock-stream-mode-label="mockStreamModeLabel"
           :overview-primary-action-label="overviewPrimaryActionLabel"
@@ -2207,6 +2220,7 @@ onBeforeUnmount(() => {
           :overview-practice-route-note="overviewPracticeRouteNote"
           :overview-analytics-suspended="overviewAnalyticsSuspended"
           :report-header-meta="reportHeaderMeta"
+          :report-generation-success-visible="reportGenerationSuccessVisible"
           :report-answer-snapshot="reportAnswerSnapshot"
           :report-question-reviews="reportQuestionReviews"
           :report-focus-areas="reportFocusAreas"

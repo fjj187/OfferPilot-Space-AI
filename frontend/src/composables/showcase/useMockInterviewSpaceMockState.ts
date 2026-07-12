@@ -41,8 +41,8 @@ import {
   formatReportThreadUserAnswer
 } from '@/utils/report/format-report-thread-dialogue'
 import {
-  resolveReportReferenceAnswer,
-  resolveReportQuestionReferenceAnswer
+  resolveReportQuestionReferenceAnswer,
+  resolveReportReferenceAnswer
 } from '@/utils/report/resolve-report-reference-answer'
 import { buildMaterialPracticeExcerpt } from '@/utils/practice/build-material-practice-excerpt'
 import { resolveDominantPracticeQuestionType } from '@/utils/practice/resolve-dominant-practice-question-type'
@@ -929,6 +929,27 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
     })
   }
 
+  const mergeQuestionReviewsWithLocalAnswers = (
+    remoteReviews: PersistedReportQuestionReviewItem[] | undefined,
+    localReviews: PersistedReportQuestionReviewItem[] | undefined
+  ) => {
+    if (!localReviews?.length) return remoteReviews
+    if (!remoteReviews?.length) return localReviews
+
+    const localReviewMap = new Map(localReviews.map(item => [item.questionId, item]))
+    return remoteReviews.map((remoteReview) => {
+      const localReview = localReviewMap.get(remoteReview.questionId)
+      if (!localReview?.referenceAnswer?.trim() || remoteReview.referenceAnswer?.trim()) {
+        return remoteReview
+      }
+
+      return {
+        ...remoteReview,
+        referenceAnswer: localReview.referenceAnswer
+      }
+    })
+  }
+
   const buildReportSummary = (): PersistedReportSummary | null => {
     if (!currentSessionId.value) return null
 
@@ -972,7 +993,9 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
       ? buildMaterialPracticeExcerpt(
         sourceDocumentId,
         currentPracticeQuestionGroup.value?.items || [],
-        { fallbackRawText: options.activeDocument.value?.rawText }
+        {
+          fallbackRawText: options.activeDocument.value?.rawText
+        }
       )
       : ''
     const practiceDifficulty = resolvePracticeDifficulty(answerLength, mockWeaknessSignals.value.length)
@@ -1096,7 +1119,9 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
             status: 'in_progress'
           })
         } else if (currentPracticeQuestionGroup.value.status === 'pending') {
-          persistPracticeQuestionGroup({ status: 'in_progress' })
+          persistPracticeQuestionGroup({
+            status: 'in_progress'
+          })
         }
       }
 
@@ -1121,7 +1146,9 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
         : (questionThreads.value.length ? 1 : 0)
 
       if (isTrainingGroupMode.value && currentPracticeQuestionGroup.value?.status === 'pending') {
-        persistPracticeQuestionGroup({ status: 'in_progress' })
+        persistPracticeQuestionGroup({
+          status: 'in_progress'
+        })
       }
 
       createInterviewSession({
@@ -1332,9 +1359,10 @@ export function useMockInterviewSpaceMockState(options: UseMockInterviewSpaceMoc
         summary = {
           ...generated.report,
           practicePlan: localSummary.practicePlan || generated.report.practicePlan,
-          questionReviews: localSummary.questionReviews?.length
-            ? localSummary.questionReviews
-            : generated.report.questionReviews,
+          questionReviews: mergeQuestionReviewsWithLocalAnswers(
+            generated.report.questionReviews,
+            localSummary.questionReviews
+          ),
           sourceDocumentExcerpt: localSummary.sourceDocumentExcerpt || generated.report.sourceDocumentExcerpt,
           weaknessFocusAreas: localSummary.weaknessFocusAreas?.length
             ? localSummary.weaknessFocusAreas

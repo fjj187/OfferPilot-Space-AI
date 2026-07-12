@@ -47,6 +47,7 @@ const props = defineProps<{
   streamRecoveryHint?: string
   canRetryStream: boolean
   retryActionLabel: string
+  isFinishingReport: boolean
   sessionStatusText: string
   autoEnterFullscreen?: boolean
 }>()
@@ -602,6 +603,7 @@ const confirmClearHistory = () => {
 }
 
 const handleFinish = () => {
+  if (props.isFinishingReport) return
   if (props.isViewingHistoryPreview) {
     window.$ModalMessage?.warning?.('当前正在查看历史记录，请先返回当前训练后再结束本轮。', {
       duration: 2200,
@@ -1188,10 +1190,17 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="mock-finish-button"
-            :disabled="props.isViewingHistoryPreview || viewState.streaming || !viewState.answeredCount || viewState.isAwaitingSetup"
+            :class="{ 'is-loading': props.isFinishingReport }"
+            :disabled="props.isViewingHistoryPreview || viewState.streaming || props.isFinishingReport || !viewState.answeredCount || viewState.isAwaitingSetup"
+            :aria-busy="props.isFinishingReport"
             @click="handleFinish"
           >
-            结束本轮并查看报告
+            <span
+              v-if="props.isFinishingReport"
+              class="mock-finish-spinner"
+              aria-hidden="true"
+            ></span>
+            {{ props.isFinishingReport ? '正在生成报告' : '结束本轮并查看报告' }}
           </button>
           <button
             v-if="props.canRetryStream && !props.isViewingHistoryPreview && !viewState.isAwaitingSetup"
@@ -2512,10 +2521,35 @@ onBeforeUnmount(() => {
 }
 
 .mock-finish-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
   border: 1px solid rgb(139 246 220 / 0.3);
   border-radius: 14px;
   background: linear-gradient(180deg, rgb(77 130 118 / 0.38) 0%, rgb(45 90 80 / 0.3) 100%);
   color: #fff;
+}
+
+.mock-finish-button.is-loading {
+  border-color: rgb(139 246 220 / 0.42);
+  background: linear-gradient(180deg, rgb(77 130 118 / 0.5) 0%, rgb(45 90 80 / 0.38) 100%);
+  opacity: 0.92;
+}
+
+.mock-finish-spinner {
+  width: 16px;
+  aspect-ratio: 1;
+  border: 2px solid rgb(255 255 255 / 0.28);
+  border-top-color: #fff;
+  border-radius: 999px;
+  animation: mock-finish-spin 0.78s linear infinite;
+}
+
+@keyframes mock-finish-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .mock-footer-retry-button {
@@ -2550,6 +2584,10 @@ onBeforeUnmount(() => {
 .mock-footer-retry-button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.mock-finish-button.is-loading:disabled {
+  opacity: 0.92;
 }
 
 .mock-dialogue-pane :deep(.message-list) {

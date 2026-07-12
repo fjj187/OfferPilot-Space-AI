@@ -11,7 +11,7 @@ withDefaults(defineProps<{
   isUserScrolling: boolean
   selectedModelId?: string
   selectedModelLabel?: string
-  enabledModels: Array<{
+  enabledModels?: Array<{
     modelId: string
     displayName: string
     isDefault: boolean

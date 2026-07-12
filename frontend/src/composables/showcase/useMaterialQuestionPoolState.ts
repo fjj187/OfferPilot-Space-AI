@@ -1,12 +1,18 @@
 import { computed, ref } from 'vue'
 import type { MaterialQuestionPool } from '@/types/material'
 import type { PersistedLibraryDocument } from '@/types/workbench'
-import { buildMaterialQuestionPool } from '@/services/material/material-question-builder'
 import { resolveMaterialDocumentVersion } from '@/services/material/material-document-version'
+import { generateMaterialResourceQuestionPool } from '@/services/material/resource-question-api'
 import {
   getMaterialQuestionPool,
   setMaterialQuestionPool
 } from '@/services/storage/material-pool-storage'
+
+interface PrepareMaterialQuestionOptions {
+  count: number
+  orderMode: 'chapter' | 'random'
+  modelId?: string
+}
 
 export function useMaterialQuestionPoolState(getDocumentById: (documentId: string) => PersistedLibraryDocument | null) {
   const poolVersion = ref(0)
@@ -40,7 +46,10 @@ export function useMaterialQuestionPoolState(getDocumentById: (documentId: strin
     return '未准备'
   }
 
-  const prepareMaterialQuestions = async (documentId: string) => {
+  const prepareMaterialQuestions = async (
+    documentId: string,
+    options: PrepareMaterialQuestionOptions
+  ) => {
     const document = getDocumentById(documentId)
     if (!document?.rawText?.trim()) {
       return {
@@ -49,9 +58,11 @@ export function useMaterialQuestionPoolState(getDocumentById: (documentId: strin
       }
     }
 
+    const documentVersion = resolveMaterialDocumentVersion(document)
+
     setMaterialQuestionPool({
       documentId,
-      documentVersion: resolveMaterialDocumentVersion(document),
+      documentVersion,
       chunks: [],
       questions: [],
       preparedAt: new Date().toISOString(),
@@ -59,7 +70,38 @@ export function useMaterialQuestionPoolState(getDocumentById: (documentId: strin
     })
     touchPoolVersion()
 
-    const pool = buildMaterialQuestionPool(document)
+    let pool: MaterialQuestionPool
+
+    try {
+      const result = await generateMaterialResourceQuestionPool(document, {
+        count: Math.max(1, options.count || 1),
+        orderMode: options.orderMode,
+        documentVersion,
+        modelId: options.modelId
+      })
+
+      pool = {
+        documentId,
+        documentVersion,
+        chunks: [],
+        questions: result.questions,
+        resourceQuestionMeta: result.resourceQuestionMeta,
+        preparedAt: new Date().toISOString(),
+        status: result.questions.length ? 'ready' : 'error',
+        errorMessage: result.questions.length ? undefined : '当前资料暂未生成可用题目'
+      }
+    } catch (error) {
+      pool = {
+        documentId,
+        documentVersion,
+        chunks: [],
+        questions: [],
+        preparedAt: new Date().toISOString(),
+        status: 'error',
+        errorMessage: error instanceof Error ? error.message : '资料出题失败，请稍后重试'
+      }
+    }
+
     setMaterialQuestionPool(pool)
     touchPoolVersion()
 

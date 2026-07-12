@@ -24,9 +24,24 @@ const message = (
 describe('format-report-thread-dialogue', () => {
   const threadId = 'thread-a'
   const messages: InterviewMessage[] = [
-    message({ id: 'u1', role: 'user', threadId, displayContent: '不知道' }),
-    message({ id: 'a1', role: 'assistant', threadId, displayContent: '#### 引导反馈\n先想块级元素' }),
-    message({ id: 'u2', role: 'user', threadId, displayContent: '还是不知道' }),
+    message({
+      id: 'u1',
+      role: 'user',
+      threadId,
+      displayContent: '不知道'
+    }),
+    message({
+      id: 'a1',
+      role: 'assistant',
+      threadId,
+      displayContent: '#### 引导反馈\n先想块级元素'
+    }),
+    message({
+      id: 'u2',
+      role: 'user',
+      threadId,
+      displayContent: '还是不知道'
+    }),
     message({
       id: 'a2',
       role: 'assistant',
@@ -67,5 +82,12 @@ describe('extract-interview-reference-answer', () => {
     expect(extractReferenceAnswerFromAssistantContent(content)).toBe('- 要点')
     expect(stripReferenceAnswerSection(content)).toContain('简要说明')
     expect(stripReferenceAnswerSection(content)).not.toContain('要点')
+  })
+
+  it('extracts non-heading correct answer labels', () => {
+    const content = '正确答案：\n语义化标签是有含义的 HTML 标签，例如 header、main、article。\n\n简要说明：以上是完整的参考答案。'
+    expect(extractReferenceAnswerFromAssistantContent(content)).toContain('语义化标签')
+    expect(stripReferenceAnswerSection(content)).toContain('简要说明')
+    expect(stripReferenceAnswerSection(content)).not.toContain('语义化标签')
   })
 })

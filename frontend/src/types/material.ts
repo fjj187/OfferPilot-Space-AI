@@ -6,6 +6,7 @@ import type {
 } from '@/types/workbench'
 
 export type MaterialGroupOrderMode = 'chapter' | 'random' | 'difficulty_ladder' | 'single_difficulty'
+export type ResourceQuestionSequenceMode = 'by_chapter' | 'by_knowledge' | 'by_difficulty'
 
 export interface MaterialChunk {
   id: string
@@ -22,6 +23,7 @@ export interface MaterialQuestionItem {
   id: string
   documentId: string
   chunkId: string
+  seedId?: string
   order: number
   title: string
   prompt: string
@@ -31,8 +33,21 @@ export interface MaterialQuestionItem {
   focusAreas?: PersistedPracticeFocusArea[]
   referenceAnswer?: string
   sourceHeading?: string
+  sourceRefs?: string[]
   /** 从标题/章节推断的主题，供混合资料组卷筛选 */
   topicKeys?: PersistedTopicKey[]
+}
+
+export interface MaterialResourceQuestion {
+  summary: string
+  seedCount: number
+  knowledgePoints: Array<{
+    id: string
+    name: string
+    description: string
+    chapterTitle: string
+    difficultyLevel: PersistedPracticeDifficulty
+  }>
 }
 
 export interface MaterialQuestionPool {
@@ -40,6 +55,7 @@ export interface MaterialQuestionPool {
   documentVersion: string
   chunks: MaterialChunk[]
   questions: MaterialQuestionItem[]
+  resourceQuestionMeta?: MaterialResourceQuestion
   preparedAt: string
   status: 'idle' | 'preparing' | 'ready' | 'error'
   errorMessage?: string

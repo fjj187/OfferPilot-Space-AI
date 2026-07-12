@@ -42,6 +42,8 @@ export const listEnabledModels = async () => {
     throw new Error(response.msg || '获取启用模型列表失败')
   }
 
-  const payload = response.data as { models?: EnabledModelListItem[] }
+  const payload = response.data as {
+    models?: EnabledModelListItem[]
+  }
   return Array.isArray(payload.models) ? payload.models : []
 }

@@ -115,7 +115,11 @@ const emit = defineEmits<{
   'update:materialTopicFilter': [value: PersistedTopicKey | 'all']
   'select-document': [value: string]
   'delete-document': [value: string]
-  'update-document-categories': [payload: { documentId: string, name: string, tags: string[] }]
+  'update-document-categories': [payload: {
+    documentId: string
+    name: string
+    tags: string[]
+  }]
   prepareMaterial: []
   startMaterialMock: []
 }>()
@@ -126,6 +130,21 @@ const localMaterialCompileCount = ref(props.materialCompileCount)
 const materialCompileCountInput = ref(String(props.materialCompileCount))
 const localMaterialOrderMode = ref(props.materialOrderMode)
 const localMaterialTopicFilter = ref<PersistedTopicKey | 'all'>(props.materialTopicFilter)
+
+type MaterialPreviewUiPhase = 'idle' | 'loading' | 'ready'
+const materialPreviewUiPhase = ref<MaterialPreviewUiPhase>(
+  props.materialIsPreparing
+    ? 'loading'
+    : props.materialPreviewItems.length > 0 ? 'ready' : 'idle'
+)
+const materialPreviewSnapshot = ref<MaterialPreviewItem[]>([])
+const materialTopicSnapshot = ref<{
+  total: number
+  tabs: MaterialTopicTab[]
+}>({
+  total: props.materialPoolQuestionTotal,
+  tabs: [...props.materialTopicTabs]
+})
 
 const materialCountMaxLimit = computed(() => (
   Math.max(materialCountMin, props.materialCompileCountMax || materialCountMin)
@@ -152,14 +171,27 @@ const materialCompileDraftApplied = computed(() => (
 
 const hasMaterialPreview = computed(() => props.materialPreviewItems.length > 0)
 
+const materialPreviewActionBusy = computed(() => (
+  props.materialIsPreparing
+  || materialPreviewUiPhase.value === 'loading'
+))
+
 const canStartMaterialMockNow = computed(() => (
   props.canStartMaterialMock && materialCompileDraftApplied.value
 ))
 
-const materialCountFieldLabel = computed(() => (
-  effectiveQuestionTotal.value > 0
-    ? `本轮题数（最多 ${ materialCountMaxLimit.value } 题）`
-    : '本轮题数（点击生成练习题后生效）'
+const materialCountFieldLabel = computed(() => '本轮题数')
+
+const canDecreaseMaterialCount = computed(() => (
+  clampMaterialCompileCount(materialCompileCountInput.value) > materialCountMin
+))
+
+const canIncreaseMaterialCount = computed(() => (
+  clampMaterialCompileCount(materialCompileCountInput.value) < materialCountMaxLimit.value
+))
+
+const showMaterialPreviewBody = computed(() => (
+  materialPreviewActionBusy.value || hasMaterialPreview.value
 ))
 
 const materialPreviewPendingHint = computed(() => {
@@ -169,26 +201,30 @@ const materialPreviewPendingHint = computed(() => {
 
 /** 右上角徽章：反映当前预览/已组卷的本轮题数，与左侧总题数区分 */
 const materialRoundBadgeLabel = computed(() => {
-  if (props.materialIsPreparing) return '生成中…'
+  if (materialPreviewActionBusy.value) return '生成中…'
   if (props.materialPoolQuestionTotal === 0) return props.materialPoolStatusLabel
   if (!hasMaterialPreview.value) return '待组卷'
   return `本轮 ${ props.materialPreviewCount } 题`
 })
 
-const materialPoolTotalLabel = computed(() => {
-  if (props.materialPoolQuestionTotal <= 0) return ''
-  if (
-    props.materialTopicFilter !== 'all'
-    && props.materialFilteredQuestionTotal > 0
-  ) {
-    const topicLabel = props.topicLabelMap[props.materialTopicFilter] || props.materialTopicFilter
-    return `总 ${ props.materialPoolQuestionTotal } 题 · ${ topicLabel } ${ props.materialFilteredQuestionTotal } 题`
-  }
-  return `总 ${ props.materialPoolQuestionTotal } 题`
-})
-
 const showMaterialTopicFilter = computed(() => (
   props.materialPoolQuestionTotal > 0 && props.materialTopicTabs.length > 0
+))
+
+const visibleMaterialTopicTabs = computed(() => (
+  showMaterialTopicFilter.value
+    ? props.materialTopicTabs
+    : materialTopicSnapshot.value.tabs
+))
+
+const visibleMaterialPoolQuestionTotal = computed(() => (
+  showMaterialTopicFilter.value
+    ? props.materialPoolQuestionTotal
+    : materialTopicSnapshot.value.total
+))
+
+const showMaterialTopicFilterContent = computed(() => (
+  visibleMaterialPoolQuestionTotal.value > 0 && visibleMaterialTopicTabs.value.length > 0
 ))
 
 watch(() => props.selectedDocumentId, () => {
@@ -223,8 +259,16 @@ const handleMaterialCountBlur = (event: FocusEvent) => {
 
 const resolveDraftCompileCount = () => commitMaterialCompileCountDraft()
 
-const handlePrepareMaterialClick = () => {
+const stepMaterialCompileCount = (delta: number) => {
+  const current = clampMaterialCompileCount(materialCompileCountInput.value)
+  const next = clampMaterialCompileCount(current + delta)
+  localMaterialCompileCount.value = next
+  materialCompileCountInput.value = String(next)
+}
+
+const beginMaterialPreviewLoading = () => {
   const count = resolveDraftCompileCount()
+  materialPreviewUiPhase.value = 'loading'
   emit('update:materialCompileCount', count)
   emit('update:materialOrderMode', localMaterialOrderMode.value)
   emit('update:materialTopicFilter', localMaterialTopicFilter.value)
@@ -232,16 +276,35 @@ const handlePrepareMaterialClick = () => {
   emit('prepareMaterial')
 }
 
+const handlePrepareMaterialClick = () => {
+  if (materialPreviewActionBusy.value) return
+
+  if (hasMaterialPreview.value) {
+    materialPreviewSnapshot.value = [...props.materialPreviewItems]
+  }
+
+  beginMaterialPreviewLoading()
+}
+
 const notifyMaterialAction = (message: string, type: 'success' | 'info' | 'warning' = 'success') => {
   if (type === 'warning') {
-    window.$ModalMessage?.warning?.(message, { duration: 2000, closable: false })
+    window.$ModalMessage?.warning?.(message, {
+      duration: 2000,
+      closable: false
+    })
     return
   }
   if (type === 'info') {
-    window.$ModalMessage?.info?.(message, { duration: 2000, closable: false })
+    window.$ModalMessage?.info?.(message, {
+      duration: 2000,
+      closable: false
+    })
     return
   }
-  window.$ModalMessage?.success?.(message, { duration: 2000, closable: false })
+  window.$ModalMessage?.success?.(message, {
+    duration: 2000,
+    closable: false
+  })
 }
 
 const handleMaterialOrderModeSelect = (orderMode: 'chapter' | 'random') => {
@@ -269,7 +332,10 @@ const sourceLabelText = (document: Pick<LibraryDocumentItem, 'importedName' | 'n
   resolveLibraryDocumentSourceLabel(document, props.sourceLabelMap)
 )
 
-const pendingDeleteDocument = ref<{ id: string; name: string } | null>(null)
+const pendingDeleteDocument = ref<{
+  id: string
+  name: string
+} | null>(null)
 
 const showDeleteConfirm = computed({
   get: () => Boolean(pendingDeleteDocument.value),
@@ -300,7 +366,9 @@ const handleDeleteDocumentConfirm = () => {
 
 const placeholderItems = computed(() => {
   const placeholderCount = Math.max(0, 5 - props.displayedDocuments.length)
-  return Array.from({ length: placeholderCount }, (_, index) => `placeholder-${index}`)
+  return Array.from({
+    length: placeholderCount
+  }, (_, index) => `placeholder-${ index }`)
 })
 
 /** 资料题组预览每页 2 题，为下方文档预览卡片留出可视高度 */
@@ -317,6 +385,34 @@ const materialPreviewPagedItems = computed(() => {
   const start = materialPreviewPageIndex.value * materialPreviewPageSize
   return props.materialPreviewItems.slice(start, start + materialPreviewPageSize)
 })
+
+const materialPreviewPagedSlots = computed(() => (
+  Array.from({
+    length: materialPreviewPageSize
+  }, (_, index) => materialPreviewPagedItems.value[index] || null)
+))
+
+const materialPreviewSnapshotSlots = computed(() => (
+  Array.from({
+    length: materialPreviewPageSize
+  }, (_, index) => materialPreviewSnapshot.value[index] || null)
+))
+
+const materialPreviewHasSnapshot = computed(() => materialPreviewSnapshot.value.length > 0)
+
+const materialPreviewShowLoadingLayer = computed(() => (
+  (props.materialIsPreparing || materialPreviewUiPhase.value === 'loading')
+  && !materialPreviewHasSnapshot.value
+))
+
+const materialPreviewShowEmptyLayer = computed(() => (
+  materialPreviewUiPhase.value === 'idle' && !hasMaterialPreview.value
+))
+
+const materialPreviewShowListLayer = computed(() => (
+  (materialPreviewUiPhase.value === 'loading' && materialPreviewHasSnapshot.value)
+  || materialPreviewUiPhase.value === 'ready'
+))
 
 const materialPreviewHasNextPage = computed(() => (
   materialPreviewPageIndex.value < materialPreviewPageCount.value - 1
@@ -348,6 +444,54 @@ watch(
   ].join('::'),
   () => {
     materialPreviewPageIndex.value = 0
+  }
+)
+
+watch(
+  () => props.selectedDocumentId,
+  () => {
+    materialPreviewSnapshot.value = []
+    materialTopicSnapshot.value = {
+      total: props.materialPoolQuestionTotal,
+      tabs: [...props.materialTopicTabs]
+    }
+  }
+)
+
+watch(
+  () => [
+    props.materialPoolQuestionTotal,
+    props.materialTopicTabs.map(tab => `${ tab.key }:${ tab.count }`).join('|')
+  ].join('::'),
+  () => {
+    if (!showMaterialTopicFilter.value) return
+    materialTopicSnapshot.value = {
+      total: props.materialPoolQuestionTotal,
+      tabs: [...props.materialTopicTabs]
+    }
+  },
+  {
+    immediate: true
+  }
+)
+
+watch(
+  () => [
+    props.materialIsPreparing,
+    props.materialPreviewSignature,
+    props.materialPreviewItems.length
+  ].join('::'),
+  () => {
+    if (props.materialIsPreparing) {
+      materialPreviewUiPhase.value = 'loading'
+      return
+    }
+    if (hasMaterialPreview.value) {
+      materialPreviewUiPhase.value = 'ready'
+      materialPreviewSnapshot.value = []
+      return
+    }
+    materialPreviewUiPhase.value = 'idle'
   }
 )
 
@@ -495,55 +639,53 @@ onBeforeUnmount(() => {
         </section>
 
         <div class="library-document-panel">
-        <div class="library-document-list-shell">
-        <div
-          class="library-document-list"
-          :class="{ 'is-hidden': !isListVisible }"
-        >
-          <DocumentListItem
-            v-for="doc in displayedDocuments"
-            :id="doc.id"
-            :key="doc.id"
-            :name="doc.name"
-            :type="doc.type"
-            :size-text="formatBytes(doc.size)"
-            :imported-at="doc.importedAt"
-            :tags="doc.tags"
-            :status="doc.status"
-            :source-label="sourceLabelText(doc)"
-            :active="doc.id === selectedDocumentId"
-            active-label="当前训练资料"
-            deletable
-            editable
-            category-editor-dark
-            :existing-custom-tags="customCategoryLabels"
-            @select="emit('select-document', doc.id)"
-            @delete="handleDeleteDocumentRequest(doc)"
-            @update-profile="emit('update-document-categories', { documentId: doc.id, ...$event })"
-          />
+          <div class="library-document-list-shell">
+            <div
+              class="library-document-list"
+              :class="{ 'is-hidden': !isListVisible }"
+            >
+              <DocumentListItem
+                v-for="doc in displayedDocuments"
+                :id="doc.id"
+                :key="doc.id"
+                :name="doc.name"
+                :type="doc.type"
+                :size-text="formatBytes(doc.size)"
+                :imported-at="doc.importedAt"
+                :tags="doc.tags"
+                :status="doc.status"
+                :source-label="sourceLabelText(doc)"
+                :active="doc.id === selectedDocumentId"
+                active-label="当前训练资料"
+                deletable
+                editable
+                category-editor-dark
+                :existing-custom-tags="customCategoryLabels"
+                @select="emit('select-document', doc.id)"
+                @delete="handleDeleteDocumentRequest(doc)"
+                @update-profile="emit('update-document-categories', { documentId: doc.id, ...$event })"
+              />
+              <div
+                v-for="placeholder in placeholderItems"
+                :key="placeholder"
+                class="library-document-placeholder"
+                aria-hidden="true"
+              ></div>
+            </div>
+          </div>
+
           <div
-            v-for="placeholder in placeholderItems"
-            :key="placeholder"
-            class="library-document-placeholder"
-            aria-hidden="true"
-          ></div>
+            v-if="pageCount > 1"
+            class="library-pagination-row"
+          >
+            <Pagination
+              :page="currentPage"
+              :page-count="pageCount"
+              @update:page="emit('update:page', $event)"
+              @change="emit('update:page', $event)"
+            />
+          </div>
         </div>
-
-        </div>
-
-        <div
-          v-if="pageCount > 1"
-          class="library-pagination-row"
-        >
-          <Pagination
-            :page="currentPage"
-            :page-count="pageCount"
-            @update:page="emit('update:page', $event)"
-            @change="emit('update:page', $event)"
-          />
-        </div>
-        </div>
-
       </main>
 
       <aside class="library-sticky-column">
@@ -563,12 +705,6 @@ onBeforeUnmount(() => {
               <div class="material-card-head">
                 <div class="material-card-title-row">
                   <div class="stat-label">资料练习题</div>
-                  <span
-                    v-if="materialPoolTotalLabel"
-                    class="material-pool-total"
-                  >
-                    {{ materialPoolTotalLabel }}
-                  </span>
                 </div>
                 <div class="material-pool-badge">{{ materialRoundBadgeLabel }}</div>
               </div>
@@ -576,10 +712,10 @@ onBeforeUnmount(() => {
                 <button
                   type="button"
                   class="overview-action primary"
-                  :disabled="materialIsPreparing"
+                  :disabled="materialPreviewActionBusy"
                   @click="handlePrepareMaterialClick"
                 >
-                  {{ materialIsPreparing ? '生成中…' : '生成练习题' }}
+                  {{ materialPreviewActionBusy ? '生成中…' : '生成练习题' }}
                 </button>
                 <button
                   type="button"
@@ -611,13 +747,35 @@ onBeforeUnmount(() => {
                     练全部
                   </button>
                 </span>
-                <input
-                  v-model="materialCompileCountInput"
-                  type="text"
-                  inputmode="numeric"
-                  autocomplete="off"
-                  @blur="handleMaterialCountBlur"
-                >
+                <div class="material-count-stepper">
+                  <button
+                    type="button"
+                    class="material-count-stepper-button"
+                    :disabled="!canDecreaseMaterialCount || materialPreviewActionBusy"
+                    aria-label="减少题目数量"
+                    title="减少题目数量"
+                    @click="stepMaterialCompileCount(-1)"
+                  >
+                    <span class="i-lucide-minus"></span>
+                  </button>
+                  <input
+                    v-model="materialCompileCountInput"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="off"
+                    @blur="handleMaterialCountBlur"
+                  >
+                  <button
+                    type="button"
+                    class="material-count-stepper-button"
+                    :disabled="!canIncreaseMaterialCount || materialPreviewActionBusy"
+                    aria-label="增加题目数量"
+                    title="增加题目数量"
+                    @click="stepMaterialCompileCount(1)"
+                  >
+                    <span class="i-lucide-plus"></span>
+                  </button>
+                </div>
               </div>
               <div class="material-order-mode-row">
                 <button
@@ -640,26 +798,30 @@ onBeforeUnmount(() => {
                 </button>
               </div>
               <div
-                v-if="showMaterialTopicFilter"
                 class="material-topic-filter-row"
+                :class="{ 'is-empty': !showMaterialTopicFilterContent }"
               >
-                <span class="material-topic-filter-label">题目主题</span>
-                <div class="material-topic-filter-chips">
+                <div
+                  class="material-topic-filter-chips"
+                  :aria-hidden="!showMaterialTopicFilterContent"
+                >
                   <button
                     type="button"
                     class="material-topic-chip"
                     :class="{ 'is-active': localMaterialTopicFilter === 'all' }"
+                    :disabled="materialPreviewActionBusy || !showMaterialTopicFilterContent"
                     @click="handleMaterialTopicFilterSelect('all')"
                   >
                     全部
-                    <em>{{ materialPoolQuestionTotal }}</em>
+                    <em>{{ visibleMaterialPoolQuestionTotal }}</em>
                   </button>
                   <button
-                    v-for="tab in materialTopicTabs"
+                    v-for="tab in visibleMaterialTopicTabs"
                     :key="tab.key"
                     type="button"
                     class="material-topic-chip"
                     :class="{ 'is-active': localMaterialTopicFilter === tab.key }"
+                    :disabled="materialPreviewActionBusy || !showMaterialTopicFilterContent"
                     @click="handleMaterialTopicFilterSelect(tab.key)"
                   >
                     {{ tab.label }}
@@ -667,92 +829,136 @@ onBeforeUnmount(() => {
                   </button>
                 </div>
               </div>
-              <p
-                v-if="hasMaterialPreview && materialGroupShortfallText"
-                class="material-shortfall-note"
-              >
-                {{ materialGroupShortfallText }}
-              </p>
               <div
-                v-if="hasMaterialPreview"
-                class="material-preview-body"
+                class="material-preview-shell"
+                :class="{
+                  'is-open': showMaterialPreviewBody,
+                  'is-loading': materialPreviewShowLoadingLayer
+                }"
               >
-                <div class="material-preview-body__content">
-                  <Transition
-                    name="material-preview-page-fade"
-                    mode="out-in"
+                <div
+                  class="material-preview-body"
+                >
+                  <p
+                    v-show="materialPreviewShowEmptyLayer"
+                    class="material-preview-layer material-preview-layer--empty"
                   >
-                    <ol
-                      :key="`${materialPreviewPageIndex}-${materialPreviewSignature}`"
-                      class="material-group-preview"
-                    >
+                    选好题数和组卷方式后，点击「生成练习题」预览本轮题目。
+                  </p>
+                  <div
+                    v-show="materialPreviewShowLoadingLayer"
+                    class="material-preview-layer material-preview-layer--loading"
+                    aria-busy="true"
+                    aria-live="polite"
+                  >
+                    <ol class="material-group-preview material-group-preview--slot">
                       <li
-                        v-for="(item, index) in materialPreviewPagedItems"
-                        :key="item.questionId"
+                        v-for="slot in materialPreviewPageSize"
+                        :key="`material-ghost-${slot}`"
+                        class="material-preview-slot-row is-ghost"
                       >
-                        <span>{{ resolveMaterialPreviewItemOrder(index) }}.</span>
-                        <strong>{{ item.title }}</strong>
-                        <em>{{ item.difficulty }} · {{ item.matchReason }}</em>
+                        <span>{{ slot }}.</span>
+                        <strong>
+                          <span class="material-preview-ghost-bar material-preview-ghost-bar--title"></span>
+                        </strong>
+                        <em>
+                          <span class="material-preview-ghost-bar material-preview-ghost-bar--meta"></span>
+                        </em>
                       </li>
                     </ol>
-                  </Transition>
-                </div>
-                <div
-                  v-if="materialPreviewPageCount > 1"
-                  class="material-preview-page-nav-stack"
-                >
-                  <button
-                    type="button"
-                    class="material-preview-page-nav"
-                    aria-label="预览下一页"
-                    :disabled="!materialPreviewHasNextPage"
-                    @click="goToNextMaterialPreviewPage"
+                  </div>
+                  <div
+                    v-show="materialPreviewShowListLayer"
+                    class="material-preview-body__content"
                   >
-                    <svg
-                      class="material-preview-page-nav__icon"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
+                    <ol
+                      v-if="materialPreviewUiPhase === 'loading'"
+                      key="material-preview-snapshot"
+                      class="material-group-preview material-group-preview--slot material-preview-layer material-preview-layer--list is-loading-snapshot"
                     >
-                      <path
-                        d="M10 7l5 5-5 5"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                      />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    class="material-preview-page-nav"
-                    aria-label="预览上一页"
-                    :disabled="!materialPreviewHasPrevPage"
-                    @click="goToPrevMaterialPreviewPage"
+                      <li
+                        v-for="(item, index) in materialPreviewSnapshotSlots"
+                        :key="item ? `snapshot-${item.questionId}` : `snapshot-empty-${index}`"
+                        class="material-preview-slot-row"
+                        :class="{ 'is-slot-empty': !item }"
+                      >
+                        <template v-if="item">
+                          <span>{{ index + 1 }}.</span>
+                          <strong>{{ item.title }}</strong>
+                          <em>{{ item.difficulty }} · {{ item.matchReason }}</em>
+                        </template>
+                      </li>
+                    </ol>
+                    <ol
+                      v-else
+                      :key="`${materialPreviewPageIndex}-${materialPreviewSignature}`"
+                      class="material-group-preview material-group-preview--slot material-preview-layer material-preview-layer--list is-ready"
+                    >
+                      <li
+                        v-for="(item, index) in materialPreviewPagedSlots"
+                        :key="item ? item.questionId : `material-preview-empty-${index}`"
+                        class="material-preview-slot-row"
+                        :class="{ 'is-slot-empty': !item }"
+                      >
+                        <template v-if="item">
+                          <span>{{ resolveMaterialPreviewItemOrder(index) }}.</span>
+                          <strong>{{ item.title }}</strong>
+                          <em>{{ item.difficulty }} · {{ item.matchReason }}</em>
+                        </template>
+                      </li>
+                    </ol>
+                  </div>
+                  <div
+                    v-if="materialPreviewUiPhase === 'ready' && materialPreviewPageCount > 1"
+                    class="material-preview-page-nav-stack"
                   >
-                    <svg
-                      class="material-preview-page-nav__icon is-back"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
+                    <button
+                      type="button"
+                      class="material-preview-page-nav"
+                      aria-label="预览下一页"
+                      :disabled="!materialPreviewHasNextPage"
+                      @click="goToNextMaterialPreviewPage"
                     >
-                      <path
-                        d="M10 7l5 5-5 5"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                      />
-                    </svg>
-                  </button>
+                      <svg
+                        class="material-preview-page-nav__icon"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M10 7l5 5-5 5"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      class="material-preview-page-nav"
+                      aria-label="预览上一页"
+                      :disabled="!materialPreviewHasPrevPage"
+                      @click="goToPrevMaterialPreviewPage"
+                    >
+                      <svg
+                        class="material-preview-page-nav__icon is-back"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M10 7l5 5-5 5"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                        />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
-              <p
-                v-else
-                class="material-empty-note"
-              >
-                选好题数和组卷方式后，点击「生成练习题」预览本轮题目。
-              </p>
               <section class="library-inline-preview-section">
                 <div class="library-inline-preview-panel">
                   <DocumentPreviewPanel
@@ -1068,6 +1274,7 @@ onBeforeUnmount(() => {
   display: none;
 }
 
+.library-inline-preview-panel :deep(.preview-headline .eyebrow),
 .library-inline-preview-panel :deep(.preview-section-head .section-label) {
   display: none;
 }
@@ -1100,20 +1307,29 @@ onBeforeUnmount(() => {
 
 .library-inline-preview-panel :deep(.preview-section-head) {
   position: absolute;
-  top: 26px;
+  top: 0;
   right: 0;
+  min-height: 34px;
+  align-items: center;
   justify-content: flex-end;
   margin: 0;
 }
 
 .library-inline-preview-panel :deep(.preview-text) {
   overflow: hidden;
-  padding: 14px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--preview-visible-lines);
+  line-clamp: var(--preview-visible-lines);
+  box-sizing: border-box;
+  height: calc(20px * var(--preview-visible-lines) + 18px);
+  max-height: calc(20px * var(--preview-visible-lines) + 18px);
+  padding: 9px 14px;
   border: 1px solid rgb(255 255 255 / 0.12);
   border-radius: 16px;
   background: rgb(255 255 255 / 0.045);
   font-size: 13px;
-  line-height: 1.8;
+  line-height: 20px;
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
@@ -1333,7 +1549,7 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 0;
   padding-top: 0;
-  margin-top: -2px;
+  margin-top: 8px;
   border-top: 0;
 }
 
@@ -1518,7 +1734,12 @@ onBeforeUnmount(() => {
 .material-topic-filter-row {
   display: grid;
   gap: 8px;
-  margin-top: 12px;
+  min-height: 38px;
+  margin-top: 18px;
+}
+
+.material-topic-filter-row.is-empty .material-topic-filter-chips {
+  visibility: hidden;
 }
 
 .material-topic-filter-label {
@@ -1550,6 +1771,10 @@ onBeforeUnmount(() => {
   transition: border-color 160ms ease, background 160ms ease;
 }
 
+.material-topic-chip:disabled {
+  cursor: default;
+}
+
 .material-topic-chip em {
   color: rgb(223 231 252 / 0.62);
   font-style: normal;
@@ -1575,17 +1800,68 @@ onBeforeUnmount(() => {
   transform: scale(0.97);
 }
 
+.material-count-stepper {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.04);
+}
+
+.material-count-stepper-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgb(228 236 255 / 0.9);
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+
+.material-count-stepper-button span {
+  width: 18px;
+  height: 18px;
+}
+
+.material-count-stepper-button:hover:not(:disabled) {
+  background: rgb(112 94 219 / 0.18);
+  color: #fff;
+}
+
+.material-count-stepper-button:active:not(:disabled) {
+  background: rgb(112 94 219 / 0.26);
+}
+
+.material-count-stepper-button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
 .material-count-field input {
   width: 88px;
   height: 36px;
-  padding: 0 10px;
-  border: 1px solid rgb(255 255 255 / 0.14);
-  border-radius: 10px;
-  background: rgb(255 255 255 / 0.04);
+  padding: 0 6px;
+  border: 0;
+  border-right: 1px solid rgb(255 255 255 / 0.1);
+  border-left: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 0;
+  background: transparent;
   color: #fff;
   font: inherit;
+  text-align: center;
   appearance: textfield;
   -moz-appearance: textfield;
+  outline: none;
+}
+
+.material-count-field input:focus {
+  background: rgb(255 255 255 / 0.035);
 }
 
 .material-count-field input::-webkit-outer-spin-button,
@@ -1594,12 +1870,23 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
-.material-shortfall-note,
 .material-empty-note {
   margin: 0;
   color: rgb(255 214 153 / 0.92);
   font-size: 13px;
   line-height: 1.5;
+}
+
+.material-preview-shell {
+  position: relative;
+  height: 132px;
+  margin-top: 8px;
+  overflow: hidden;
+  transition: opacity 220ms ease;
+}
+
+.material-preview-shell.is-open {
+  height: 132px;
 }
 
 .material-preview-body {
@@ -1608,8 +1895,113 @@ onBeforeUnmount(() => {
 }
 
 .material-preview-body__content {
+  position: relative;
   min-height: inherit;
   padding-right: 52px;
+}
+
+.material-preview-layer {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+}
+
+.material-preview-layer--empty {
+  display: flex;
+  align-items: center;
+  color: rgb(255 214 153 / 0.92);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.material-preview-layer--loading {
+  opacity: 0.92;
+}
+
+.material-preview-layer--list {
+  position: absolute;
+  inset: 0;
+  transition: opacity 220ms ease;
+}
+
+.material-group-preview--slot {
+  grid-template-rows: repeat(2, minmax(52px, auto));
+  align-content: start;
+  height: 100%;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.material-preview-slot-row.is-ghost {
+  opacity: 0.72;
+}
+
+.material-preview-slot-row {
+  min-height: 52px;
+}
+
+.material-preview-slot-row.is-slot-empty {
+  visibility: hidden;
+}
+
+.material-preview-layer--list.is-loading-snapshot {
+  animation: material-preview-list-fade-out-hold 220ms ease both;
+}
+
+.material-preview-layer--list.is-ready {
+  animation: material-preview-list-fade-in 180ms ease both;
+}
+
+@keyframes material-preview-list-fade-out-hold {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0.32;
+  }
+}
+
+@keyframes material-preview-list-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.material-preview-ghost-bar {
+  display: block;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 0.08),
+    rgb(186 245 255 / 0.2),
+    rgb(255 255 255 / 0.08)
+  );
+  background-size: 220% 100%;
+  animation: material-preview-ghost 1.35s ease-in-out infinite;
+}
+
+.material-preview-ghost-bar--title {
+  width: min(220px, 78%);
+}
+
+.material-preview-ghost-bar--meta {
+  width: min(160px, 58%);
+}
+
+@keyframes material-preview-ghost {
+  0% {
+    background-position: 120% 0;
+  }
+
+  100% {
+    background-position: -120% 0;
+  }
 }
 
 .material-preview-page-nav-stack {
@@ -1656,16 +2048,6 @@ onBeforeUnmount(() => {
 
 .material-preview-page-nav__icon.is-back {
   transform: rotate(180deg);
-}
-
-.material-preview-page-fade-enter-active,
-.material-preview-page-fade-leave-active {
-  transition: opacity 0.28s ease;
-}
-
-.material-preview-page-fade-enter-from,
-.material-preview-page-fade-leave-to {
-  opacity: 0;
 }
 
 .material-group-preview {

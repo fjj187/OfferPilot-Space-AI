@@ -3,6 +3,7 @@ import type { CSSProperties } from 'vue'
 import SpaceHeader from '@/components/showcase/mock-interview-space/SpaceHeader.vue'
 import SpaceLoginHero from '@/components/showcase/mock-interview-space/SpaceLoginHero.vue'
 import { DEFAULT_APP_ROUTE_NAME } from '@/config/product'
+import { useEnabledModels } from '@/composables/model/useEnabledModels'
 import { scenes } from '@/constants/showcase/mockInterviewSpaceScenes'
 import { preloadMockInterviewSpacePlanetTextures } from '@/services/showcase/mock-interview-space-planet-preload'
 import router from '@/router'
@@ -14,6 +15,13 @@ const overviewScene = scenes[0]!
 const isNavigatingAfterLogin = ref(false)
 const DEFAULT_APP_PATH = '/showcase/mock-interview-space'
 const LOGIN_TRANSITION_MS = 360
+const {
+  enabledModels,
+  isLoadingEnabledModels,
+  selectedModelDisplayName,
+  selectedModelId,
+  updateSelectedModelId
+} = useEnabledModels()
 
 let loginTransitionTimer: ReturnType<typeof setTimeout> | null = null
 let mockInterviewSpaceEntryPreloadPromise: Promise<void> | null = null
@@ -125,10 +133,13 @@ onBeforeUnmount(() => {
   >
     <SpaceHeader
       :header-style="loginHeaderStyle"
-      :enabled-models="[]"
+      :enabled-models="enabledModels"
       :is-auto-scrolling="false"
-      :is-loading-models="false"
+      :is-loading-models="isLoadingEnabledModels"
       :is-user-scrolling="false"
+      :selected-model-id="selectedModelId"
+      :selected-model-label="selectedModelDisplayName"
+      @update-model-id="updateSelectedModelId"
     />
 
     <SpaceLoginHero

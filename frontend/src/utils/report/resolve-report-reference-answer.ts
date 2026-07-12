@@ -52,17 +52,20 @@ export const resolveReportReferenceAnswer = (
   return ''
 }
 
-/** 报告「正确答案」：资料/题池优先，再从对话 AI 揭晓段落补全 */
+/** 报告「正确答案」：优先采用本题最后 AI 揭晓段落，再回退资料/题池答案 */
 export const resolveReportQuestionReferenceAnswer = (
   groupItem: PersistedPracticeQuestionGroupItem | null | undefined,
   messages: InterviewMessage[] = [],
   threadId = ''
 ) => {
+  if (threadId) {
+    const fromAiFeedback = extractReferenceAnswerFromThreadMessages(messages, threadId)
+    if (fromAiFeedback) return fromAiFeedback
+  }
+
   const fromMaterial = resolveReportReferenceAnswer(groupItem)
   if (fromMaterial) return fromMaterial
-  if (threadId) {
-    return extractReferenceAnswerFromThreadMessages(messages, threadId)
-  }
+
   return ''
 }
 
@@ -77,7 +80,10 @@ export const enrichReportQuestionReview = (
     ? extractReferenceAnswerFromAssistantContent(review.aiFeedback)
     : ''
   if (fromFeedback) {
-    return { ...review, referenceAnswer: fromFeedback }
+    return {
+      ...review,
+      referenceAnswer: fromFeedback
+    }
   }
 
   const pool = sourceDocumentId ? getMaterialQuestionPool(sourceDocumentId) : null
@@ -99,5 +105,8 @@ export const enrichReportQuestionReview = (
   })
 
   if (!referenceAnswer) return review
-  return { ...review, referenceAnswer }
+  return {
+    ...review,
+    referenceAnswer
+  }
 }
