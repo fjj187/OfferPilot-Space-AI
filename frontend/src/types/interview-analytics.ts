@@ -59,8 +59,10 @@ export interface InterviewAnalyticsDashboardData {
   metrics: InterviewMetricCard[]
   abilityRadar: InterviewAbilityMetric[]
   scoreTrend: InterviewScorePoint[]
-  questionTypeDistribution: InterviewDistributionItem[]
-  jobPracticeDistribution: InterviewDistributionItem[]
+  /** 训练主题分布：Vue 3 / TypeScript / 浏览器等 */
+  topicDistribution: InterviewDistributionItem[]
+  /** 专项题型分布：概念理解 / 代码分析 / 场景追问 */
+  practiceQuestionTypeDistribution: InterviewDistributionItem[]
   weaknessRanking?: InterviewWeaknessRankItem[]
   trainingHeatmap?: InterviewTrainingHeatmapDay[]
   activityFeed?: InterviewActivityItem[]

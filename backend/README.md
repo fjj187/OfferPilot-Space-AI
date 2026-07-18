@@ -48,6 +48,24 @@
 - `provider`（模型供应商）
 - `isDefault`（是否默认）
 
+### `GET /api/analytics/overview`
+
+返回总览页训练数据驾驶舱聚合数据。当前由后端本地 JSON 存储中的会话和报告派生，支持查询参数：
+
+- `range`（时间范围）：`7d` / `30d` / `all`，默认 `30d`
+
+响应字段包含：
+
+- `summary`（核心指标）
+- `scoreTrend`（评分趋势）
+- `abilityRadar`（能力雷达）
+- `topicDistribution`（训练主题分布）
+- `practiceQuestionTypeDistribution`（专项题型分布）
+- `weaknessRanking`（薄弱项排行）
+- `trainingHeatmap`（训练热力）
+- `activityFeed`（训练动态）
+- `generatedAt`（生成时间）
+
 ### `GET /api/interview/sessions`
 
 返回最小历史会话列表，供历史页和报告页读取。

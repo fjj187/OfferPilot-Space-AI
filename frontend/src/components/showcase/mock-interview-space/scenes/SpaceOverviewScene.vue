@@ -1,5 +1,5 @@
 <script setup lang="tsx">
-import { defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import SpaceSceneHeader from '@/components/showcase/mock-interview-space/SpaceSceneHeader.vue'
 import { useInterviewAnalyticsDashboardData } from '@/composables/analytics/useInterviewAnalyticsDashboardData'
 
@@ -58,13 +58,42 @@ let isAnalyticsNearViewport = false
 let analyticsScrollRoot: HTMLElement | null = null
 
 const {
+  dataSource,
   dashboardData,
-  hasFilteredAnalyticsData,
-  hasLocalAnalyticsData,
+  error: dashboardError,
+  generatedAt,
+  hasRemoteAnalyticsData,
+  hasRemoteAnalyticsResponse,
+  loading: dashboardLoading,
+  reloadDashboardData,
   selectedTimeRange,
   selectedTimeRangeText,
   timeRangeOptions
 } = useInterviewAnalyticsDashboardData()
+
+const analyticsSubtitle = computed(() => {
+  if (dashboardLoading.value) return '正在读取训练统计数据。'
+
+  if (hasRemoteAnalyticsResponse.value) {
+    if (hasRemoteAnalyticsData.value) {
+      return generatedAt.value
+        ? `基于后端聚合数据生成训练概览，更新时间：${ generatedAt.value }。`
+        : '基于后端聚合数据生成训练概览。'
+    }
+
+    return '后端统计接口已返回空数据，请先完成训练后再查看分析。'
+  }
+
+  if (dataSource.value === 'local') {
+    return dashboardError.value
+      ? '后端统计暂不可用，当前基于本地面试会话和复盘报告生成训练概览。'
+      : '基于本地面试会话和复盘报告生成训练概览。'
+  }
+
+  return dashboardError.value
+    ? '后端统计暂不可用，当前使用示例数据预览图表效果。'
+    : '当前暂无本地训练记录，先用示例数据预览图表效果。'
+})
 
 const revealAnalyticsDashboard = async () => {
   if (shouldMountAnalyticsDashboard.value) return
@@ -214,9 +243,11 @@ watch(() => props.analyticsSuspended, (suspended) => {
         class="overview-analytics-dashboard"
         :active="isAnalyticsDashboardActive"
         :data="dashboardData"
+        :loading="dashboardLoading"
         title="训练数据驾驶舱"
-        :subtitle="hasLocalAnalyticsData ? (hasFilteredAnalyticsData ? '基于本地面试会话和复盘报告生成训练概览。' : '当前时间范围暂无本地训练记录，先用示例数据预览图表效果。') : '当前暂无本地训练记录，先用示例数据预览图表效果。'"
+        :subtitle="analyticsSubtitle"
         :time-range-text="selectedTimeRangeText"
+        @refresh="reloadDashboardData"
       >
         <template #actions>
           <div class="overview-analytics-range">

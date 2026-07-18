@@ -22,7 +22,7 @@ const props = withDefaults(defineProps<{
   active?: boolean
 }>(), {
   title: 'AI 面试训练数据驾驶舱',
-  subtitle: '聚焦训练次数、能力结构、评分趋势和题型覆盖。',
+  subtitle: '聚焦训练次数、能力结构、评分趋势和主题覆盖。',
   timeRangeText: '最近 14 次训练',
   error: '',
   active: true
@@ -210,9 +210,9 @@ const buildPieOption = (items: InterviewDistributionItem[]): EChartsCoreOption =
   ]
 })
 
-const questionTypeOption = computed<EChartsCoreOption>(() => buildPieOption(props.data?.questionTypeDistribution ?? []))
+const topicDistributionOption = computed<EChartsCoreOption>(() => buildPieOption(props.data?.topicDistribution ?? []))
 
-const jobPracticeOption = computed<EChartsCoreOption>(() => ({
+const practiceQuestionTypeOption = computed<EChartsCoreOption>(() => ({
   color: ['#57d7ff'],
   tooltip: {
     trigger: 'axis',
@@ -228,7 +228,7 @@ const jobPracticeOption = computed<EChartsCoreOption>(() => ({
   },
   xAxis: {
     type: 'category',
-    data: props.data?.jobPracticeDistribution.map(item => item.name) ?? [],
+    data: props.data?.practiceQuestionTypeDistribution.map(item => item.name) ?? [],
     axisLine: {
       lineStyle: {
         color: 'rgba(188, 221, 255, 0.22)'
@@ -255,7 +255,7 @@ const jobPracticeOption = computed<EChartsCoreOption>(() => ({
   series: [
     {
       type: 'bar',
-      data: props.data?.jobPracticeDistribution.map(item => item.value) ?? [],
+      data: props.data?.practiceQuestionTypeDistribution.map(item => item.value) ?? [],
       barWidth: 22,
       itemStyle: {
         borderRadius: [8, 8, 0, 0]
@@ -363,30 +363,30 @@ const handleChartClick = (chartId: string, event: {
         </AnalyticsChartPanel>
 
         <AnalyticsChartPanel
-          title="题型分布"
-          caption="当前训练题型覆盖比例"
+          title="训练主题分布"
+          caption="Vue 3、性能优化、浏览器等主题覆盖比例"
           :loading="false"
-          :empty="isEmptyDistribution(data?.questionTypeDistribution)"
+          :empty="isEmptyDistribution(data?.topicDistribution)"
         >
           <BaseECharts
-            :option="questionTypeOption"
+            :option="topicDistributionOption"
             :height="300"
             :active="active"
-            @chart-click="handleChartClick('questionTypeDistribution', $event)"
+            @chart-click="handleChartClick('topicDistribution', $event)"
           />
         </AnalyticsChartPanel>
 
         <AnalyticsChartPanel
-          title="岗位训练"
-          caption="不同方向训练占比"
+          title="专项题型分布"
+          caption="概念理解、代码分析、场景追问占比"
           :loading="false"
-          :empty="isEmptyDistribution(data?.jobPracticeDistribution)"
+          :empty="isEmptyDistribution(data?.practiceQuestionTypeDistribution)"
         >
           <BaseECharts
-            :option="jobPracticeOption"
+            :option="practiceQuestionTypeOption"
             :height="300"
             :active="active"
-            @chart-click="handleChartClick('jobPracticeDistribution', $event)"
+            @chart-click="handleChartClick('practiceQuestionTypeDistribution', $event)"
           />
         </AnalyticsChartPanel>
       </div>

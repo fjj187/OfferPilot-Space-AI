@@ -1,6 +1,6 @@
 import Cookie from 'js-cookie'
 import type { AxiosRequestConfig } from 'axios'
-import request from '@/utils/request'
+import request from '@/services/http/request'
 import type { AuthRole, AuthSession } from '@/services/storage/auth-storage'
 
 interface LoginResponse {

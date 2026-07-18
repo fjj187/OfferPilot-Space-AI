@@ -1,5 +1,5 @@
 import { mockEventStreamText } from '@/data'
-import { sleep } from '@/utils/request'
+import { sleep } from '@/utils/sleep'
 
 /**
  * 转义处理响应值为 data: 的 json 字符串

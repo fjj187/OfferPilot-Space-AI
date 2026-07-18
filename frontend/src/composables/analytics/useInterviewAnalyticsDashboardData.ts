@@ -1,12 +1,16 @@
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 import { interviewAnalyticsDemoData } from '@/components/analytics/interviewAnalyticsDemoData'
 import { useWorkbenchPersistence } from '@/composables/workspace/useWorkbenchPersistence'
+import {
+  fetchAnalyticsOverview,
+  isAnalyticsOverviewApiAvailable
+} from '@/services/analytics/analytics-api'
+import type { AnalyticsOverviewViewModel } from '@/types/analytics'
 import type {
   InterviewAnalyticsDashboardData,
   InterviewAnalyticsTimeRange,
   InterviewAnalyticsTimeRangeOption,
-  InterviewDistributionItem,
   InterviewMetricTone,
   InterviewTrainingHeatmapDay,
   InterviewWeaknessRankItem
@@ -14,9 +18,11 @@ import type {
 import type {
   PersistedInterviewSession,
   PersistedPracticeFocusArea,
+  PersistedPracticeQuestionType,
   PersistedReportSummary,
   PersistedTopicKey
 } from '@/types/workbench'
+import { mapAnalyticsOverviewToViewModel } from '@/utils/analyticsMapper'
 
 const topicLabelMap: Record<PersistedTopicKey, string> = {
   vue3: 'Vue 3',
@@ -34,31 +40,11 @@ const focusAreaLabelMap: Record<PersistedPracticeFocusArea, string> = {
   principle_depth: '原理追问'
 }
 
-const questionTypeKeywordMap: Array<{
-  name: string
-  patterns: RegExp[]
-}> = [
-  {
-    name: '技术题',
-    patterns: [/原理|源码|响应式|类型|泛型|工程化|性能|浏览器|缓存|网络/]
-  },
-  {
-    name: '项目题',
-    patterns: [/项目|实践|方案|落地|复盘|指标|协作/]
-  },
-  {
-    name: '行为题',
-    patterns: [/沟通|协作|冲突|推进|复盘|成长/]
-  },
-  {
-    name: '开放题',
-    patterns: [/设计|取舍|方案|架构|开放/]
-  },
-  {
-    name: '压力题',
-    patterns: [/追问|压力|高压|卡顿|不足|薄弱/]
-  }
-]
+const practiceQuestionTypeLabelMap: Record<PersistedPracticeQuestionType, string> = {
+  concept: '概念理解',
+  code: '代码分析',
+  scenario: '场景追问'
+}
 
 type AbilityFocusArea = 'structure' | 'case_detail' | 'result_metric' | 'principle_depth'
 
@@ -135,10 +121,6 @@ const countByName = (items: string[]) => {
     .sort((a, b) => b.value - a.value)
 }
 
-const ensureDistribution = (items: InterviewDistributionItem[], fallback: InterviewDistributionItem[]) => {
-  return items.length ? items : fallback
-}
-
 const isInTimeRange = (timestamp: number, range: InterviewAnalyticsTimeRange, now: number) => {
   if (range === 'all') return true
   if (!timestamp) return false
@@ -165,27 +147,23 @@ const filterReportsByRange = (
   return isInTimeRange(timestamp, range, now)
 })
 
-const resolveQuestionTypeName = (text: string) => {
-  const matched = questionTypeKeywordMap.find(item => item.patterns.some(pattern => pattern.test(text)))
-  return matched?.name || '开放题'
+const buildTopicDistribution = (sessions: PersistedInterviewSession[], reports: PersistedReportSummary[]) => {
+  const sessionTopics = sessions.map(session => topicLabelMap[session.topic] || session.topic)
+  if (sessionTopics.length) return countByName(sessionTopics)
+
+  return countByName(reports.map(report => topicLabelMap[report.topic] || report.topic))
 }
 
-const buildQuestionTypeDistribution = (reports: PersistedReportSummary[], sessions: PersistedInterviewSession[]) => {
-  const reportTypes = reports.flatMap((report) => {
-    const reviewTitles = report.questionReviews?.map(item => item.questionTitle).filter(Boolean) ?? []
-    const weaknessText = report.weaknessTags.join(' ')
-    return reviewTitles.length
-      ? reviewTitles.map(title => resolveQuestionTypeName(`${ title } ${ weaknessText }`))
-      : report.weaknessTags.map(tag => resolveQuestionTypeName(tag))
-  })
-  const sessionTypes = sessions.flatMap((session) => {
-    const threadTitles = session.questionThreadsSnapshot?.map(item => item.title).filter(Boolean) ?? []
-    return threadTitles.map(title => resolveQuestionTypeName(`${ title } ${ session.weaknessTags.join(' ') }`))
-  })
+const isPracticeQuestionType = (value: string): value is PersistedPracticeQuestionType => (
+  value === 'concept' || value === 'code' || value === 'scenario'
+)
 
-  return ensureDistribution(
-    countByName([...reportTypes, ...sessionTypes]),
-    interviewAnalyticsDemoData.questionTypeDistribution
+const buildPracticeQuestionTypeDistribution = (reports: PersistedReportSummary[]) => {
+  return countByName(
+    reports
+      .map(report => report.practicePlan?.questionType)
+      .filter((type): type is PersistedPracticeQuestionType => Boolean(type) && isPracticeQuestionType(type))
+      .map(type => practiceQuestionTypeLabelMap[type])
   )
 }
 
@@ -421,11 +399,8 @@ const buildDashboardData = (
     ],
     abilityRadar: buildAbilityRadar(reports, sessions),
     scoreTrend,
-    questionTypeDistribution: buildQuestionTypeDistribution(reports, sessions),
-    jobPracticeDistribution: ensureDistribution(
-      countByName(sessions.map(item => topicLabelMap[item.topic] || item.topic)),
-      interviewAnalyticsDemoData.jobPracticeDistribution
-    ),
+    topicDistribution: buildTopicDistribution(sessions, reports),
+    practiceQuestionTypeDistribution: buildPracticeQuestionTypeDistribution(reports),
     weaknessRanking: buildWeaknessRanking(reports, sessions),
     trainingHeatmap: buildTrainingHeatmap(sessions, reports, now),
     activityFeed: buildActivityFeed(reports, sessions)
@@ -436,6 +411,9 @@ export const useInterviewAnalyticsDashboardData = () => {
   const { loadInterviewSessions, loadReportSummaries } = useWorkbenchPersistence()
 
   const selectedTimeRange = ref<InterviewAnalyticsTimeRange>('30d')
+  const remoteOverview = ref<AnalyticsOverviewViewModel | null>(null)
+  const loading = ref(false)
+  const error = ref('')
   const currentTimestamp = computed(() => Date.now())
   const sessions = computed(() => loadInterviewSessions())
   const reports = computed(() => loadReportSummaries())
@@ -443,20 +421,66 @@ export const useInterviewAnalyticsDashboardData = () => {
   const filteredSessions = computed(() => filterSessionsByRange(sessions.value, selectedTimeRange.value, currentTimestamp.value))
   const filteredReports = computed(() => filterReportsByRange(reports.value, selectedTimeRange.value, currentTimestamp.value))
   const hasFilteredAnalyticsData = computed(() => Boolean(filteredSessions.value.length || filteredReports.value.length))
+  const hasRemoteAnalyticsResponse = computed(() => Boolean(remoteOverview.value))
+  const hasRemoteAnalyticsData = computed(() => Boolean(remoteOverview.value?.dashboardData))
+  const dataSource = computed(() => {
+    if (hasRemoteAnalyticsResponse.value) return 'remote'
+    if (hasFilteredAnalyticsData.value) return 'local'
+    return 'demo'
+  })
   const selectedTimeRangeText = computed(() => {
+    if (hasRemoteAnalyticsResponse.value) {
+      return timeRangeOptions.find(item => item.value === selectedTimeRange.value)?.label ?? '全部'
+    }
     if (!hasLocalAnalyticsData.value) return '演示数据'
     return timeRangeOptions.find(item => item.value === selectedTimeRange.value)?.label ?? '全部'
   })
-  const dashboardData = computed(() => (
-    hasFilteredAnalyticsData.value
+  const dashboardData = computed(() => {
+    if (hasRemoteAnalyticsResponse.value) {
+      return remoteOverview.value?.dashboardData
+    }
+
+    return hasFilteredAnalyticsData.value
       ? buildDashboardData(filteredSessions.value, filteredReports.value, currentTimestamp.value)
       : interviewAnalyticsDemoData
-  ))
+  })
+  const reloadDashboardData = async () => {
+    if (!isAnalyticsOverviewApiAvailable()) return
+
+    loading.value = true
+    error.value = ''
+
+    try {
+      remoteOverview.value = mapAnalyticsOverviewToViewModel(await fetchAnalyticsOverview({
+        range: selectedTimeRange.value
+      }))
+    } catch (requestError) {
+      remoteOverview.value = null
+      error.value = requestError instanceof Error ? requestError.message : '训练数据加载失败'
+    } finally {
+      loading.value = false
+    }
+  }
+
+  onMounted(() => {
+    void reloadDashboardData()
+  })
+
+  watch(selectedTimeRange, () => {
+    void reloadDashboardData()
+  })
 
   return {
+    dataSource,
     dashboardData,
+    error,
+    generatedAt: computed(() => remoteOverview.value?.generatedAt),
     hasFilteredAnalyticsData,
     hasLocalAnalyticsData,
+    hasRemoteAnalyticsData,
+    hasRemoteAnalyticsResponse,
+    loading,
+    reloadDashboardData,
     selectedTimeRange,
     selectedTimeRangeText,
     timeRangeOptions

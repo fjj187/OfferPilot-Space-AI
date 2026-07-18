@@ -1,4 +1,4 @@
-import request from '@/utils/request'
+import request from '@/services/http/request'
 import type { AxiosRequestConfig } from 'axios'
 
 export interface AdminDashboardResponse {

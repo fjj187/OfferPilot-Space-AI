@@ -1,9 +1,5 @@
 import { defineStore } from 'pinia'
 
-import { sleep } from '@/utils/request'
-import * as GlobalAPI from '@/api'
-
-
 import * as TransformUtils from '@/components/MarkdownPreview/transform'
 
 import { defaultModelName, modelMappingList } from '@/components/MarkdownPreview/models'

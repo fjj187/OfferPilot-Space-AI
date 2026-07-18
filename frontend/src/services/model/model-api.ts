@@ -1,4 +1,4 @@
-import request from '@/utils/request'
+import request from '@/services/http/request'
 
 export type EnabledModelProvider =
   | 'openai-compatible'

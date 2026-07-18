@@ -1,6 +1,6 @@
 import type { AxiosRequestConfig } from 'axios'
 
-import request from '@/utils/request'
+import request from '@/services/http/request'
 import type { InterviewMessage } from '@/types/message'
 
 interface RemoteInterviewSessionListItem {

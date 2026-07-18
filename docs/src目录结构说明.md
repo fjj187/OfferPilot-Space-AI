@@ -410,14 +410,14 @@
 
 ---
 
-## api
+## services/http
 
-`src/api`
+`src/services/http`
 
-- 接口封装入口
-- 当前内容不多，更多像是预留层
-
-如果后面接真实后端，这里会逐步变重要。
+- 普通 HTTP 请求的统一客户端
+- 维护 Axios 实例、拦截器、重试、并发控制和熔断
+- 业务接口继续按领域放在 `src/services/<domain>`
+- SSE 流式请求由 `src/services/sse` 独立维护
 
 ---
 

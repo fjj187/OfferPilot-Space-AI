@@ -1,6 +1,6 @@
 import type { AxiosRequestConfig } from 'axios'
 
-import request from '@/utils/request'
+import request from '@/services/http/request'
 import type { GeneratePracticePoolPayload, PracticeQuestionPool } from '@/types/practice-pool'
 import { isInterviewApiAvailable } from '@/services/interview/interview-session-api'
 

@@ -93,48 +93,44 @@ export const interviewAnalyticsDemoData: InterviewAnalyticsDashboardData = {
       score: 86
     }
   ],
-  questionTypeDistribution: [
+  topicDistribution: [
     {
-      name: '技术题',
-      value: 36
+      name: 'Vue 3',
+      value: 32
     },
     {
-      name: '项目题',
-      value: 28
+      name: 'TypeScript',
+      value: 22
     },
     {
-      name: '行为题',
+      name: '性能优化',
       value: 18
     },
     {
-      name: '开放题',
-      value: 10
-    },
-    {
-      name: '压力题',
-      value: 8
-    }
-  ],
-  jobPracticeDistribution: [
-    {
-      name: '前端',
-      value: 42
-    },
-    {
-      name: '后端',
-      value: 20
-    },
-    {
-      name: '算法',
+      name: '浏览器',
       value: 14
     },
     {
-      name: '产品',
-      value: 12
+      name: '工程化',
+      value: 10
     },
     {
-      name: '运营',
-      value: 8
+      name: '场景题',
+      value: 4
+    }
+  ],
+  practiceQuestionTypeDistribution: [
+    {
+      name: '概念理解',
+      value: 40
+    },
+    {
+      name: '代码分析',
+      value: 34
+    },
+    {
+      name: '场景追问',
+      value: 26
     }
   ],
   weaknessRanking: [
